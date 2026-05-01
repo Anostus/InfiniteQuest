@@ -778,7 +778,7 @@
 
           <div class="world-gen-box stack">
             <button id="btnOpenWorldGen" class="primary" type="button">✨ Generate world setup from prompt</button>
-            <p class="mini">Give the LLM a sparse seed or a detailed brief. It will fill in the genre, tone, player character, premise, style guide, and RPG percentile stats.</p>
+            <p class="mini">Give the LLM a sparse seed or a detailed brief. It will fill in the genre, tone, player character, premise, style guide, and any optional generated RPG stats or trackers.</p>
           </div>
 
           <label>World title
@@ -956,6 +956,8 @@
       <label>World prompt
         <textarea id="worldGenPrompt" placeholder="Examples: cozy magical academy mystery with a shy alchemist; post-apocalyptic train journey; haunted Mars colony noir..." style="min-height:160px;"></textarea>
       </label>
+      <label class="checkline"><input id="worldGenGenerateTrackers" type="checkbox" /> Automatically generate trackers</label>
+      <p class="mini">Leave unchecked to leave trackers blank for the generated setup. When checked, the generator creates tailored default trackers for the new setup.</p>
       <label class="checkline"><input id="worldGenUseRpgStats" type="checkbox" /> Use RPG d% statistics for this generated world</label>
       <p class="mini">Leave unchecked for a purely narrative game. When checked, the generator fills RPG percentile stats and enables stat rolls.</p>
       <div class="row wrap" style="justify-content:flex-end;">
@@ -2014,6 +2016,8 @@
       if (!promptBox.value.trim() && suggestions.trim()) {
         promptBox.value = suggestions;
       }
+      const generateTrackersBox = $("worldGenGenerateTrackers");
+      if (generateTrackersBox) generateTrackersBox.checked = false;
       const useRpgBox = $("worldGenUseRpgStats");
       if (useRpgBox) useRpgBox.checked = false;
       if (typeof dialog.showModal === "function") {
@@ -2050,10 +2054,13 @@ Required JSON shape:
   ]
 }
 
+If auto_generate_trackers is false, return an empty array for "default_triggers".
 If use_rpg_percentile_stats is false, return an empty array for "rpg_statistics".
 
 Default tracker requirements:
-- Provide 2 to 5 useful world-state trackers tailored to the setup, such as relationships, suspicion, inventory, obligations, injuries, clues, or factions.
+- Only provide default_triggers when auto_generate_trackers is true.
+- When auto_generate_trackers is true, provide 2 to 5 useful world-state trackers tailored to the setup, such as relationships, suspicion, inventory, obligations, injuries, clues, or factions.
+- When auto_generate_trackers is false, do not suggest, copy, update, or replace any tracker definitions.
 - Each trigger needs a starting value that is safe to show in the right-side current state panel at the beginning of a new adventure.
 - Keep trigger rules private and operational: tell the story engine when to update the state, not what to narrate.
 
@@ -2067,9 +2074,13 @@ RPG statistic requirements:
 Make the setup immediately playable and specific enough for a first turn.`;
     }
 
-    function buildWorldSetupPrompt(seedPrompt, useRpgPercentileStats = false) {
+    function buildWorldSetupPrompt(seedPrompt, useRpgPercentileStats = false, autoGenerateTrackers = false) {
+      const requestedFeatures = ["a complete setup"];
+      if (autoGenerateTrackers) requestedFeatures.push("tailored default world-state trackers");
+      if (useRpgPercentileStats) requestedFeatures.push("RPG percentile stats");
       return JSON.stringify({
-        request: useRpgPercentileStats ? "Generate a complete setup and RPG percentile stats for this choose-your-own-adventure game." : "Generate a complete setup for this choose-your-own-adventure game without RPG percentile stats.",
+        request: `Generate ${requestedFeatures.join(" and ")} for this choose-your-own-adventure game.`,
+        auto_generate_trackers: !!autoGenerateTrackers,
         use_rpg_percentile_stats: !!useRpgPercentileStats,
         user_prompt: seedPrompt,
         current_fields_to_use_as_optional_context: {
@@ -2080,9 +2091,9 @@ Make the setup immediately playable and specific enough for a first turn.`;
           premise: state.world.premise || "",
           story_rules: state.world.rules || ""
         },
-        current_default_triggers: (state.defaultTriggers || []).map(t => ({ name: t.name || "", rules: t.rules || "", starting_value: t.value || "" })),
+        current_default_triggers: autoGenerateTrackers ? (state.defaultTriggers || []).map(t => ({ name: t.name || "", rules: t.rules || "", starting_value: t.value || "" })) : [],
         current_rpg_stats: useRpgPercentileStats ? normalizeRpgStats(state.rpgStats).map(s => ({ name: s.name, value_percent: s.value, covers: s.note || "" })) : [],
-        output_note: useRpgPercentileStats ? "Return only the JSON object matching the required schema, including rpg_statistics." : "Return only the JSON object matching the required schema, with rpg_statistics as an empty array."
+        output_note: `Return only the JSON object matching the required schema, ${autoGenerateTrackers ? "including default_triggers" : "with default_triggers as an empty array"}, and ${useRpgPercentileStats ? "including rpg_statistics" : "with rpg_statistics as an empty array"}.`
       }, null, 2);
     }
 
@@ -2116,18 +2127,19 @@ Make the setup immediately playable and specific enough for a first turn.`;
       if (busy) return;
       syncFormToState();
       const seedPrompt = $("worldGenPrompt")?.value.trim();
+      const autoGenerateTrackers = $("worldGenGenerateTrackers")?.checked === true;
       const useRpgPercentileStats = $("worldGenUseRpgStats")?.checked === true;
       if (!seedPrompt) {
         toast("Describe the world you want first.");
         return;
       }
-      if (state.turns.length && !confirm("This will replace the setup fields and RPG stats, but it will not delete your existing turns. Continue?")) return;
+      if (state.turns.length && !confirm("This will replace the setup fields, RPG stats, and trackers according to the popup options, but it will not delete your existing turns. Continue?")) return;
 
       setBusy(true, "Generating world setup");
       try {
         const raw = await callOpenRouterJson("world setup", [
           { role: "system", content: worldSetupSystemPrompt() },
-          { role: "user", content: buildWorldSetupPrompt(seedPrompt, useRpgPercentileStats) }
+          { role: "user", content: buildWorldSetupPrompt(seedPrompt, useRpgPercentileStats, autoGenerateTrackers) }
         ], { temperature: Math.max(0.45, Number(state.settings.temperature ?? 0.85)), max_tokens: 2200 });
 
         const title = raw.title || raw.world_title || raw.name;
@@ -2149,9 +2161,13 @@ Make the setup immediately playable and specific enough for a first turn.`;
         if (useRpgPercentileStats && Array.isArray(stats) && stats.length) {
           state.rpgStats = normalizeGeneratedRpgStats(stats);
         }
-        if (Array.isArray(defaultTriggers) && defaultTriggers.length) {
-          state.defaultTriggers = normalizeTrackers(defaultTriggers);
+        if (autoGenerateTrackers) {
+          state.defaultTriggers = Array.isArray(defaultTriggers) && defaultTriggers.length ? normalizeTrackers(defaultTriggers) : [];
           populateCurrentTrackersFromDefaultsIfNoTurns();
+        } else {
+          state.defaultTriggers = [];
+          state.baseTrackersAtStart = [];
+          state.trackers = [];
         }
 
         syncStateToForm();

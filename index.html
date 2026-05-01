@@ -507,6 +507,14 @@
       padding: 6px 8px;
     }
 
+    .panel-toggle .collapse-word {
+      font-size: .68rem;
+      line-height: 1;
+      opacity: .78;
+      letter-spacing: .02em;
+      text-transform: lowercase;
+    }
+
     .layout.left-collapsed { grid-template-columns: 58px minmax(420px, 1fr) minmax(285px, 380px); }
     .layout.right-collapsed { grid-template-columns: minmax(285px, 360px) minmax(420px, 1fr) 58px; }
     .layout.left-collapsed.right-collapsed { grid-template-columns: 58px minmax(420px, 1fr) 58px; }
@@ -706,7 +714,7 @@
           <h2>World setup</h2>
           <div class="row" style="gap:8px;">
             <span class="pill" id="autosaveStatus">Autosaved</span>
-            <button id="btnToggleLeftPanel" class="small panel-toggle" title="Collapse world setup" aria-label="Collapse world setup">⟨</button>
+            <button id="btnToggleLeftPanel" class="small panel-toggle" title="Collapse world setup" aria-label="Collapse world setup">⟨ <span class="collapse-word">collapse</span></button>
           </div>
         </div>
         <div class="panel-body stack">
@@ -732,7 +740,7 @@
             </label>
           </div>
           <label>Custom story model ID, optional
-            <input id="llmModelCustom" placeholder="e.g. openai/gpt-5.2" />
+            <input id="llmModelCustom" placeholder="e.g. deepseek/deepseek-v3.2" />
           </label>
 
           <label>Image model
@@ -794,6 +802,24 @@
             <textarea id="rules" placeholder="E.g. second-person prose, meaningful consequences, no instant success, keep secrets until discovered..."></textarea>
           </label>
 
+          <details open>
+            <summary>Default trackers</summary>
+            <div class="stack">
+              <p class="mini">Define the default world-state trackers that appear in the right panel. When a new adventure starts, the current state is reset from these triggers and their starting values.</p>
+              <label>Default tracker name
+                <input id="defaultTriggerName" placeholder="Relationship: Nadira" />
+              </label>
+              <label>When/how should the LLM update it?
+                <textarea id="defaultTriggerRules" placeholder="Update after any interaction with Nadira. Track trust, debts, secrets shared, and attitude."></textarea>
+              </label>
+              <label>Starting value
+                <textarea id="defaultTriggerValue" placeholder="Neutral; curious about the player."></textarea>
+              </label>
+              <button id="btnAddDefaultTrigger" class="accent" type="button">＋ Add default tracker</button>
+              <div id="defaultTriggerList" class="stack"></div>
+            </div>
+          </details>
+
           <details>
             <summary>RPG d% statistics</summary>
             <div class="stack">
@@ -833,7 +859,7 @@
               </label>
               <button id="btnLoadWorldText" type="button">📝 Load world from text</button>
             </div>
-            <p class="mini">Save, copy, or share only the world setup: title, genre, tone, player character, premise, style guide, RPG stats, and trackers. Story turns and API keys are not included.</p>
+            <p class="mini">Save, copy, or share only the world setup: title, genre, tone, player character, premise, style guide, RPG stats, and default trackers. Story turns, current run state, generated pictures, and API keys are not included.</p>
           </div>
         </div>
       </aside>
@@ -878,7 +904,7 @@
           <h2>State & memory</h2>
           <div class="row" style="gap:8px;">
             <span class="pill" id="tokenHint">local</span>
-            <button id="btnToggleRightPanel" class="small panel-toggle" title="Collapse state and memory" aria-label="Collapse state and memory">⟩</button>
+            <button id="btnToggleRightPanel" class="small panel-toggle" title="Collapse state and memory" aria-label="Collapse state and memory"><span class="collapse-word">collapse</span> ⟩</button>
           </div>
         </div>
         <div class="tabs" role="tablist" aria-label="side panels">
@@ -894,7 +920,7 @@
           </section>
 
           <section id="tab-trackers" class="stack hidden">
-            <p class="mini">Add custom state for the model to maintain. Example: “Suspicion meter” with “Update when the player lies, trespasses, or is caught.”</p>
+            <p class="mini">This is the current world state the model maintains during play. New adventures are initialized from the Default trackers in the left panel. You can still add or edit one-off trackers here for the current run.</p>
             <label>Tracker name
               <input id="trackerName" placeholder="Relationship: Nadira" />
             </label>
@@ -930,6 +956,8 @@
       <label>World prompt
         <textarea id="worldGenPrompt" placeholder="Examples: cozy magical academy mystery with a shy alchemist; post-apocalyptic train journey; haunted Mars colony noir..." style="min-height:160px;"></textarea>
       </label>
+      <label class="checkline"><input id="worldGenUseRpgStats" type="checkbox" /> Use RPG d% statistics for this generated world</label>
+      <p class="mini">Leave unchecked for a purely narrative game. When checked, the generator fills RPG percentile stats and enables stat rolls.</p>
       <div class="row wrap" style="justify-content:flex-end;">
         <button id="btnWorldGenCancel" type="submit">Cancel</button>
         <button id="btnWorldGenRun" class="primary" type="button">✨ Generate and fill setup</button>
@@ -957,7 +985,7 @@
     <form method="dialog" class="world-gen-card">
       <div>
         <h3>Load world from text</h3>
-        <p class="mini">Paste the JSON from a saved or copied world setup, then load it into the world fields, RPG stats, and trackers.</p>
+        <p class="mini">Paste the JSON from a saved or copied world setup, then load it into the world fields, RPG stats, and default trackers.</p>
       </div>
       <label>World JSON
         <textarea id="worldTextImportEditor" placeholder='Paste saved world JSON here, for example: { "export_type": "infinite-quest-world", ... }' style="min-height:240px;"></textarea>
@@ -973,7 +1001,8 @@
   <script>
     const STORAGE_KEY = "infiniteQuestOpenRouterState.v1";
     const DEFAULT_IMAGE_MODEL = "black-forest-labs/flux.2-klein-4b";
-    const DEFAULT_LLM_MODEL = "openai/gpt-5.2";
+    const DEFAULT_LLM_MODEL = "deepseek/deepseek-v3.2";
+    const LEGACY_DEFAULT_LLM_MODEL = "openai/gpt-5.2";
     const DEFAULT_LLM_MODELS = [DEFAULT_LLM_MODEL, "anthropic/claude-sonnet-4.5", "google/gemini-2.5-pro", "openai/gpt-4o-mini"];
     const DEFAULT_IMAGE_MODELS = [DEFAULT_IMAGE_MODEL, "black-forest-labs/flux-1.1-pro", "google/gemini-2.5-flash-image"];
     const DEFAULT_RPG_STATS = [
@@ -1024,12 +1053,14 @@
       modelLists: { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS },
       rpgStats: deepClone(DEFAULT_RPG_STATS),
       collapsedPanels: { left: false, right: false },
+      defaultTriggers: [],
       baseTrackersAtStart: [],
       trackers: [],
       scratchpad: "",
       turns: [],
       viewIndex: -1,
-      lastSavedAt: null
+      lastSavedAt: null,
+      unsavedFullExport: false
     };
 
     let state = deepClone(DEFAULT_STATE);
@@ -1186,8 +1217,9 @@
         lastSavedAt: nowIso(),
         scratchpad: truncateText(source.scratchpad || "", 30000),
         turns: (source.turns || []).map(pruneTurnForStorage),
+        defaultTriggers: (source.defaultTriggers || source.default_triggers || source.baseTrackersAtStart || []).map(compactTracker),
         trackers: (source.trackers || []).map(compactTracker),
-        baseTrackersAtStart: (source.baseTrackersAtStart || []).map(compactTracker)
+        baseTrackersAtStart: (source.defaultTriggers || source.default_triggers || source.baseTrackersAtStart || []).map(compactTracker)
       };
     }
 
@@ -1212,13 +1244,17 @@
           const loaded = JSON.parse(raw);
           state = mergeDefaults(deepClone(DEFAULT_STATE), loaded);
           state.turns = (state.turns || []).map(turn => ({ ...turn, imageGenerating: false, raw: turn.raw && turn.raw.keys ? turn.raw : { legacy: true } }));
+          if (!loaded?.settings?.llmModel || (!state.turns.length && state.settings.llmModel === LEGACY_DEFAULT_LLM_MODEL)) state.settings.llmModel = DEFAULT_LLM_MODEL;
+          normalizeDefaultTriggerState();
         }
       } catch (err) {
         console.warn(err);
         toast("Could not load saved browser state; using defaults.");
       }
+      normalizeDefaultTriggerState();
       syncStateToForm();
       renderAll();
+      dirtySinceFullExport = !!state.unsavedFullExport;
     }
 
     function mergeDefaults(base, incoming) {
@@ -1296,6 +1332,51 @@
         value: clampNumber(stat.value, 1, 99, 50),
         note: String(stat.note || "").trim()
       })).filter(stat => stat.name);
+    }
+
+    function normalizeTrackers(trackers) {
+      return (Array.isArray(trackers) ? trackers : []).map((tracker, idx) => ({
+        id: tracker.id || uid("tracker"),
+        name: String(tracker.name || `Tracker ${idx + 1}`).trim(),
+        rules: String(tracker.rules || tracker.update_rules || tracker.updateRules || "").trim(),
+        value: String(tracker.value || tracker.current_value || tracker.currentValue || tracker.starting_value || tracker.startingValue || "").trim(),
+        createdAt: tracker.createdAt || tracker.created_at || nowIso(),
+        updatedAt: tracker.updatedAt || tracker.updated_at || null,
+        lastRationale: tracker.lastRationale || tracker.last_rationale || ""
+      })).filter(tracker => tracker.name || tracker.rules || tracker.value);
+    }
+
+    function normalizeDefaultTriggerState() {
+      state.defaultTriggers = normalizeTrackers(state.defaultTriggers || state.default_triggers || []);
+      if (!state.defaultTriggers.length && Array.isArray(state.baseTrackersAtStart) && state.baseTrackersAtStart.length) {
+        state.defaultTriggers = normalizeTrackers(state.baseTrackersAtStart);
+      }
+      if (!state.defaultTriggers.length && Array.isArray(state.trackers) && state.trackers.length) {
+        state.defaultTriggers = normalizeTrackers(state.trackers);
+      }
+      state.baseTrackersAtStart = deepClone(state.defaultTriggers);
+      state.trackers = normalizeTrackers(state.trackers || []);
+      if (!state.turns?.length) state.trackers = deepClone(state.defaultTriggers);
+    }
+
+    function defaultTriggersForExport() {
+      syncDefaultTriggerEditorState();
+      normalizeDefaultTriggerState();
+      return normalizeTrackers(state.defaultTriggers || []);
+    }
+
+    function cloneDefaultTriggersForCurrentRun() {
+      normalizeDefaultTriggerState();
+      return deepClone(state.defaultTriggers || []).map(tracker => ({
+        ...tracker,
+        updatedAt: null,
+        lastRationale: ""
+      }));
+    }
+
+    function populateCurrentTrackersFromDefaultsIfNoTurns() {
+      state.baseTrackersAtStart = deepClone(state.defaultTriggers || []);
+      if (!state.turns.length) state.trackers = cloneDefaultTriggersForCurrentRun();
     }
 
     function renderRpgStats() {
@@ -1378,12 +1459,14 @@
       const leftBtn = $("btnToggleLeftPanel");
       const rightBtn = $("btnToggleRightPanel");
       if (leftBtn) {
-        leftBtn.textContent = state.collapsedPanels.left ? "World setup ▸" : "⟨";
+        leftBtn.innerHTML = state.collapsedPanels.left ? "World setup ▸" : '⟨ <span class="collapse-word">collapse</span>';
         leftBtn.title = state.collapsedPanels.left ? "Expand world setup" : "Collapse world setup";
+        leftBtn.setAttribute("aria-label", leftBtn.title);
       }
       if (rightBtn) {
-        rightBtn.textContent = state.collapsedPanels.right ? "State ▸" : "⟩";
+        rightBtn.innerHTML = state.collapsedPanels.right ? "State ▸" : '<span class="collapse-word">collapse</span> ⟩';
         rightBtn.title = state.collapsedPanels.right ? "Expand state and memory" : "Collapse state and memory";
+        rightBtn.setAttribute("aria-label", rightBtn.title);
       }
     }
 
@@ -1458,6 +1541,7 @@
     function syncStateToForm() {
       state.modelLists ||= { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS };
       state.rpgStats = normalizeRpgStats(state.rpgStats?.length ? state.rpgStats : DEFAULT_RPG_STATS);
+      normalizeDefaultTriggerState();
       populateModelSelects();
       $("apiKey").value = state.settings.apiKey || "";
       $("rememberKey").checked = !!state.settings.rememberKey;
@@ -1483,6 +1567,7 @@
     function renderAll() {
       renderStory();
       renderChoices();
+      renderDefaultTriggers();
       renderTrackers();
       renderHistory();
       renderRpgStats();
@@ -1682,6 +1767,7 @@
         turn.imageUrl = result.imageUrl;
         turn.imagePrompt = result.prompt;
         turn.imageError = "";
+        markUnsavedForFullExport();
         toast(result.usedPg13Rewrite ? "Image regenerated with a PG-13 prompt rewrite." : "Image regenerated.");
       } catch (err) {
         console.error(err);
@@ -1707,6 +1793,7 @@
         turn.imageUrl = result.imageUrl;
         turn.imagePrompt = result.prompt;
         turn.imageError = "";
+        markUnsavedForFullExport();
         if (result.usedPg13Rewrite) toast("The image prompt was rewritten as PG-13 after moderation, then generated.", 5200);
       } catch (imgErr) {
         console.error(imgErr);
@@ -1720,6 +1807,93 @@
           saveState();
         }
       }
+    }
+
+    function renderDefaultTriggers() {
+      const list = $("defaultTriggerList");
+      if (!list) return;
+      normalizeDefaultTriggerState();
+      list.innerHTML = "";
+      if (!state.defaultTriggers.length) {
+        list.innerHTML = `<p class="mini">No default trackers yet. Add one to initialize matching current-state trackers in the right panel.</p>`;
+        return;
+      }
+      state.defaultTriggers.forEach(trigger => {
+        const card = document.createElement("div");
+        card.className = "track-card";
+        card.innerHTML = `
+          <div class="row" style="justify-content:space-between;align-items:flex-start;">
+            <h4>${escapeHtml(trigger.name || "Default tracker")}</h4>
+            <button class="small danger" data-default-trigger-del="${escapeHtml(trigger.id)}" type="button">Delete</button>
+          </div>
+          <label>Name
+            <input data-default-trigger-name="${escapeHtml(trigger.id)}" value="${escapeHtml(trigger.name || "")}" />
+          </label>
+          <label>Update rule
+            <textarea data-default-trigger-rules="${escapeHtml(trigger.id)}">${escapeHtml(trigger.rules || "")}</textarea>
+          </label>
+          <label>Starting value
+            <textarea data-default-trigger-value="${escapeHtml(trigger.id)}">${escapeHtml(trigger.value || "")}</textarea>
+          </label>
+        `;
+        list.appendChild(card);
+      });
+      list.querySelectorAll("input[data-default-trigger-name]").forEach(input => input.addEventListener("change", () => updateDefaultTrigger(input.dataset.defaultTriggerName, { name: input.value.trim() })));
+      list.querySelectorAll("textarea[data-default-trigger-rules]").forEach(area => area.addEventListener("change", () => updateDefaultTrigger(area.dataset.defaultTriggerRules, { rules: area.value.trim() })));
+      list.querySelectorAll("textarea[data-default-trigger-value]").forEach(area => area.addEventListener("change", () => updateDefaultTrigger(area.dataset.defaultTriggerValue, { value: area.value })));
+      list.querySelectorAll("button[data-default-trigger-del]").forEach(btn => btn.addEventListener("click", () => {
+        state.defaultTriggers = state.defaultTriggers.filter(trigger => trigger.id !== btn.dataset.defaultTriggerDel);
+        populateCurrentTrackersFromDefaultsIfNoTurns();
+        saveState();
+        renderDefaultTriggers();
+        renderTrackers();
+      }));
+    }
+
+    function updateDefaultTrigger(id, patch) {
+      const trigger = state.defaultTriggers.find(t => t.id === id);
+      if (!trigger) return;
+      Object.assign(trigger, patch);
+      state.defaultTriggers = normalizeTrackers(state.defaultTriggers);
+      populateCurrentTrackersFromDefaultsIfNoTurns();
+      saveState();
+      renderDefaultTriggers();
+      renderTrackers();
+    }
+
+    function addDefaultTrigger() {
+      const name = $("defaultTriggerName").value.trim();
+      const rules = $("defaultTriggerRules").value.trim();
+      const value = $("defaultTriggerValue").value.trim();
+      if (!name || !rules) {
+        toast("Default tracker needs a name and update rule.");
+        return;
+      }
+      state.defaultTriggers.push({ id: uid("tracker"), name, rules, value, createdAt: nowIso(), updatedAt: null, lastRationale: "" });
+      $("defaultTriggerName").value = "";
+      $("defaultTriggerRules").value = "";
+      $("defaultTriggerValue").value = "";
+      populateCurrentTrackersFromDefaultsIfNoTurns();
+      saveState();
+      renderDefaultTriggers();
+      renderTrackers();
+    }
+
+    function syncDefaultTriggerEditorState() {
+      document.querySelectorAll("input[data-default-trigger-name]").forEach(input => {
+        const trigger = state.defaultTriggers.find(t => t.id === input.dataset.defaultTriggerName);
+        if (trigger) trigger.name = input.value.trim();
+      });
+      document.querySelectorAll("textarea[data-default-trigger-rules]").forEach(area => {
+        const trigger = state.defaultTriggers.find(t => t.id === area.dataset.defaultTriggerRules);
+        if (trigger) trigger.rules = area.value.trim();
+      });
+      document.querySelectorAll("textarea[data-default-trigger-value]").forEach(area => {
+        const trigger = state.defaultTriggers.find(t => t.id === area.dataset.defaultTriggerValue);
+        if (trigger) trigger.value = area.value;
+      });
+      state.defaultTriggers = normalizeTrackers(state.defaultTriggers);
+      populateCurrentTrackersFromDefaultsIfNoTurns();
     }
 
     function renderTrackers() {
@@ -1840,6 +2014,8 @@
       if (!promptBox.value.trim() && suggestions.trim()) {
         promptBox.value = suggestions;
       }
+      const useRpgBox = $("worldGenUseRpgStats");
+      if (useRpgBox) useRpgBox.checked = false;
       if (typeof dialog.showModal === "function") {
         dialog.showModal();
         setTimeout(() => promptBox.focus(), 50);
@@ -1866,13 +2042,24 @@ Required JSON shape:
   "player_character": "second-person-compatible description of the player character, including name if useful, role, wants, flaws, skills, and visual details",
   "premise": "the core setting, immediate situation, opening location, inciting tension, and what is happening at the first scene",
   "story_rules": "style guide for the story engine: prose POV, pacing, consequences, secrecy, content boundaries, and how choices should feel",
+  "default_triggers": [
+    {"name":"Tracker name", "rules":"when and how the story engine should update it", "value":"starting value for turn one"}
+  ],
   "rpg_statistics": [
     {"name":"Stat name", "value":55, "covers":"what this percentile stat covers"}
   ]
 }
 
+If use_rpg_percentile_stats is false, return an empty array for "rpg_statistics".
+
+Default tracker requirements:
+- Provide 2 to 5 useful world-state trackers tailored to the setup, such as relationships, suspicion, inventory, obligations, injuries, clues, or factions.
+- Each trigger needs a starting value that is safe to show in the right-side current state panel at the beginning of a new adventure.
+- Keep trigger rules private and operational: tell the story engine when to update the state, not what to narrate.
+
 RPG statistic requirements:
-- Provide 5 to 8 stats tailored to the genre and character.
+- Only provide RPG statistics when use_rpg_percentile_stats is true.
+- When use_rpg_percentile_stats is true, provide 5 to 8 stats tailored to the genre and character.
 - Values are d% target numbers from 1 to 99. Use 35-75 for most stats, with strengths and weaknesses.
 - Each stat needs a short "covers" field explaining when it is rolled.
 - Do not include success/failure rolls here; only base stats.
@@ -1880,9 +2067,10 @@ RPG statistic requirements:
 Make the setup immediately playable and specific enough for a first turn.`;
     }
 
-    function buildWorldSetupPrompt(seedPrompt) {
+    function buildWorldSetupPrompt(seedPrompt, useRpgPercentileStats = false) {
       return JSON.stringify({
-        request: "Generate a complete setup and RPG percentile stats for this choose-your-own-adventure game.",
+        request: useRpgPercentileStats ? "Generate a complete setup and RPG percentile stats for this choose-your-own-adventure game." : "Generate a complete setup for this choose-your-own-adventure game without RPG percentile stats.",
+        use_rpg_percentile_stats: !!useRpgPercentileStats,
         user_prompt: seedPrompt,
         current_fields_to_use_as_optional_context: {
           title: state.world.title || "",
@@ -1892,8 +2080,9 @@ Make the setup immediately playable and specific enough for a first turn.`;
           premise: state.world.premise || "",
           story_rules: state.world.rules || ""
         },
-        current_rpg_stats: normalizeRpgStats(state.rpgStats).map(s => ({ name: s.name, value_percent: s.value, covers: s.note || "" })),
-        output_note: "Return only the JSON object matching the required schema."
+        current_default_triggers: (state.defaultTriggers || []).map(t => ({ name: t.name || "", rules: t.rules || "", starting_value: t.value || "" })),
+        current_rpg_stats: useRpgPercentileStats ? normalizeRpgStats(state.rpgStats).map(s => ({ name: s.name, value_percent: s.value, covers: s.note || "" })) : [],
+        output_note: useRpgPercentileStats ? "Return only the JSON object matching the required schema, including rpg_statistics." : "Return only the JSON object matching the required schema, with rpg_statistics as an empty array."
       }, null, 2);
     }
 
@@ -1927,6 +2116,7 @@ Make the setup immediately playable and specific enough for a first turn.`;
       if (busy) return;
       syncFormToState();
       const seedPrompt = $("worldGenPrompt")?.value.trim();
+      const useRpgPercentileStats = $("worldGenUseRpgStats")?.checked === true;
       if (!seedPrompt) {
         toast("Describe the world you want first.");
         return;
@@ -1937,8 +2127,8 @@ Make the setup immediately playable and specific enough for a first turn.`;
       try {
         const raw = await callOpenRouterJson("world setup", [
           { role: "system", content: worldSetupSystemPrompt() },
-          { role: "user", content: buildWorldSetupPrompt(seedPrompt) }
-        ], { temperature: Math.max(0.45, Number(state.settings.temperature ?? 0.85)), max_tokens: 1800 });
+          { role: "user", content: buildWorldSetupPrompt(seedPrompt, useRpgPercentileStats) }
+        ], { temperature: Math.max(0.45, Number(state.settings.temperature ?? 0.85)), max_tokens: 2200 });
 
         const title = raw.title || raw.world_title || raw.name;
         const genre = raw.genre || raw.genres;
@@ -1947,6 +2137,7 @@ Make the setup immediately playable and specific enough for a first turn.`;
         const premise = raw.premise || raw.starting_situation || raw.startingSituation || raw.opening_situation;
         const rules = raw.story_rules || raw.rules || raw.style_guide || raw.styleGuide;
         const stats = raw.rpg_statistics || raw.rpg_stats || raw.stats || raw.statistics;
+        const defaultTriggers = raw.default_triggers || raw.defaultTriggers || raw.triggers || raw.trackers;
 
         if (title) state.world.title = String(title).trim();
         if (genre) state.world.genre = Array.isArray(genre) ? genre.join(", ") : String(genre).trim();
@@ -1954,9 +2145,13 @@ Make the setup immediately playable and specific enough for a first turn.`;
         if (character) state.world.character = String(character).trim();
         if (premise) state.world.premise = String(premise).trim();
         if (rules) state.world.rules = String(rules).trim();
-        if (Array.isArray(stats) && stats.length) {
+        state.settings.useRpgStats = useRpgPercentileStats;
+        if (useRpgPercentileStats && Array.isArray(stats) && stats.length) {
           state.rpgStats = normalizeGeneratedRpgStats(stats);
-          state.settings.useRpgStats = true;
+        }
+        if (Array.isArray(defaultTriggers) && defaultTriggers.length) {
+          state.defaultTriggers = normalizeTrackers(defaultTriggers);
+          populateCurrentTrackersFromDefaultsIfNoTurns();
         }
 
         syncStateToForm();
@@ -2261,7 +2456,7 @@ Rewrite rules:
         state.trackers = deepClone(state.turns[index].trackersSnapshot || state.trackers);
       } else {
         state.scratchpad = "";
-        const base = state.baseTrackersAtStart?.length ? state.baseTrackersAtStart : state.trackers;
+        const base = state.defaultTriggers?.length ? state.defaultTriggers : (state.baseTrackersAtStart?.length ? state.baseTrackersAtStart : state.trackers);
         state.trackers = deepClone(base);
       }
     }
@@ -2290,6 +2485,7 @@ Rewrite rules:
         turn.scratchpadSnapshot = state.scratchpad;
         turn.trackersSnapshot = deepClone(state.trackers);
         state.turns.push(turn);
+        markUnsavedForFullExport();
         state.viewIndex = state.turns.length - 1;
         clearGenerationTransition();
 
@@ -2322,7 +2518,9 @@ Rewrite rules:
         return;
       }
       if (state.turns.length && !confirm("Start a new adventure and replace the current turn history?")) return;
-      state.baseTrackersAtStart = deepClone(state.trackers);
+      syncDefaultTriggerEditorState();
+      state.baseTrackersAtStart = deepClone(state.defaultTriggers || []);
+      state.trackers = cloneDefaultTriggersForCurrentRun();
       state.turns = [];
       state.scratchpad = "";
       state.viewIndex = -1;
@@ -2341,6 +2539,7 @@ Rewrite rules:
       const removed = state.turns.pop();
       state.viewIndex = state.turns.length - 1;
       restoreStateAfterTurnIndex(state.viewIndex);
+      markUnsavedForFullExport();
       saveState();
       renderAll();
       toast(`Undid turn ${removed.turnNumber}.`);
@@ -2352,6 +2551,7 @@ Rewrite rules:
       state.turns.pop();
       state.viewIndex = state.turns.length - 1;
       restoreStateAfterTurnIndex(state.viewIndex);
+      markUnsavedForFullExport();
       saveState();
       renderAll();
       await generateTurn(action);
@@ -2404,6 +2604,7 @@ Rewrite rules:
     }
 
     function syncInlineWorldEditorState() {
+      syncDefaultTriggerEditorState();
       document.querySelectorAll("textarea[data-tracker-value]").forEach(area => {
         const tracker = state.trackers.find(t => t.id === area.dataset.trackerValue);
         if (tracker) tracker.value = area.value;
@@ -2447,13 +2648,21 @@ Rewrite rules:
           value: clampNumber(stat.value, 1, 99, 50),
           note: stat.note || ""
         })),
-        trackers: (state.trackers || []).map(tracker => ({
+        defaultTriggers: defaultTriggersForExport().map(tracker => ({
           id: tracker.id || uid("tracker"),
           name: tracker.name || "",
           rules: tracker.rules || "",
           value: tracker.value || "",
           createdAt: tracker.createdAt || null,
-          updatedAt: tracker.updatedAt || null
+          updatedAt: null
+        })),
+        trackers: defaultTriggersForExport().map(tracker => ({
+          id: tracker.id || uid("tracker"),
+          name: tracker.name || "",
+          rules: tracker.rules || "",
+          value: tracker.value || "",
+          createdAt: tracker.createdAt || null,
+          updatedAt: null
         }))
       };
     }
@@ -2466,15 +2675,7 @@ Rewrite rules:
     }
 
     function normalizeImportedTrackers(trackers) {
-      return (Array.isArray(trackers) ? trackers : []).map((tracker, idx) => ({
-        id: tracker.id || uid("tracker"),
-        name: String(tracker.name || `Tracker ${idx + 1}`).trim(),
-        rules: String(tracker.rules || tracker.update_rules || tracker.updateRules || "").trim(),
-        value: String(tracker.value || tracker.current_value || tracker.currentValue || "").trim(),
-        createdAt: tracker.createdAt || tracker.created_at || nowIso(),
-        updatedAt: tracker.updatedAt || tracker.updated_at || null,
-        lastRationale: tracker.lastRationale || tracker.last_rationale || ""
-      })).filter(tracker => tracker.name || tracker.rules || tracker.value);
+      return normalizeTrackers(trackers);
     }
 
     function extractWorldImportPayload(imported) {
@@ -2482,7 +2683,7 @@ Rewrite rules:
       const settings = imported.settings || {};
       const stats = imported.rpgStats || imported.rpg_stats || imported.rpg_statistics || imported.stats || [];
       const normalizedStats = Array.isArray(stats) && stats.length ? normalizeGeneratedRpgStats(stats) : [];
-      const trackers = imported.trackers || imported.worldTrackers || imported.world_trackers || [];
+      const defaultTriggers = imported.defaultTriggers || imported.default_triggers || imported.triggers || imported.trackers || imported.worldTrackers || imported.world_trackers || [];
       return {
         world: {
           title: world.title || world.world_title || world.name || "",
@@ -2494,16 +2695,16 @@ Rewrite rules:
         },
         useRpgStats: settings.useRpgStats ?? settings.use_rpg_stats ?? imported.useRpgStats ?? imported.use_rpg_stats,
         rpgStats: normalizedStats,
-        trackers: normalizeImportedTrackers(trackers)
+        defaultTriggers: normalizeImportedTrackers(defaultTriggers)
       };
     }
 
     function applyWorldImport(imported) {
       const payload = extractWorldImportPayload(imported);
-      if (!payload.world.title && !payload.world.character && !payload.world.premise && !payload.rpgStats.length && !payload.trackers.length) {
+      if (!payload.world.title && !payload.world.character && !payload.world.premise && !payload.rpgStats.length && !payload.defaultTriggers.length) {
         throw new Error("That JSON does not look like a saved world setup.");
       }
-      if (state.turns.length && !confirm("Load this world setup? It will replace the setup fields, RPG stats, and trackers. Existing story turns will remain, but they may no longer match the loaded world.")) return false;
+      if (state.turns.length && !confirm("Load this world setup? It will replace the setup fields, RPG stats, and default trackers. Existing story turns will remain, but they may no longer match the loaded world.")) return false;
 
       state.world.title = String(payload.world.title || state.world.title || "").trim();
       state.world.genre = Array.isArray(payload.world.genre) ? payload.world.genre.join(", ") : String(payload.world.genre || "").trim();
@@ -2514,8 +2715,9 @@ Rewrite rules:
       if (payload.rpgStats.length) state.rpgStats = payload.rpgStats;
       if (payload.useRpgStats !== undefined) state.settings.useRpgStats = !!payload.useRpgStats;
       else if (payload.rpgStats.length) state.settings.useRpgStats = true;
-      state.trackers = payload.trackers;
-      if (!state.turns.length) state.baseTrackersAtStart = deepClone(state.trackers);
+      state.defaultTriggers = payload.defaultTriggers;
+      state.baseTrackersAtStart = deepClone(state.defaultTriggers);
+      if (!state.turns.length) state.trackers = cloneDefaultTriggersForCurrentRun();
 
       syncStateToForm();
       saveState();
@@ -2604,7 +2806,9 @@ Rewrite rules:
       syncFormToState();
       const clone = deepClone(state);
       clone.settings.apiKey = "";
+      clone.unsavedFullExport = false;
       downloadBlob(JSON.stringify(clone, null, 2), safeFileName(state.world.title || "adventure") + ".json", "application/json");
+      markFullExportSaved();
     }
 
     function exportMarkdown() {
@@ -2649,6 +2853,7 @@ Rewrite rules:
         </section>`).join("\n");
       const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font-family:Georgia,serif;max-width:860px;margin:40px auto;padding:0 20px;line-height:1.6;background:#10131c;color:#f8f1ff}img{max-width:100%;border-radius:18px}.turn{border-top:1px solid #444;padding:24px 0}h1,h2{color:#ffdc66}</style></head><body><h1>${title}</h1><p><strong>Genre:</strong> ${escapeHtml(state.world.genre || "")}</p><p><strong>Tone:</strong> ${escapeHtml(state.world.tone || "")}</p><h2>Character</h2><p>${escapeHtml(state.world.character || "")}</p><h2>Premise</h2><p>${escapeHtml(state.world.premise || "")}</p>${turns}</body></html>`;
       downloadBlob(html, safeFileName(state.world.title || "adventure") + ".html", "text/html");
+      markFullExportSaved();
     }
 
     function downloadBlob(text, filename, type) {
@@ -2667,6 +2872,32 @@ Rewrite rules:
       return String(name || "adventure").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "adventure";
     }
 
+    const UNSAVED_CLOSE_WARNING = "You have not saved this adventure. Your pictures will be lost if you do not save. Are you sure you want to close the window?";
+    let dirtySinceFullExport = false;
+
+    function hasAdventureContentToSave() {
+      return state.turns.some(turn => turn.imageUrl || turn.imageGenerating || turn.imagePrompt || turn.narration) || !!state.scratchpad || !!state.trackers.length;
+    }
+
+    function markUnsavedForFullExport() {
+      dirtySinceFullExport = true;
+      state.unsavedFullExport = true;
+    }
+
+    function markFullExportSaved() {
+      dirtySinceFullExport = false;
+      state.unsavedFullExport = false;
+      saveState();
+      toast("Saved adventure export. Browser autosave is still local-only.", 3200);
+    }
+
+    function handleBeforeUnload(event) {
+      if (!(dirtySinceFullExport || state.unsavedFullExport) || !hasAdventureContentToSave()) return;
+      event.preventDefault();
+      event.returnValue = UNSAVED_CLOSE_WARNING;
+      return UNSAVED_CLOSE_WARNING;
+    }
+
     function importJson(file) {
       const reader = new FileReader();
       reader.onload = () => {
@@ -2674,7 +2905,10 @@ Rewrite rules:
           const imported = JSON.parse(reader.result);
           state = mergeDefaults(deepClone(DEFAULT_STATE), imported);
           state.turns = (state.turns || []).map(turn => ({ ...turn, raw: turn.raw && turn.raw.keys ? turn.raw : { imported: true } }));
+          normalizeDefaultTriggerState();
           state.settings.apiKey = $("apiKey").value.trim() || state.settings.apiKey || "";
+          state.unsavedFullExport = false;
+          dirtySinceFullExport = false;
           syncStateToForm();
           saveState();
           renderAll();
@@ -2692,6 +2926,8 @@ Rewrite rules:
       state = deepClone(DEFAULT_STATE);
       state.settings.apiKey = keepKey;
       localStorage.removeItem(STORAGE_KEY);
+      state.unsavedFullExport = false;
+      dirtySinceFullExport = false;
       syncStateToForm();
       renderAll();
       toast("Reset complete.");
@@ -2734,6 +2970,7 @@ Rewrite rules:
       $("btnLoadModelsLocal").addEventListener("click", loadModels);
       $("btnAddStat").addEventListener("click", addRpgStat);
       $("btnResetStats").addEventListener("click", resetRpgStats);
+      $("btnAddDefaultTrigger").addEventListener("click", addDefaultTrigger);
       $("btnToggleLeftPanel").addEventListener("click", () => togglePanel("left"));
       $("btnToggleRightPanel").addEventListener("click", () => togglePanel("right"));
       $("btnExportJson").addEventListener("click", exportJson);
@@ -2767,6 +3004,7 @@ Rewrite rules:
         btn.classList.add("active");
         ["scratch", "trackers", "history"].forEach(name => $("tab-" + name).classList.toggle("hidden", name !== btn.dataset.tab));
       }));
+      window.addEventListener("beforeunload", handleBeforeUnload);
       setInterval(() => { syncFormToState(); }, 12000);
     }
 

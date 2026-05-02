@@ -694,15 +694,14 @@
         </div>
       </div>
       <details class="top-tools">
-        <summary>Tools, imports, and exports</summary>
+        <summary>Save, Load or Export Story</summary>
         <div class="top-tool-body">
-          <button id="btnLoadModels" class="ghost" title="Fetch models from OpenRouter">↻ Load model dropdowns</button>
-          <button id="btnExportJson">Save JSON</button>
-          <button id="btnExportMarkdown">Save Markdown</button>
-          <button id="btnExportHtml">Save HTML</button>
+          <button id="btnExportJson">Save World</button>
+          <button id="btnExportMarkdown">Export to Markdown</button>
+          <button id="btnExportHtml">Export to HTML</button>
           <label class="buttonish small" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;">
-            <input id="importFile" type="file" accept="application/json,.json" class="hidden" />
-            <span>Import JSON</span>
+            <input id="importFile" type="file" class="hidden" />
+            <span>Load World</span>
           </label>
         </div>
       </details>
@@ -854,7 +853,7 @@
               <button id="btnSaveWorld" class="accent grow" type="button">💾 Save world</button>
               <button id="btnCopyWorld" class="accent" type="button">📋 Copy world to clipboard</button>
               <label class="buttonish small" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;">
-                <input id="worldImportFile" type="file" accept="application/json,.json" class="hidden" />
+                <input id="worldImportFile" type="file" class="hidden" />
                 <span>📂 Load world from file</span>
               </label>
               <button id="btnLoadWorldText" type="button">📝 Load world from text</button>
@@ -942,7 +941,7 @@
       </aside>
     </main>
 
-    <p class="footer-note">Tip: this file is portable. Save it anywhere, open it in a browser, paste your OpenRouter key, and export/import story JSON to continue later.</p>
+    <p class="footer-note">Tip: this file is portable. Save it anywhere, open it in a browser, paste your OpenRouter key, and save/load .story files to continue later.</p>
   </div>
 
   <div class="toast" id="toast"></div>
@@ -1092,7 +1091,7 @@
       busy = isBusy;
       const pill = $("busyPill");
       pill.innerHTML = isBusy ? `<span class="spinner"></span> ${escapeHtml(label)}` : "Ready";
-      ["btnStart", "btnTakeAction", "btnRetry", "btnLoadModels", "btnLoadModelsLocal", "btnOpenWorldGen", "btnWorldGenRun", "btnRegenerateImageConfirm", "btnSaveWorld", "btnCopyWorld", "btnLoadWorldText", "btnWorldTextImportConfirm"].forEach(id => { const el = $(id); if (el) el.disabled = isBusy; });
+      ["btnStart", "btnTakeAction", "btnRetry", "btnLoadModelsLocal", "btnOpenWorldGen", "btnWorldGenRun", "btnRegenerateImageConfirm", "btnSaveWorld", "btnCopyWorld", "btnLoadWorldText", "btnWorldTextImportConfirm"].forEach(id => { const el = $(id); if (el) el.disabled = isBusy; });
       const freeAction = $("freeAction");
       if (freeAction) freeAction.disabled = isBusy;
       $("btnUndo").disabled = isBusy || state.turns.length === 0;
@@ -2685,9 +2684,9 @@ Rewrite rules:
 
     function exportWorld() {
       const worldOnly = buildWorldExport();
-      const name = safeFileName(worldOnly.world.title || "world-setup") + "-world.json";
+      const name = safeFileName(worldOnly.world.title || "world-setup") + ".world";
       downloadBlob(JSON.stringify(worldOnly, null, 2), name, "application/json");
-      toast("Saved world setup JSON.");
+      toast("Saved world setup as a .world file in JSON format.");
     }
 
     function normalizeImportedTrackers(trackers) {
@@ -2823,7 +2822,7 @@ Rewrite rules:
       const clone = deepClone(state);
       clone.settings.apiKey = "";
       clone.unsavedFullExport = false;
-      downloadBlob(JSON.stringify(clone, null, 2), safeFileName(state.world.title || "adventure") + ".json", "application/json");
+      downloadBlob(JSON.stringify(clone, null, 2), safeFileName(state.world.title || "adventure") + ".story", "application/json");
       markFullExportSaved();
     }
 
@@ -2928,7 +2927,7 @@ Rewrite rules:
           syncStateToForm();
           saveState();
           renderAll();
-          toast("Imported adventure JSON.");
+          toast("Loaded saved world file.");
         } catch (err) {
           toast("Import failed: " + (err.message || String(err)));
         }
@@ -2982,7 +2981,6 @@ Rewrite rules:
       $("btnNext").addEventListener("click", () => { if (state.viewIndex < state.turns.length - 1) { state.viewIndex++; renderAll(); saveState(); } });
       $("btnUndo").addEventListener("click", undoLatest);
       $("btnRetry").addEventListener("click", retryLatest);
-      $("btnLoadModels").addEventListener("click", loadModels);
       $("btnLoadModelsLocal").addEventListener("click", loadModels);
       $("btnAddStat").addEventListener("click", addRpgStat);
       $("btnResetStats").addEventListener("click", resetRpgStats);

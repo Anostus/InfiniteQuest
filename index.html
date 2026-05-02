@@ -696,12 +696,12 @@
       <details class="top-tools">
         <summary>Save, Load or Export Story</summary>
         <div class="top-tool-body">
-          <button id="btnExportJson">Save World</button>
+          <button id="btnExportJson">Save Full Story</button>
           <button id="btnExportMarkdown">Export to Markdown</button>
           <button id="btnExportHtml">Export to HTML</button>
           <label class="buttonish small" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;">
             <input id="importFile" type="file" class="hidden" />
-            <span>Load World</span>
+            <span>Load Story</span>
           </label>
         </div>
       </details>
@@ -941,7 +941,7 @@
       </aside>
     </main>
 
-    <p class="footer-note">Tip: this file is portable. Save it anywhere, open it in a browser, paste your OpenRouter key, and save/load .story files to continue later.</p>
+    <p class="footer-note">Tip: this file is portable. Save it anywhere, open it in a browser, paste your OpenRouter key, and use Save Full Story and Load Story to continue later.</p>
   </div>
 
   <div class="toast" id="toast"></div>
@@ -986,10 +986,10 @@
     <form method="dialog" class="world-gen-card">
       <div>
         <h3>Load world from text</h3>
-        <p class="mini">Paste the JSON from a saved or copied world setup, then load it into the world fields, RPG stats, and default trackers.</p>
+        <p class="mini">Paste the JSON from a saved .world file or copied world setup, then load it into the world fields, RPG stats, and default trackers.</p>
       </div>
-      <label>World JSON
-        <textarea id="worldTextImportEditor" placeholder='Paste saved world JSON here, for example: { "export_type": "infinite-quest-world", ... }' style="min-height:240px;"></textarea>
+      <label>World setup JSON
+        <textarea id="worldTextImportEditor" placeholder='Paste saved .world JSON here, for example: { "export_type": "infinite-quest-world", ... }' style="min-height:240px;"></textarea>
       </label>
       <div class="row wrap" style="justify-content:flex-end;">
         <button id="btnWorldTextImportCancel" type="button">Cancel</button>
@@ -1091,7 +1091,7 @@
       busy = isBusy;
       const pill = $("busyPill");
       pill.innerHTML = isBusy ? `<span class="spinner"></span> ${escapeHtml(label)}` : "Ready";
-      ["btnStart", "btnTakeAction", "btnRetry", "btnLoadModelsLocal", "btnOpenWorldGen", "btnWorldGenRun", "btnRegenerateImageConfirm", "btnSaveWorld", "btnCopyWorld", "btnLoadWorldText", "btnWorldTextImportConfirm"].forEach(id => { const el = $(id); if (el) el.disabled = isBusy; });
+      ["btnStart", "btnTakeAction", "btnRetry", "btnLoadModels", "btnLoadModelsLocal", "btnOpenWorldGen", "btnWorldGenRun", "btnRegenerateImageConfirm", "btnSaveWorld", "btnCopyWorld", "btnLoadWorldText", "btnWorldTextImportConfirm"].forEach(id => { const el = $(id); if (el) el.disabled = isBusy; });
       const freeAction = $("freeAction");
       if (freeAction) freeAction.disabled = isBusy;
       $("btnUndo").disabled = isBusy || state.turns.length === 0;
@@ -1189,7 +1189,7 @@
       if (isLargeImageUrl(clean.imageUrl)) {
         clean.imageUrl = "";
         clean.imageNotAutosaved = true;
-        clean.imageError = clean.imageError || "Image was generated but was too large to autosave in browser storage. Use Export HTML/Markdown/JSON before closing if you need to preserve images.";
+        clean.imageError = clean.imageError || "Image was generated but was too large to autosave in browser storage. Use Save Full Story, Export to HTML, or Export to Markdown before closing if you need to preserve images.";
       }
       return clean;
     }
@@ -1503,7 +1503,7 @@
           if (status) status.textContent = "Autosaved compact";
           if (!state._storageWarningShown) {
             state._storageWarningShown = true;
-            toast("Browser autosave was full, so the app saved a compact text-only version. Use Export JSON/Markdown for a complete backup.", 8000);
+            toast("Browser autosave was full, so the app saved a compact text-only version. Use Save Full Story or Export to Markdown for a complete backup.", 8000);
           }
           return true;
         } catch (secondErr) {
@@ -1511,7 +1511,7 @@
           if (status) status.textContent = "Autosave full";
           if (!state._storageWarningShown) {
             state._storageWarningShown = true;
-            toast("Browser autosave is full. Export JSON or Markdown now, then Clear Local State to reset the browser cache.", 9000);
+            toast("Browser autosave is full. Save Full Story or Export to Markdown now, then Clear Local State to reset the browser cache.", 9000);
           }
           return false;
         }
@@ -2686,7 +2686,7 @@ Rewrite rules:
       const worldOnly = buildWorldExport();
       const name = safeFileName(worldOnly.world.title || "world-setup") + ".world";
       downloadBlob(JSON.stringify(worldOnly, null, 2), name, "application/json");
-      toast("Saved world setup as a .world file in JSON format.");
+      toast("Saved world setup as a .world file.");
     }
 
     function normalizeImportedTrackers(trackers) {
@@ -2742,7 +2742,7 @@ Rewrite rules:
 
     function importWorldFromText(text) {
       const rawText = String(text || "").trim();
-      if (!rawText) return toast("Paste world JSON first.");
+      if (!rawText) return toast("Paste world setup JSON first.");
       try {
         const imported = JSON.parse(rawText);
         const loaded = applyWorldImport(imported);
@@ -2795,7 +2795,7 @@ Rewrite rules:
           editor.focus();
           editor.select();
         }
-        toast("Clipboard copy was blocked. The world JSON is selected so you can copy it manually.", 8000);
+        toast("Clipboard copy was blocked. The world setup JSON is selected so you can copy it manually.", 8000);
       }
     }
 
@@ -2803,7 +2803,7 @@ Rewrite rules:
       const dialog = $("worldTextImportDialog");
       const editor = $("worldTextImportEditor");
       if (!dialog || !editor || typeof dialog.showModal !== "function") {
-        const pasted = prompt("Paste saved world JSON:", prefill || "");
+        const pasted = prompt("Paste saved .world JSON:", prefill || "");
         if (pasted != null) importWorldFromText(pasted);
         return;
       }
@@ -2903,7 +2903,7 @@ Rewrite rules:
       dirtySinceFullExport = false;
       state.unsavedFullExport = false;
       saveState();
-      toast("Saved adventure export. Browser autosave is still local-only.", 3200);
+      toast("Saved full story. Browser autosave is still local-only.", 3200);
     }
 
     function handleBeforeUnload(event) {
@@ -2913,7 +2913,7 @@ Rewrite rules:
       return UNSAVED_CLOSE_WARNING;
     }
 
-    function importJson(file) {
+    function loadStory(file) {
       const reader = new FileReader();
       reader.onload = () => {
         try {
@@ -2927,9 +2927,9 @@ Rewrite rules:
           syncStateToForm();
           saveState();
           renderAll();
-          toast("Loaded saved world file.");
+          toast("Loaded story.");
         } catch (err) {
-          toast("Import failed: " + (err.message || String(err)));
+          toast("Load failed: " + (err.message || String(err)));
         }
       };
       reader.readAsText(file);
@@ -2990,7 +2990,7 @@ Rewrite rules:
       $("btnExportJson").addEventListener("click", exportJson);
       $("btnExportMarkdown").addEventListener("click", exportMarkdown);
       $("btnExportHtml").addEventListener("click", exportHtml);
-      $("importFile").addEventListener("change", e => { if (e.target.files?.[0]) importJson(e.target.files[0]); e.target.value = ""; });
+      $("importFile").addEventListener("change", e => { if (e.target.files?.[0]) loadStory(e.target.files[0]); e.target.value = ""; });
       $("btnSaveWorld").addEventListener("click", exportWorld);
       $("btnCopyWorld").addEventListener("click", copyWorldToClipboard);
       $("btnLoadWorldText").addEventListener("click", () => openWorldTextImportDialog());

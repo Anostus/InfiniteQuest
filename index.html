@@ -346,6 +346,17 @@
     }
 
     .image-wrap img { width: 100%; height: 100%; display: block; object-fit: cover; }
+    .image-wrap.pollinations-square {
+      aspect-ratio: 1 / 1;
+      min-height: 0;
+      align-self: start;
+    }
+    .image-wrap.pollinations-square .image-loading,
+    .image-wrap.pollinations-square .image-placeholder {
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+    }
     .image-placeholder { padding: 24px; color: var(--dim); text-align: center; }
 
     .choices {
@@ -739,6 +750,7 @@
             </label>
           </div>
           <label class="checkline"><input id="freeModelsOnly" type="checkbox" /> Filter to only free models, disable images.</label>
+          <label class="checkline"><input id="freeModelsPollinations" type="checkbox" /> Filter to only free models, use Pollinations.ai for free images.</label>
           <label>Custom story model ID, optional
             <input id="llmModelCustom" placeholder="e.g. deepseek/deepseek-v3.2" />
           </label>
@@ -1045,6 +1057,7 @@
         imageSize: "1K",
         generateImages: true,
         freeModelsOnly: false,
+        freeModelsWithPollinations: false,
         useRpgStats: false,
         temperature: 0.85
       },
@@ -1180,12 +1193,15 @@
       if (alreadyApplied && alreadyLoaded) return true;
 
       const freeBox = $("freeModelsOnly");
+      const pollinationsBox = $("freeModelsPollinations");
       const imageToggle = $("generateImages");
       if (freeBox) freeBox.checked = true;
+      if (pollinationsBox) pollinationsBox.checked = false;
       if (imageToggle) imageToggle.checked = false;
       $("llmModelCustom").value = "";
       state.settings.apiKey = key;
       state.settings.freeModelsOnly = true;
+      state.settings.freeModelsWithPollinations = false;
       state.settings.llmModel = DEFAULT_FREE_LLM_MODEL;
       state.settings.generateImages = false;
       coerceFreeModelSettings(true);
@@ -1385,7 +1401,7 @@
     }
 
     function maybeParagraphizeStoryText(text = "") {
-      return state.settings.freeModelsOnly ? paragraphizeEveryThreeSentences(text) : String(text || "");
+      return isFreeTextModelMode() ? paragraphizeEveryThreeSentences(text) : String(text || "");
     }
 
     function renderMarkdown(text = "") {
@@ -1451,31 +1467,43 @@
       return uniqueModelIds(items, [DEFAULT_FREE_LLM_MODEL]).filter(isFreeModelId);
     }
 
+    function isFreeTextModelMode() {
+      return !!(state.settings?.freeModelsOnly || state.settings?.freeModelsWithPollinations);
+    }
+
+    function isPollinationsImageMode() {
+      return !!state.settings?.freeModelsWithPollinations;
+    }
+
     function coerceFreeModelSettings(defaultToFree = false) {
       state.settings ||= {};
       state.settings.freeModelsOnly = !!state.settings.freeModelsOnly;
-      if (!state.settings.freeModelsOnly) return;
+      state.settings.freeModelsWithPollinations = !!state.settings.freeModelsWithPollinations;
+      if (state.settings.freeModelsOnly && state.settings.freeModelsWithPollinations) {
+        state.settings.freeModelsWithPollinations = false;
+      }
+      if (!isFreeTextModelMode()) return;
       if (defaultToFree || !isFreeModelId(state.settings.llmModel)) {
         state.settings.llmModel = DEFAULT_FREE_LLM_MODEL;
       }
-      state.settings.generateImages = false;
+      state.settings.generateImages = state.settings.freeModelsWithPollinations ? true : false;
     }
 
     function modelInList(kind, value) {
       if (!value) return true;
       const list = kind === "images" ? state.modelLists?.images : state.modelLists?.llms;
-      if (kind === "llms" && state.settings.freeModelsOnly) return freeLlmModelIds(list).includes(value);
+      if (kind === "llms" && isFreeTextModelMode()) return freeLlmModelIds(list).includes(value);
       return uniqueModelIds(list, kind === "images" ? DEFAULT_IMAGE_MODELS : DEFAULT_LLM_MODELS).includes(value);
     }
 
     function populateModelSelects() {
       state.modelLists ||= { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS };
       coerceFreeModelSettings();
-      const llms = state.settings.freeModelsOnly
+      const llms = isFreeTextModelMode()
         ? freeLlmModelIds(state.modelLists.llms)
         : uniqueModelIds(state.modelLists.llms, DEFAULT_LLM_MODELS);
       const images = uniqueModelIds(state.modelLists.images, DEFAULT_IMAGE_MODELS);
-      const selectedLlm = state.settings.freeModelsOnly && !isFreeModelId(state.settings.llmModel)
+      const selectedLlm = isFreeTextModelMode() && !isFreeModelId(state.settings.llmModel)
         ? DEFAULT_FREE_LLM_MODEL
         : (state.settings.llmModel || DEFAULT_LLM_MODEL);
       populateSelect("llmModel", llms, selectedLlm);
@@ -1511,18 +1539,38 @@
     }
 
     function applyFreeModelUiState() {
-      const enabled = !!state.settings.freeModelsOnly;
+      const disableImagesMode = !!state.settings.freeModelsOnly;
+      const pollinationsMode = !!state.settings.freeModelsWithPollinations;
+      const freeTextMode = disableImagesMode || pollinationsMode;
       const freeBox = $("freeModelsOnly");
-      if (freeBox) freeBox.checked = enabled;
+      const pollinationsBox = $("freeModelsPollinations");
+      if (freeBox) freeBox.checked = disableImagesMode;
+      if (pollinationsBox) pollinationsBox.checked = pollinationsMode;
       const imageToggle = $("generateImages");
       if (imageToggle) {
-        if (enabled) imageToggle.checked = false;
-        imageToggle.disabled = enabled;
-        imageToggle.title = enabled ? "Disabled while filtering to free text models." : "";
+        if (disableImagesMode) imageToggle.checked = false;
+        if (pollinationsMode) imageToggle.checked = true;
+        imageToggle.disabled = freeTextMode;
+        imageToggle.title = disableImagesMode
+          ? "Disabled while filtering to free text models."
+          : pollinationsMode
+            ? "Enabled automatically while using Pollinations.ai free images."
+            : "";
+      }
+      ["imageModel", "imageModelCustom"].forEach(id => {
+        const el = $(id);
+        if (!el) return;
+        el.disabled = pollinationsMode;
+        el.title = pollinationsMode ? "Not used while Pollinations.ai free images are enabled." : "";
+      });
+      const imageAspectRatio = $("imageAspectRatio");
+      if (imageAspectRatio) {
+        imageAspectRatio.disabled = pollinationsMode;
+        imageAspectRatio.title = pollinationsMode ? "Pollinations.ai free images display as a fixed 1:1 square." : "";
       }
       const customLlm = $("llmModelCustom");
       if (customLlm) {
-        customLlm.placeholder = enabled ? "Optional: custom model ID ending in :free" : "e.g. deepseek/deepseek-v3.2";
+        customLlm.placeholder = freeTextMode ? "Optional: custom model ID ending in :free" : "e.g. deepseek/deepseek-v3.2";
       }
     }
 
@@ -1728,12 +1776,15 @@
       state.settings.apiKey = $("apiKey").value.trim();
       state.settings.rememberKey = $("rememberKey").checked;
       const freeOnly = !!$("freeModelsOnly")?.checked;
+      const freePollinations = !!$("freeModelsPollinations")?.checked;
+      const freeTextMode = freeOnly || freePollinations;
       const customLlmEl = $("llmModelCustom");
       let customLlm = customLlmEl.value.trim();
       const customImage = $("imageModelCustom").value.trim();
       let selectedLlm = customLlm || $("llmModel").value.trim() || DEFAULT_LLM_MODEL;
       state.settings.freeModelsOnly = freeOnly;
-      if (freeOnly) {
+      state.settings.freeModelsWithPollinations = freePollinations;
+      if (freeTextMode) {
         if (customLlm && !isFreeModelId(customLlm)) {
           customLlm = "";
           customLlmEl.value = "";
@@ -1745,7 +1796,7 @@
       state.settings.imageModel = customImage || $("imageModel").value.trim() || DEFAULT_IMAGE_MODEL;
       state.settings.imageAspectRatio = $("imageAspectRatio").value;
       state.settings.imageSize = $("imageSize").value;
-      state.settings.generateImages = freeOnly ? false : $("generateImages").checked;
+      state.settings.generateImages = freeOnly ? false : freePollinations ? true : $("generateImages").checked;
       state.settings.useRpgStats = $("useRpgStats").checked;
       state.settings.temperature = Number($("temperature").value || 0.85);
       state.world.title = $("worldTitle").value.trim();
@@ -1768,13 +1819,14 @@
       $("apiKey").value = state.settings.apiKey || "";
       $("rememberKey").checked = !!state.settings.rememberKey;
       $("freeModelsOnly").checked = !!state.settings.freeModelsOnly;
+      $("freeModelsPollinations").checked = !!state.settings.freeModelsWithPollinations;
       selectModelValue("llmModel", state.settings.llmModel || DEFAULT_LLM_MODEL);
       selectModelValue("imageModel", state.settings.imageModel || DEFAULT_IMAGE_MODEL);
       $("llmModelCustom").value = modelInList("llms", state.settings.llmModel) ? "" : (state.settings.llmModel || "");
       $("imageModelCustom").value = modelInList("images", state.settings.imageModel) ? "" : (state.settings.imageModel || "");
       $("imageAspectRatio").value = state.settings.imageAspectRatio || "3:2";
       $("imageSize").value = state.settings.imageSize || "1K";
-      $("generateImages").checked = state.settings.freeModelsOnly ? false : state.settings.generateImages !== false;
+      $("generateImages").checked = state.settings.freeModelsOnly ? false : state.settings.freeModelsWithPollinations ? true : state.settings.generateImages !== false;
       $("useRpgStats").checked = !!state.settings.useRpgStats;
       $("temperature").value = state.settings.temperature ?? 0.85;
       $("worldTitle").value = state.world.title || "";
@@ -1824,6 +1876,7 @@
       const area = $("storyArea");
       if (transientUi.generatingTurn) {
         const pending = transientUi.pendingAction || "Resolving your action...";
+        const imageWrapClass = isPollinationsImageMode() ? "image-wrap pollinations-square" : "image-wrap";
         area.innerHTML = `
           <div class="loading-card">
             <div class="turn-meta">
@@ -1842,7 +1895,7 @@
                 <div class="skeleton skeleton-line w-92"></div>
                 <div class="skeleton skeleton-line w-66"></div>
               </article>
-              <figure class="image-wrap">
+              <figure class="${imageWrapClass}">
                 <div class="image-loading">
                   <div class="spinner"></div>
                   <div>Generating the next scene…</div>
@@ -1864,6 +1917,7 @@
         return;
       }
       const turn = state.turns[state.viewIndex];
+      const imageWrapClass = isPollinationsImageMode() ? "image-wrap pollinations-square" : "image-wrap";
       const imageHtml = turn.imageUrl
         ? `<img src="${escapeHtml(turn.imageUrl)}" alt="Scene illustration">`
         : `<div class="image-placeholder">${turn.imageGenerating ? `<span class="spinner"></span><br><br>Generating next scene...` : turn.imageError ? "Image generation failed: " + escapeHtml(turn.imageError) : "No image for this turn yet."}<br><br><span class="mini">Prompt: ${escapeHtml(turn.imagePrompt || "")}</span></div>`;
@@ -1885,7 +1939,7 @@
         ${rollHtml}
         <div class="scene">
           <article class="narration">${renderMarkdown(turn.narration)}</article>
-          <figure class="image-wrap">${imageHtml}${imageActionsHtml}
+          <figure class="${imageWrapClass}">${imageHtml}${imageActionsHtml}
           </figure>
         </div>
         ${turn.imagePrompt ? `<details><summary>Image prompt</summary><div class="mini">${escapeHtml(turn.imagePrompt)}</div></details>` : ""}
@@ -1995,7 +2049,7 @@
         turn.imagePrompt = result.prompt;
         turn.imageError = "";
         markUnsavedForFullExport();
-        toast(result.usedPg13Rewrite ? "Image regenerated with a PG-13 prompt rewrite." : "Image regenerated.");
+        toast(result.usedPollinations ? "Image regenerated with Pollinations.ai." : result.usedPg13Rewrite ? "Image regenerated with a PG-13 prompt rewrite." : "Image regenerated.");
       } catch (err) {
         console.error(err);
         turn.imageError = err.message || String(err);
@@ -2238,7 +2292,7 @@
     }
 
     async function callOpenRouterJson(label, messages, options = {}) {
-      const jsonRetries = state.settings.freeModelsOnly ? 3 : 0;
+      const jsonRetries = isFreeTextModelMode() ? 3 : 0;
       let lastJsonError = null;
       for (let attempt = 0; attempt <= jsonRetries; attempt += 1) {
         try {
@@ -2614,13 +2668,16 @@ Rewrite rules:
     }
 
     async function callOpenRouterImageWithPg13Retry(prompt) {
+      if (isPollinationsImageMode()) {
+        return { imageUrl: await callPollinationsImage(prompt), prompt, usedPg13Rewrite: false, usedPollinations: true };
+      }
       try {
-        return { imageUrl: await callOpenRouterImage(prompt), prompt, usedPg13Rewrite: false };
+        return { imageUrl: await callOpenRouterImage(prompt), prompt, usedPg13Rewrite: false, usedPollinations: false };
       } catch (firstError) {
         if (!imageModerationSignal(firstError)) throw firstError;
         const pg13Prompt = await rewriteImagePromptPg13(prompt, firstError);
         try {
-          return { imageUrl: await callOpenRouterImage(pg13Prompt), prompt: pg13Prompt, usedPg13Rewrite: true };
+          return { imageUrl: await callOpenRouterImage(pg13Prompt), prompt: pg13Prompt, usedPg13Rewrite: true, usedPollinations: false };
         } catch (secondError) {
           const combined = new Error(`Image generation was moderated. Tried a PG-13 rewrite, but the retry failed too: ${secondError.message || String(secondError)}`);
           combined.originalError = firstError;
@@ -2629,6 +2686,36 @@ Rewrite rules:
           throw combined;
         }
       }
+    }
+
+
+
+    function pollinationsImageDimensions() {
+      const longEdgeBySize = { "0.5K": 512, "1K": 1024, "2K": 1536, "4K": 2048 };
+      const side = longEdgeBySize[state.settings.imageSize] || 1024;
+      const snap = value => Math.max(256, Math.round(value / 8) * 8);
+      const squareSide = snap(side);
+      return { width: squareSide, height: squareSide };
+    }
+
+    function preloadImageUrl(url, errorLabel = "Image generation failed. The server might be busy.") {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(url);
+        img.onerror = () => reject(new Error(errorLabel));
+        img.src = url;
+      });
+    }
+
+    async function callPollinationsImage(prompt) {
+      const finalPrompt = String(prompt || "").trim();
+      if (!finalPrompt) throw new Error("Pollinations.ai image prompt cannot be empty.");
+      const encodedPrompt = encodeURIComponent(finalPrompt);
+      const seed = Math.floor(Math.random() * 1000000);
+      const { width, height } = pollinationsImageDimensions();
+      const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?seed=${seed}&width=${width}&height=${height}&nologo=true`;
+      await preloadImageUrl(url, "Pollinations.ai image generation failed. The server might be busy.");
+      return url;
     }
 
     async function callOpenRouterImage(prompt) {
@@ -2828,7 +2915,7 @@ Rewrite rules:
       setBusy(true, "Loading models");
       try {
         const headers = state.settings.apiKey ? { "Authorization": `Bearer ${state.settings.apiKey}` } : {};
-        const shouldLoadImages = !state.settings.freeModelsOnly;
+        const shouldLoadImages = !isFreeTextModelMode();
         const allRes = await fetch("https://openrouter.ai/api/v1/models", { headers });
         if (!allRes.ok) throw new Error(`Model list failed (${allRes.status}).`);
         const all = await allRes.json();
@@ -3213,20 +3300,32 @@ Rewrite rules:
       $("apiKey").addEventListener("input", scheduleSpecialApiKeyPresetCheck);
       $("apiKey").addEventListener("change", () => { maybeApplySpecialApiKeyPreset(); });
       ["rememberKey", "generateImages", "useRpgStats"].forEach(id => $(id).addEventListener("change", () => { syncFormToState(); renderStory(); }));
-      $("freeModelsOnly").addEventListener("change", () => {
-        const checked = $("freeModelsOnly").checked;
-        state.settings.freeModelsOnly = checked;
-        if (checked) {
+      function handleFreeModeCheckboxChange(mode) {
+        const freeBox = $("freeModelsOnly");
+        const pollinationsBox = $("freeModelsPollinations");
+        if (mode === "disable" && freeBox.checked) pollinationsBox.checked = false;
+        if (mode === "pollinations" && pollinationsBox.checked) freeBox.checked = false;
+        state.settings.freeModelsOnly = freeBox.checked;
+        state.settings.freeModelsWithPollinations = pollinationsBox.checked;
+        if (isFreeTextModelMode()) {
           state.settings.llmModel = DEFAULT_FREE_LLM_MODEL;
-          state.settings.generateImages = false;
           $("llmModelCustom").value = "";
+        }
+        if (state.settings.freeModelsOnly) {
+          state.settings.generateImages = false;
           $("generateImages").checked = false;
+        }
+        if (state.settings.freeModelsWithPollinations) {
+          state.settings.generateImages = true;
+          $("generateImages").checked = true;
         }
         populateModelSelects();
         applyFreeModelUiState();
         syncFormToState();
         renderAll();
-      });
+      }
+      $("freeModelsOnly").addEventListener("change", () => handleFreeModeCheckboxChange("disable"));
+      $("freeModelsPollinations").addEventListener("change", () => handleFreeModeCheckboxChange("pollinations"));
       $("llmModel").addEventListener("change", () => { $("llmModelCustom").value = ""; syncFormToState(); });
       $("imageModel").addEventListener("change", () => { $("imageModelCustom").value = ""; syncFormToState(); });
       $("btnOpenWorldGen").addEventListener("click", openWorldGenDialog);

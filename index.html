@@ -738,6 +738,7 @@
               <input id="temperature" type="number" min="0" max="2" step="0.05" />
             </label>
           </div>
+          <label class="checkline"><input id="freeModelsOnly" type="checkbox" /> Filter to only free models, disable images.</label>
           <label>Custom story model ID, optional
             <input id="llmModelCustom" placeholder="e.g. deepseek/deepseek-v3.2" />
           </label>
@@ -1003,8 +1004,9 @@
     const STORAGE_KEY = "infiniteQuestOpenRouterState.v1";
     const DEFAULT_IMAGE_MODEL = "black-forest-labs/flux.2-klein-4b";
     const DEFAULT_LLM_MODEL = "deepseek/deepseek-v3.2";
+    const DEFAULT_FREE_LLM_MODEL = "openrouter/free";
     const LEGACY_DEFAULT_LLM_MODEL = "openai/gpt-5.2";
-    const DEFAULT_LLM_MODELS = [DEFAULT_LLM_MODEL, "anthropic/claude-sonnet-4.5", "google/gemini-2.5-pro", "openai/gpt-4o-mini"];
+    const DEFAULT_LLM_MODELS = [DEFAULT_LLM_MODEL, DEFAULT_FREE_LLM_MODEL, "anthropic/claude-sonnet-4.5", "google/gemini-2.5-pro", "openai/gpt-4o-mini"];
     const DEFAULT_IMAGE_MODELS = [DEFAULT_IMAGE_MODEL, "black-forest-labs/flux-1.1-pro", "google/gemini-2.5-flash-image"];
     const DEFAULT_RPG_STATS = [
       { id: "might", name: "Might", value: 50, note: "Strength, endurance, intimidation, and force." },
@@ -1040,6 +1042,7 @@
         imageAspectRatio: "3:2",
         imageSize: "1K",
         generateImages: true,
+        freeModelsOnly: false,
         useRpgStats: false,
         temperature: 0.85
       },
@@ -1224,8 +1227,43 @@
       };
     }
 
+    function sentenceLooksComplete(sentence = "") {
+      return /[.!?]["'”’\)\]]*$/.test(String(sentence).trim());
+    }
+
+    function paragraphizeEveryThreeSentences(text = "") {
+      const original = String(text || "");
+      const trimmed = original.trim();
+      if (!trimmed) return original;
+      const existingParagraphs = trimmed.split(/\n\s*\n/).filter(part => part.trim());
+      if (existingParagraphs.length > 1) return original;
+
+      const flattened = trimmed.replace(/\s*\n+\s*/g, " ").replace(/[ \t]+/g, " ");
+      const parts = flattened.match(/[^.!?]+[.!?]+(?:["'”’\)\]]+)?|[^.!?]+$/g) || [flattened];
+      const paragraphs = [];
+      let current = [];
+      let completeSentenceCount = 0;
+
+      parts.map(part => part.trim()).filter(Boolean).forEach(part => {
+        current.push(part);
+        if (sentenceLooksComplete(part)) completeSentenceCount += 1;
+        if (completeSentenceCount >= 3) {
+          paragraphs.push(current.join(" "));
+          current = [];
+          completeSentenceCount = 0;
+        }
+      });
+
+      if (current.length) paragraphs.push(current.join(" "));
+      return paragraphs.length > 1 ? paragraphs.join("\n\n") : original;
+    }
+
+    function maybeParagraphizeStoryText(text = "") {
+      return state.settings.freeModelsOnly ? paragraphizeEveryThreeSentences(text) : String(text || "");
+    }
+
     function renderMarkdown(text = "") {
-      const safe = escapeHtml(text.trim());
+      const safe = escapeHtml(maybeParagraphizeStoryText(text).trim());
       if (!safe) return `<p class="dim">No narration returned.</p>`;
       return safe
         .split(/\n{2,}/)
@@ -1278,17 +1316,43 @@
       return values;
     }
 
+    function isFreeModelId(modelId = "") {
+      const id = String(modelId || "").trim();
+      return id === DEFAULT_FREE_LLM_MODEL || id.endsWith(":free");
+    }
+
+    function freeLlmModelIds(items = []) {
+      return uniqueModelIds(items, [DEFAULT_FREE_LLM_MODEL]).filter(isFreeModelId);
+    }
+
+    function coerceFreeModelSettings(defaultToFree = false) {
+      state.settings ||= {};
+      state.settings.freeModelsOnly = !!state.settings.freeModelsOnly;
+      if (!state.settings.freeModelsOnly) return;
+      if (defaultToFree || !isFreeModelId(state.settings.llmModel)) {
+        state.settings.llmModel = DEFAULT_FREE_LLM_MODEL;
+      }
+      state.settings.generateImages = false;
+    }
+
     function modelInList(kind, value) {
       if (!value) return true;
       const list = kind === "images" ? state.modelLists?.images : state.modelLists?.llms;
+      if (kind === "llms" && state.settings.freeModelsOnly) return freeLlmModelIds(list).includes(value);
       return uniqueModelIds(list, kind === "images" ? DEFAULT_IMAGE_MODELS : DEFAULT_LLM_MODELS).includes(value);
     }
 
     function populateModelSelects() {
       state.modelLists ||= { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS };
-      const llms = uniqueModelIds(state.modelLists.llms, DEFAULT_LLM_MODELS);
+      coerceFreeModelSettings();
+      const llms = state.settings.freeModelsOnly
+        ? freeLlmModelIds(state.modelLists.llms)
+        : uniqueModelIds(state.modelLists.llms, DEFAULT_LLM_MODELS);
       const images = uniqueModelIds(state.modelLists.images, DEFAULT_IMAGE_MODELS);
-      populateSelect("llmModel", llms, state.settings.llmModel || DEFAULT_LLM_MODEL);
+      const selectedLlm = state.settings.freeModelsOnly && !isFreeModelId(state.settings.llmModel)
+        ? DEFAULT_FREE_LLM_MODEL
+        : (state.settings.llmModel || DEFAULT_LLM_MODEL);
+      populateSelect("llmModel", llms, selectedLlm);
       populateSelect("imageModel", images, state.settings.imageModel || DEFAULT_IMAGE_MODEL);
     }
 
@@ -1318,6 +1382,22 @@
         el.appendChild(opt);
       }
       el.value = value || "";
+    }
+
+    function applyFreeModelUiState() {
+      const enabled = !!state.settings.freeModelsOnly;
+      const freeBox = $("freeModelsOnly");
+      if (freeBox) freeBox.checked = enabled;
+      const imageToggle = $("generateImages");
+      if (imageToggle) {
+        if (enabled) imageToggle.checked = false;
+        imageToggle.disabled = enabled;
+        imageToggle.title = enabled ? "Disabled while filtering to free text models." : "";
+      }
+      const customLlm = $("llmModelCustom");
+      if (customLlm) {
+        customLlm.placeholder = enabled ? "Optional: custom model ID ending in :free" : "e.g. deepseek/deepseek-v3.2";
+      }
     }
 
     function clampNumber(value, min, max, fallback) {
@@ -1521,13 +1601,25 @@
     function syncFormToState() {
       state.settings.apiKey = $("apiKey").value.trim();
       state.settings.rememberKey = $("rememberKey").checked;
-      const customLlm = $("llmModelCustom").value.trim();
+      const freeOnly = !!$("freeModelsOnly")?.checked;
+      const customLlmEl = $("llmModelCustom");
+      let customLlm = customLlmEl.value.trim();
       const customImage = $("imageModelCustom").value.trim();
-      state.settings.llmModel = customLlm || $("llmModel").value.trim() || DEFAULT_LLM_MODEL;
+      let selectedLlm = customLlm || $("llmModel").value.trim() || DEFAULT_LLM_MODEL;
+      state.settings.freeModelsOnly = freeOnly;
+      if (freeOnly) {
+        if (customLlm && !isFreeModelId(customLlm)) {
+          customLlm = "";
+          customLlmEl.value = "";
+          selectedLlm = $("llmModel").value.trim() || DEFAULT_FREE_LLM_MODEL;
+        }
+        if (!isFreeModelId(selectedLlm)) selectedLlm = DEFAULT_FREE_LLM_MODEL;
+      }
+      state.settings.llmModel = selectedLlm;
       state.settings.imageModel = customImage || $("imageModel").value.trim() || DEFAULT_IMAGE_MODEL;
       state.settings.imageAspectRatio = $("imageAspectRatio").value;
       state.settings.imageSize = $("imageSize").value;
-      state.settings.generateImages = $("generateImages").checked;
+      state.settings.generateImages = freeOnly ? false : $("generateImages").checked;
       state.settings.useRpgStats = $("useRpgStats").checked;
       state.settings.temperature = Number($("temperature").value || 0.85);
       state.world.title = $("worldTitle").value.trim();
@@ -1536,6 +1628,8 @@
       state.world.character = $("character").value.trim();
       state.world.premise = $("premise").value.trim();
       state.world.rules = $("rules").value.trim();
+      coerceFreeModelSettings();
+      applyFreeModelUiState();
       saveState();
     }
 
@@ -1543,16 +1637,18 @@
       state.modelLists ||= { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS };
       state.rpgStats = normalizeRpgStats(state.rpgStats?.length ? state.rpgStats : DEFAULT_RPG_STATS);
       normalizeDefaultTriggerState();
+      coerceFreeModelSettings();
       populateModelSelects();
       $("apiKey").value = state.settings.apiKey || "";
       $("rememberKey").checked = !!state.settings.rememberKey;
+      $("freeModelsOnly").checked = !!state.settings.freeModelsOnly;
       selectModelValue("llmModel", state.settings.llmModel || DEFAULT_LLM_MODEL);
       selectModelValue("imageModel", state.settings.imageModel || DEFAULT_IMAGE_MODEL);
       $("llmModelCustom").value = modelInList("llms", state.settings.llmModel) ? "" : (state.settings.llmModel || "");
       $("imageModelCustom").value = modelInList("images", state.settings.imageModel) ? "" : (state.settings.imageModel || "");
       $("imageAspectRatio").value = state.settings.imageAspectRatio || "3:2";
       $("imageSize").value = state.settings.imageSize || "1K";
-      $("generateImages").checked = state.settings.generateImages !== false;
+      $("generateImages").checked = state.settings.freeModelsOnly ? false : state.settings.generateImages !== false;
       $("useRpgStats").checked = !!state.settings.useRpgStats;
       $("temperature").value = state.settings.temperature ?? 0.85;
       $("worldTitle").value = state.world.title || "";
@@ -1562,6 +1658,7 @@
       $("premise").value = state.world.premise || "";
       $("rules").value = state.world.rules || "";
       $("scratchpad").value = state.scratchpad || "";
+      applyFreeModelUiState();
       applyPanelCollapse();
     }
 
@@ -1646,6 +1743,10 @@
         : `<div class="image-placeholder">${turn.imageGenerating ? `<span class="spinner"></span><br><br>Generating next scene...` : turn.imageError ? "Image generation failed: " + escapeHtml(turn.imageError) : "No image for this turn yet."}<br><br><span class="mini">Prompt: ${escapeHtml(turn.imagePrompt || "")}</span></div>`;
       const rollHtml = renderRollCard(turn.roll);
       const statsHtml = rpgStatsSummaryHtml();
+      const imageActionsHtml = state.settings.freeModelsOnly ? "" : `
+            <div class="image-actions">
+              <button id="btnRegenImage" type="button" class="small accent">🖼️ ${turn.imageUrl ? "Regenerate image" : "Generate image"}</button>
+            </div>`;
 
       area.innerHTML = `
         <div class="turn-meta">
@@ -1658,10 +1759,7 @@
         ${rollHtml}
         <div class="scene">
           <article class="narration">${renderMarkdown(turn.narration)}</article>
-          <figure class="image-wrap">${imageHtml}
-            <div class="image-actions">
-              <button id="btnRegenImage" type="button" class="small accent">🖼️ ${turn.imageUrl ? "Regenerate image" : "Generate image"}</button>
-            </div>
+          <figure class="image-wrap">${imageHtml}${imageActionsHtml}
           </figure>
         </div>
         ${turn.imagePrompt ? `<details><summary>Image prompt</summary><div class="mini">${escapeHtml(turn.imagePrompt)}</div></details>` : ""}
@@ -1730,6 +1828,7 @@
     }
 
     function openImagePromptDialog(turn = state.turns[state.viewIndex]) {
+      if (state.settings.freeModelsOnly) return toast("Image generation is disabled while filtering to free models.");
       if (!turn) return;
       transientUi.editingImageTurnId = turn.id;
       const dialog = $("imagePromptDialog");
@@ -1751,6 +1850,7 @@
     }
 
     async function regenerateImageForTurn(turnId, promptText) {
+      if (state.settings.freeModelsOnly) return toast("Image generation is disabled while filtering to free models.");
       const turn = state.turns.find(t => t.id === turnId) || state.turns[state.viewIndex];
       const finalPrompt = String(promptText || "").trim();
       if (!turn) return toast("Could not find that turn.");
@@ -1783,6 +1883,7 @@
     }
 
     async function generateImageForTurnInBackground(turn, promptText = turn?.imagePrompt) {
+      if (state.settings.freeModelsOnly) return;
       if (!turn || !promptText) return;
       turn.imageGenerating = true;
       turn.imageError = "";
@@ -1962,16 +2063,25 @@
       return String(content ?? "");
     }
 
-    function extractJson(text) {
-      const cleaned = normalizeContent(text).trim().replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
-      try { return JSON.parse(cleaned); } catch (_) {}
-      const first = cleaned.indexOf("{");
-      const last = cleaned.lastIndexOf("}");
-      if (first >= 0 && last > first) return JSON.parse(cleaned.slice(first, last + 1));
-      throw new Error("The model did not return valid JSON. Try a model with JSON/structured output support, or retry.");
+    function modelJsonError(cause = null) {
+      const err = new Error("The model did not return valid JSON. Try a model with JSON/structured output support, or retry.");
+      err.isModelJsonError = true;
+      if (cause) err.cause = cause;
+      return err;
     }
 
-    async function callOpenRouterJson(label, messages, options = {}) {
+    function extractJson(text) {
+      const cleaned = normalizeContent(text).trim().replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
+      try { return JSON.parse(cleaned); } catch (err) { var firstError = err; }
+      const first = cleaned.indexOf("{");
+      const last = cleaned.lastIndexOf("}");
+      if (first >= 0 && last > first) {
+        try { return JSON.parse(cleaned.slice(first, last + 1)); } catch (err) { throw modelJsonError(err); }
+      }
+      throw modelJsonError(firstError);
+    }
+
+    async function fetchOpenRouterJsonOnce(label, messages, options = {}) {
       const key = state.settings.apiKey.trim();
       if (!key) throw new Error("Enter your OpenRouter API key first.");
       const payload = {
@@ -1999,6 +2109,20 @@
       const content = data?.choices?.[0]?.message?.content;
       if (!content) throw new Error(`OpenRouter returned no ${label} content.`);
       return extractJson(content);
+    }
+
+    async function callOpenRouterJson(label, messages, options = {}) {
+      const jsonRetries = state.settings.freeModelsOnly ? 3 : 0;
+      let lastJsonError = null;
+      for (let attempt = 0; attempt <= jsonRetries; attempt += 1) {
+        try {
+          return await fetchOpenRouterJsonOnce(label, messages, options);
+        } catch (err) {
+          if (!err?.isModelJsonError || attempt >= jsonRetries) throw err;
+          lastJsonError = err;
+        }
+      }
+      throw lastJsonError || modelJsonError();
     }
 
 
@@ -2434,11 +2558,12 @@ Rewrite rules:
     function normalizeTurnResult(raw, action, roll = null) {
       const choices = Array.isArray(raw.choices) ? raw.choices.map(String).filter(Boolean).slice(0, 4) : [];
       while (choices.length < 4) choices.push(["Look for more information", "Speak with someone nearby", "Proceed carefully", "Take a bold risk"][choices.length]);
+      const narration = String(raw.narration || raw.story || raw.text || "");
       return {
         id: uid("turn"),
         turnNumber: state.turns.length + 1,
         action,
-        narration: String(raw.narration || raw.story || raw.text || ""),
+        narration: maybeParagraphizeStoryText(narration),
         imagePrompt: String(raw.image_prompt || raw.imagePrompt || "A cinematic fantasy adventure scene, no text."),
         imageUrl: "",
         imageError: "",
@@ -2589,6 +2714,7 @@ Rewrite rules:
           llms: uniqueModelIds((all.data || []).map(m => m.id).sort(), DEFAULT_LLM_MODELS),
           images: uniqueModelIds((imgs.data || []).map(m => m.id).sort(), DEFAULT_IMAGE_MODELS)
         };
+        coerceFreeModelSettings();
         populateModelSelects();
         selectModelValue("llmModel", state.settings.llmModel || DEFAULT_LLM_MODEL);
         selectModelValue("imageModel", state.settings.imageModel || DEFAULT_IMAGE_MODEL);
@@ -2954,6 +3080,20 @@ Rewrite rules:
         $(id).addEventListener("input", () => { $("autosaveStatus").textContent = "Editing"; });
       });
       ["rememberKey", "generateImages", "useRpgStats"].forEach(id => $(id).addEventListener("change", () => { syncFormToState(); renderStory(); }));
+      $("freeModelsOnly").addEventListener("change", () => {
+        const checked = $("freeModelsOnly").checked;
+        state.settings.freeModelsOnly = checked;
+        if (checked) {
+          state.settings.llmModel = DEFAULT_FREE_LLM_MODEL;
+          state.settings.generateImages = false;
+          $("llmModelCustom").value = "";
+          $("generateImages").checked = false;
+        }
+        populateModelSelects();
+        applyFreeModelUiState();
+        syncFormToState();
+        renderAll();
+      });
       $("llmModel").addEventListener("change", () => { $("llmModelCustom").value = ""; syncFormToState(); });
       $("imageModel").addEventListener("change", () => { $("imageModelCustom").value = ""; syncFormToState(); });
       $("btnOpenWorldGen").addEventListener("click", openWorldGenDialog);

@@ -2094,6 +2094,67 @@
       return isFreeModelId(state.settings?.llmModel);
     }
 
+    function isGemmaFreeModelId(modelId = "") {
+      const id = String(modelId || "").trim().toLowerCase();
+      return id.endsWith(":free") && id.includes("gemma");
+    }
+
+    function shouldDisableJsonResponseFormatForModel(modelId = state.settings?.llmModel) {
+      // Google AI Studio currently rejects OpenRouter JSON mode for some
+      // explicit free Gemma models, e.g. gemma-3-4b-it:free. The prompts
+      // already require JSON-only output, so these models should use normal
+      // chat completion requests and let extractJson parse the response.
+      return isGemmaFreeModelId(modelId);
+    }
+
+    function shouldInlineDeveloperInstructionsForModel(modelId = state.settings?.llmModel) {
+      // Free OpenRouter routes/models change often and may not reliably support
+      // separate system/developer instruction messages. For these models, put
+      // the same operational instructions inside the user JSON request instead.
+      return isFreeModelId(modelId || DEFAULT_FREE_LLM_MODEL);
+    }
+
+    function mergeDeveloperInstructionsIntoUserPrompt(userPrompt, developerInstructions) {
+      const instructions = String(developerInstructions || "").trim();
+      const rawPrompt = String(userPrompt || "");
+      if (!instructions) return rawPrompt;
+
+      try {
+        const parsed = JSON.parse(rawPrompt);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          return JSON.stringify({
+            developer_instructions: instructions,
+            instruction_delivery_note: "The selected OpenRouter free model may not support separate developer/system instruction messages, so these instructions are included inside the user request. Treat developer_instructions as the highest-priority operational instructions for this request.",
+            ...parsed
+          }, null, 2);
+        }
+      } catch (_) {}
+
+      return [
+        "DEVELOPER INSTRUCTIONS:",
+        instructions,
+        "",
+        "USER REQUEST:",
+        rawPrompt
+      ].join("\n");
+    }
+
+    function buildOpenRouterInstructionMessages(developerInstructions, userPrompt, options = {}) {
+      const modelId = options.modelId || state.settings?.llmModel || DEFAULT_LLM_MODEL;
+      if (shouldInlineDeveloperInstructionsForModel(modelId)) {
+        return [
+          {
+            role: "user",
+            content: mergeDeveloperInstructionsIntoUserPrompt(userPrompt, developerInstructions)
+          }
+        ];
+      }
+      return [
+        { role: "system", content: developerInstructions },
+        { role: "user", content: userPrompt }
+      ];
+    }
+
     function isPollinationsImageMode() {
       return isPollinationsImageModel(state.settings?.imageModel);
     }
@@ -3096,13 +3157,17 @@
     async function fetchOpenRouterJsonOnce(label, messages, options = {}) {
       const key = state.settings.apiKey.trim();
       if (!key) throw new Error("Enter your OpenRouter API key first.");
+      const modelId = state.settings.llmModel || DEFAULT_LLM_MODEL;
+      const disableJsonResponseFormat = options.disable_json_response_format ?? shouldDisableJsonResponseFormatForModel(modelId);
       const payload = {
-        model: state.settings.llmModel || DEFAULT_LLM_MODEL,
+        model: modelId,
         messages,
         temperature: options.temperature ?? Number(state.settings.temperature ?? 0.85),
-        max_tokens: options.max_tokens ?? 1200,
-        response_format: { type: "json_object" }
+        max_tokens: options.max_tokens ?? 1200
       };
+      if (!disableJsonResponseFormat) {
+        payload.response_format = { type: "json_object" };
+      }
       const res = await withLlmResponseWait(() => fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -3123,6 +3188,11 @@
       return extractJson(content);
     }
 
+    function isProviderJsonModeNotEnabledError(err) {
+      const message = err?.message || String(err || "");
+      return /JSON mode is not enabled/i.test(message);
+    }
+
     async function callOpenRouterJson(label, messages, options = {}) {
       const jsonRetries = Number.isInteger(options.json_retries) ? Math.max(0, options.json_retries) : 0;
       const noContentRetries = Number.isInteger(options.no_content_retries) ? Math.max(0, options.no_content_retries) : 0;
@@ -3132,6 +3202,9 @@
         try {
           return await fetchOpenRouterJsonOnce(label, messages, options);
         } catch (err) {
+          if (isProviderJsonModeNotEnabledError(err) && !options.disable_json_response_format) {
+            return await fetchOpenRouterJsonOnce(label, messages, { ...options, disable_json_response_format: true });
+          }
           const canRetryJson = !!err?.isModelJsonError && attempt < jsonRetries;
           const canRetryNoContent = !!err?.isModelNoContentError && attempt < noContentRetries;
           if (!canRetryJson && !canRetryNoContent) throw err;
@@ -3281,10 +3354,10 @@ Make the setup immediately playable and specific enough for a first turn.`;
       await waitForNextPaint(1);
       setBusy(true, "Generating world setup");
       try {
-        const raw = await callOpenRouterJson("world setup", [
-          { role: "system", content: worldSetupSystemPrompt() },
-          { role: "user", content: buildWorldSetupPrompt(seedPrompt, useRpgPercentileStats, autoGenerateTrackers) }
-        ], { temperature: Math.max(0.45, Number(state.settings.temperature ?? 0.85)), max_tokens: 3200, json_retries: 3, no_content_retries: 3 });
+        const raw = await callOpenRouterJson("world setup", buildOpenRouterInstructionMessages(
+          worldSetupSystemPrompt(),
+          buildWorldSetupPrompt(seedPrompt, useRpgPercentileStats, autoGenerateTrackers)
+        ), { temperature: Math.max(0.45, Number(state.settings.temperature ?? 0.85)), max_tokens: 3200, json_retries: 3, no_content_retries: 3 });
 
         const title = raw.title || raw.world_title || raw.name;
         const genre = raw.genre || raw.genres;
@@ -3363,10 +3436,10 @@ Difficulty modifier guidance for d% target numbers: +30 routine, +15 easy, +0 st
     }
 
     async function assessRpgRoll(action) {
-      return callOpenRouterJson("RPG roll assessment", [
-        { role: "system", content: rollAssessmentSystemPrompt() },
-        { role: "user", content: buildRollAssessmentPrompt(action) }
-      ], { temperature: 0.15, max_tokens: 700 });
+      return callOpenRouterJson("RPG roll assessment", buildOpenRouterInstructionMessages(
+        rollAssessmentSystemPrompt(),
+        buildRollAssessmentPrompt(action)
+      ), { temperature: 0.15, max_tokens: 700 });
     }
 
     function findRpgStat(assessment) {
@@ -3457,10 +3530,10 @@ Design principles:
     }
 
     async function callOpenRouterChat(action, rollResult = null) {
-      return callOpenRouterJson("story", [
-        { role: "system", content: storySystemPrompt() },
-        { role: "user", content: buildUserPrompt(action, rollResult) }
-      ], { temperature: Number(state.settings.temperature ?? 0.85), max_tokens: 2600 });
+      return callOpenRouterJson("story", buildOpenRouterInstructionMessages(
+        storySystemPrompt(),
+        buildUserPrompt(action, rollResult)
+      ), { temperature: Number(state.settings.temperature ?? 0.85), max_tokens: 2600 });
     }
 
     function imageModerationSignal(error) {
@@ -3501,10 +3574,10 @@ Rewrite rules:
     }
 
     async function rewriteImagePromptPg13(originalPrompt, error) {
-      const raw = await callOpenRouterJson("PG-13 image prompt rewrite", [
-        { role: "system", content: pg13ImageRewriteSystemPrompt() },
-        { role: "user", content: buildPg13ImageRewritePrompt(originalPrompt, error?.message || String(error || "")) }
-      ], { temperature: 0.2, max_tokens: 700 });
+      const raw = await callOpenRouterJson("PG-13 image prompt rewrite", buildOpenRouterInstructionMessages(
+        pg13ImageRewriteSystemPrompt(),
+        buildPg13ImageRewritePrompt(originalPrompt, error?.message || String(error || ""))
+      ), { temperature: 0.2, max_tokens: 700 });
       const rewritten = String(raw.image_prompt || raw.imagePrompt || raw.prompt || "").trim();
       if (!rewritten) throw new Error("The LLM did not return a PG-13 image prompt rewrite.");
       return rewritten;

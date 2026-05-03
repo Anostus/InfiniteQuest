@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Infinite Quest Demo - OpenRouter CYOA Engine</title>
+  <title>Infinite Quest Demo 2.1 - OpenRouter CYOA Engine</title>
   <style>
     :root {
       --bg: #07131d;
@@ -101,24 +101,19 @@
       font-size: .98rem;
     }
 
-    .top-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      justify-content: flex-end;
-    }
 
     .layout {
       display: grid;
-      grid-template-columns: minmax(285px, 360px) minmax(420px, 1fr) minmax(285px, 380px);
+      grid-template-columns: minmax(420px, 1fr);
       gap: 18px;
       align-items: start;
+      max-width: min(1040px, 100%);
+      margin: 0 auto;
     }
 
     @media (max-width: 1120px) {
       .layout { grid-template-columns: 1fr; }
       header { flex-direction: column; align-items: stretch; }
-      .top-actions { justify-content: flex-start; }
     }
 
     .panel {
@@ -130,22 +125,6 @@
       overflow: hidden;
     }
 
-    .panel-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 16px 17px;
-      border-bottom: 1px solid var(--border);
-      background: rgba(255,255,255,.035);
-    }
-
-    .panel-header h2, .panel-header h3 {
-      margin: 0;
-      font-size: 1rem;
-      color: #fff;
-      letter-spacing: .02em;
-    }
 
     .panel-body { padding: 16px; }
     .stack { display: grid; gap: 12px; }
@@ -153,7 +132,6 @@
     .row.wrap { flex-wrap: wrap; }
     .grow { flex: 1 1 auto; }
     .mini { font-size: .82rem; color: var(--dim); }
-    .muted { color: var(--muted); }
     .dim { color: var(--dim); }
 
     label {
@@ -346,6 +324,17 @@
     }
 
     .image-wrap img { width: 100%; height: 100%; display: block; object-fit: cover; }
+    .image-wrap.pollinations-square {
+      aspect-ratio: 1 / 1;
+      min-height: 0;
+      align-self: start;
+    }
+    .image-wrap.pollinations-square .image-loading,
+    .image-wrap.pollinations-square .image-placeholder {
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+    }
     .image-placeholder { padding: 24px; color: var(--dim); text-align: center; }
 
     .choices {
@@ -408,7 +397,6 @@
 
     .track-card h4, .history-card h4 { margin: 0; font-size: .95rem; color: #fff; }
     .track-card p, .history-card p { margin: 0; color: var(--dim); font-size: .86rem; line-height: 1.45; }
-    .track-value { white-space: pre-wrap; color: #e9e1ff; }
 
     details {
       border: 1px solid rgba(255,255,255,.12);
@@ -425,6 +413,59 @@
     }
 
     details > div { padding: 0 12px 12px; }
+
+
+    summary.setup-toggle {
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      justify-content: flex-start;
+      min-height: 50px;
+      border: 1px solid rgba(255,255,255,.14);
+      border-radius: 16px;
+      background: rgba(255,255,255,.055);
+      color: var(--gold2);
+      font-weight: 800;
+      text-align: left;
+      padding: 12px 14px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    summary.setup-toggle::-webkit-details-marker { display: none; }
+    summary.setup-toggle::marker { content: ""; }
+
+    summary.setup-toggle:hover {
+      background: rgba(255,255,255,.09);
+    }
+
+    summary.setup-toggle:focus-visible {
+      border-color: rgba(201,156,255,.72);
+      box-shadow: 0 0 0 4px rgba(201,156,255,.12);
+      outline: none;
+    }
+
+    summary.setup-toggle[aria-expanded="true"] {
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+    }
+
+    .setup-toggle-caret {
+      width: 1.1em;
+      color: var(--gold2);
+      font-weight: 900;
+    }
+
+    .setup-section-body {
+      padding: 12px;
+      border: 1px solid rgba(255,255,255,.14);
+      border-top: 0;
+      border-radius: 0 0 16px 16px;
+      background: rgba(255,255,255,.045);
+      margin-top: -12px;
+    }
 
     .toast {
       position: fixed;
@@ -446,6 +487,31 @@
 
     .toast.show { opacity: 1; transform: translateY(0); }
 
+    .llm-wait-indicator {
+      position: fixed;
+      left: 18px;
+      bottom: 18px;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      max-width: min(360px, calc(100vw - 36px));
+      padding: 12px 14px;
+      background: rgba(7, 13, 24, .94);
+      border: 1px solid rgba(255,255,255,.17);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      color: var(--text);
+      z-index: 49;
+      transform: translateY(16px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .2s ease, transform .2s ease;
+    }
+
+    .llm-wait-indicator.show { opacity: 1; transform: translateY(0); }
+    .llm-wait-indicator .spinner { flex: 0 0 auto; }
+    .llm-wait-indicator-text { min-width: 170px; }
+
     .spinner {
       width: 16px;
       height: 16px;
@@ -461,77 +527,6 @@
     .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     @media (max-width: 560px) { .two-col { grid-template-columns: 1fr; } }
 
-
-    .top-tools {
-      min-width: min(100%, 520px);
-      border: 1px solid rgba(255,255,255,.12);
-      border-radius: 16px;
-      background: rgba(255,255,255,.045);
-      overflow: hidden;
-    }
-
-    .top-tools summary {
-      padding: 11px 13px;
-      list-style: none;
-    }
-
-    .top-tools summary::-webkit-details-marker { display: none; }
-    .top-tools summary::before { content: "☰ "; color: var(--gold2); }
-
-    .top-tool-body {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      justify-content: flex-end;
-      padding: 0 12px 12px;
-    }
-
-    .side-panel.collapsed .panel-body,
-    .side-panel.collapsed .tabs,
-    .side-panel.collapsed .panel-header h2,
-    .side-panel.collapsed .panel-header .pill {
-      display: none !important;
-    }
-
-    .side-panel.collapsed .panel-header {
-      justify-content: center;
-      padding: 10px 6px;
-      border-bottom: 0;
-      writing-mode: vertical-rl;
-      min-height: 150px;
-    }
-
-    .panel-toggle {
-      min-width: 36px;
-      min-height: 36px;
-      padding: 6px 8px;
-    }
-
-    .panel-toggle .collapse-word {
-      font-size: .68rem;
-      line-height: 1;
-      opacity: .78;
-      letter-spacing: .02em;
-      text-transform: lowercase;
-    }
-
-    .layout.left-collapsed { grid-template-columns: 58px minmax(420px, 1fr) minmax(285px, 380px); }
-    .layout.right-collapsed { grid-template-columns: minmax(285px, 360px) minmax(420px, 1fr) 58px; }
-    .layout.left-collapsed.right-collapsed { grid-template-columns: 58px minmax(420px, 1fr) 58px; }
-
-    @media (max-width: 1120px) {
-      .layout.left-collapsed,
-      .layout.right-collapsed,
-      .layout.left-collapsed.right-collapsed { grid-template-columns: 1fr; }
-      .side-panel.collapsed .panel-header { writing-mode: horizontal-tb; min-height: auto; }
-    }
-
-    .model-help {
-      border: 1px solid rgba(116,228,255,.18);
-      background: rgba(116,228,255,.055);
-      border-radius: 15px;
-      padding: 10px;
-    }
 
     .stat-grid { display: grid; gap: 10px; }
 
@@ -618,6 +613,33 @@
       background: rgba(255,255,255,.045);
     }
 
+    .sample-worlds {
+      display: grid;
+      gap: 10px;
+    }
+
+    .sample-world-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    @media (max-width: 640px) { .sample-world-grid { grid-template-columns: 1fr; } }
+
+    .sample-world-button {
+      display: grid;
+      align-content: start;
+      justify-content: stretch;
+      gap: 6px;
+      min-height: 132px;
+      padding: 13px;
+      text-align: left;
+    }
+
+    .sample-world-button strong { color: #fff; font-size: 1rem; }
+    .sample-world-button span { color: var(--muted); font-size: .86rem; line-height: 1.4; font-weight: 500; }
+
+
     .image-actions {
       position: absolute;
       right: 12px;
@@ -675,6 +697,62 @@
 
     .world-gen-card textarea#imagePromptEditor { min-height: 220px; }
 
+
+    .menu-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      min-width: min(100%, 340px);
+    }
+
+    .menu-button { min-width: 112px; }
+
+    .menu-dropdown {
+      position: absolute;
+      top: calc(100% + 10px);
+      right: 0;
+      width: min(320px, calc(100vw - 28px));
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 18px;
+      background: rgba(7, 13, 24, .97);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(16px);
+      z-index: 60;
+    }
+
+    .menu-dropdown button,
+    .menu-dropdown .buttonish {
+      width: 100%;
+      justify-content: flex-start;
+      text-align: left;
+    }
+
+    .menu-file { cursor: pointer; }
+
+    dialog.app-dialog { width: min(920px, calc(100vw - 28px)); }
+    dialog.app-dialog.wide-dialog { width: min(1040px, calc(100vw - 28px)); }
+    dialog.getting-started-dialog { width: min(680px, calc(100vw - 28px)); }
+
+    .dialog-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      gap: 14px;
+    }
+
+    .dialog-scroll {
+      max-height: min(72vh, 760px);
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .dialog-actions { justify-content: flex-end; }
+
     .footer-note {
       margin-top: 18px;
       color: var(--dim);
@@ -683,7 +761,8 @@
     }
 
 
-    .demo-build #btnLoadModels { display: none !important; }
+    .demo-build #btnOpenModelSettings { display: none !important; }
+    .demo-build .demo-hidden { display: none !important; }
     .demo-lock-card code { color: var(--gold2); word-break: break-word; }
 
     .demo-dialog-card {
@@ -742,46 +821,130 @@
         <div class="sigil" aria-hidden="true">📖</div>
         <div>
           <h1>Infinite Quest</h1>
-          <p class="subtitle">Demo build: try Infinite Quest for 10 turns with guided sample worlds.</p>
+          <p class="subtitle">Demo build: try Infinite Quest 2.1 for 10 turns with guided sample worlds.</p>
         </div>
       </div>
-      <details class="top-tools">
-        <summary>Save, Load or Export Story</summary>
-        <div class="top-tool-body">
-          <button id="btnExportJson">Save Full Story</button>
-          <button id="btnExportMarkdown">Export to Markdown</button>
-          <button id="btnExportHtml">Export to HTML</button>
-          <label class="buttonish small" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;">
+      <div class="menu-wrap">
+        <span class="pill" id="autosaveStatus">Autosaved</span>
+        <button id="btnMenu" class="menu-button primary" type="button" aria-expanded="false" aria-controls="menuDropdown">☰ Menu</button>
+        <div id="menuDropdown" class="menu-dropdown hidden" role="menu" aria-label="Main menu">
+          <button id="btnOpenWorldSetup" type="button" role="menuitem">World Set Up</button>
+          <button id="btnExportJson" type="button" role="menuitem">Save Full Story</button>
+          <label class="buttonish menu-file" role="menuitem">
             <input id="importFile" type="file" class="hidden" />
             <span>Load Story</span>
           </label>
+          <button id="btnExportMarkdown" type="button" role="menuitem">Export to Markdown</button>
+          <button id="btnExportHtml" type="button" role="menuitem">Export to HTML</button>
+          <button id="btnOpenModelSettings" type="button" role="menuitem">Model Settings</button>
+          <button id="btnOpenEditState" type="button" role="menuitem">Edit State</button>
+          <button id="btnRestartGettingStarted" type="button" role="menuitem">Restart Demo Intro</button>
         </div>
-      </details>
+      </div>
     </header>
 
     <main class="layout" id="appLayout">
-      <aside class="panel side-panel" id="leftPanel">
-        <div class="panel-header">
-          <h2>World setup</h2>
-          <div class="row" style="gap:8px;">
-            <span class="pill" id="autosaveStatus">Autosaved</span>
-            <button id="btnToggleLeftPanel" class="small panel-toggle" title="Collapse world setup" aria-label="Collapse world setup">⟨ <span class="collapse-word">collapse</span></button>
+      <section class="panel story-shell">
+        <div class="story-top">
+          <h2 id="storyTitle">No adventure yet</h2>
+          <div class="statusbar">
+            <span class="pill" id="turnPill">Turn 0</span>
+            <span class="pill" id="viewPill">Viewing latest</span>
+            <span class="pill" id="busyPill">Ready</span>
           </div>
         </div>
-        <div class="panel-body stack">
-          <div class="demo-hidden-settings hidden" aria-hidden="true">
+
+        <div class="story-area" id="storyArea">
+          <div class="empty">
+            <div>
+              <div style="font-size:3rem;margin-bottom:10px;">🗝️</div>
+              <h2 style="margin:0 0 8px;color:#fff;">Create a world, then begin.</h2>
+              <p style="max-width:620px;margin:0 auto;line-height:1.55;">The engine will write a scene, produce an illustration prompt and image, offer four choices, keep a hidden scratchpad, and update your custom trackers.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="input-action">
+          <div class="choices" id="choiceArea"></div>
+          <label>Or type any action you want below
+            <textarea id="freeAction" placeholder="I ask Nadira what I should know before tomorrow's classes..."></textarea>
+          </label>
+          <div class="row wrap">
+            <button id="btnTakeAction" class="primary">➜ Take action</button>
+            <button id="btnPrev">← Previous turn</button>
+            <button id="btnNext">Next turn →</button>
+            <button id="btnUndo">Undo latest</button>
+            <button id="btnRetry">Retry latest generation</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <p class="footer-note">Demo tip: you can play 10 generated turns here. Use Menu → Save Full Story, then load that file in the full version to keep playing.</p>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <div class="llm-wait-indicator" id="llmWaitIndicator" aria-live="polite" aria-atomic="true">
+    <span class="spinner" aria-hidden="true"></span>
+    <span id="llmWaitIndicatorText" class="llm-wait-indicator-text">Waiting for response.</span>
+  </div>
+
+  <dialog id="messagePopupDialog" class="world-gen-dialog message-popup-dialog">
+    <form method="dialog" class="world-gen-card">
+      <div>
+        <h3 id="messagePopupTitle">Notice</h3>
+        <p id="messagePopupBody" class="mini" style="white-space:pre-wrap;"></p>
+      </div>
+      <div class="row wrap" style="justify-content:flex-end;">
+        <button id="btnMessagePopupClose" class="primary" type="submit">OK</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="gettingStartedDialog" class="world-gen-dialog app-dialog getting-started-dialog">
+    <div class="world-gen-card">
+      <div class="dialog-header">
+        <div>
+          <h3>Getting Started</h3>
+          <p class="mini">Choose how you want Infinite Quest to connect to OpenRouter.</p>
+        </div>
+      </div>
+      <div class="world-gen-box stack">
+        <p>You can paste your own OpenRouter API key, or use the Community API Key, which is limited to free models.</p>
+        <div class="row wrap">
+          <button id="btnGettingUseOwnKey" class="accent grow" type="button">Use My Own OpenRouter API Key</button>
+          <button id="btnGettingUseCommunityKey" class="primary grow" type="button">Use Community API Key (Limited to Only Free Models)</button>
+        </div>
+      </div>
+      <button id="btnSkipGettingStartedToStory" class="ghost hidden" type="button">Take Me to My Story (Skip Key Set Up For Now)</button>
+    </div>
+  </dialog>
+
+  <dialog id="modelSettingsDialog" class="world-gen-dialog app-dialog">
+    <div class="world-gen-card">
+      <div class="dialog-header">
+        <div>
+          <h3 id="modelSettingsTitle">Model Settings</h3>
+          <p class="mini" id="modelSettingsSubtitle">Set your OpenRouter key, model preferences, and image generation options.</p>
+        </div>
+        <button id="btnCloseModelSettings" class="small ghost" type="button" aria-label="Close model settings">✕</button>
+      </div>
+      <div id="gettingStartedModelIntro" class="world-gen-box stack hidden">
+        <p><strong>Getting Started:</strong> confirm your key and model settings below. You can return to these settings from the Menu at any time.</p>
+        <p class="mini" id="gettingStartedModelNote"></p>
+        <div class="row wrap">
+          <button id="btnModelSettingsNextInline" class="primary" type="button">Next (Set Up World or Story)</button>
+        </div>
+      </div>
+      <div class="dialog-scroll stack">
           <label>OpenRouter API key
             <input id="apiKey" type="password" autocomplete="off" placeholder="sk-or-..." />
           </label>
           <label class="checkline"><input id="rememberKey" type="checkbox" /> Remember key in this browser</label>
           <p class="mini">This is a purely client-side app. Calls go directly from your browser to OpenRouter; no key is sent anywhere else by this file.</p>
 
-          <div class="model-help stack">
-            <div class="row wrap">
-              <button id="btnLoadModelsLocal" class="accent grow" type="button">↻ Load OpenRouter model dropdowns</button>
-            </div>
-            <p class="mini">Loads text and image-capable OpenRouter models into dropdown menus. You can also type a custom model ID below if a model is missing.</p>
-          </div>
+          <label class="checkline"><input id="filterFreeOptions" type="checkbox" /> Filter for free options</label>
+          <p class="mini">When enabled, the story model list shows only <code>openrouter/free</code> and models ending in <code>:free</code>; the image model list shows only the Pollinations.ai option.</p>
 
           <div class="two-col">
             <label>Story LLM model
@@ -824,17 +987,49 @@
             </label>
           </div>
           <label class="checkline"><input id="generateImages" type="checkbox" /> Generate an image each turn</label>
-          </div>
+      </div>
+      <div class="row wrap dialog-actions">
+        <button id="btnModelSettingsDone" type="button">Done</button>
+        <button id="btnModelSettingsNext" class="primary hidden" type="button">Next (Set Up World or Story)</button>
+      </div>
+    </div>
+  </dialog>
 
-          <div class="model-help demo-lock-card stack">
-            <strong>Demo settings are locked</strong>
-            <p class="mini">This demo uses a built-in limited OpenRouter key, <code>deepseek/deepseek-v3.2</code> for story text, <code>black-forest-labs/flux.2-klein-4b</code> for images, and 0.5K image size.</p>
-          </div>
-
-          <hr style="width:100%;border:0;border-top:1px solid rgba(255,255,255,.12);" />
-
-
+  <dialog id="worldSetupDialog" class="world-gen-dialog app-dialog wide-dialog">
+    <div class="world-gen-card">
+      <div class="dialog-header">
+        <div>
+          <h3>World Set Up</h3>
+          <p class="mini">Create, import, save, or start the world for your story.</p>
+        </div>
+        <button id="btnCloseWorldSetup" class="small ghost" type="button" aria-label="Close world setup">✕</button>
+      </div>
+      <div class="dialog-scroll stack">
           <div class="world-gen-box stack">
+            <div class="sample-worlds">
+              <div>
+                <h4 style="margin:0;color:#fff;">Load a sample world</h4>
+                <p class="mini">Choose one to fill the setup fields, then click Start New Adventure when you are ready.</p>
+              </div>
+              <div class="sample-world-grid">
+                <button class="sample-world-button accent" type="button" data-sample-world="collegeOfMagic">
+                  <strong>College of Magic</strong>
+                  <span>Study magic, uncover the college’s dark secret, and maybe find romance along the way.</span>
+                </button>
+                <button class="sample-world-button accent" type="button" data-sample-world="neonShadows">
+                  <strong>Neon Shadows</strong>
+                  <span>A hacker hunted by megacorp agents needs allies, leverage, and a plan to hit back.</span>
+                </button>
+                <button class="sample-world-button accent" type="button" data-sample-world="outbreak">
+                  <strong>Outbreak</strong>
+                  <span>After a lost weekend, the city is undead. Find supplies, allies, and a safe haven.</span>
+                </button>
+                <button class="sample-world-button accent" type="button" data-sample-world="tortuga">
+                  <strong>Tortuga</strong>
+                  <span>Shipwrecked on a pirate den, survive, escape, fight the crews, or join them.</span>
+                </button>
+              </div>
+            </div>
             <button id="btnOpenWorldGen" class="primary" type="button">✨ Generate world setup from prompt</button>
             <p class="mini">Give the LLM a sparse seed or a detailed brief. It will fill in the genre, tone, player character, premise, style guide, and any optional generated RPG stats or trackers.</p>
           </div>
@@ -859,11 +1054,12 @@
           <label>Story rules / style guide
             <textarea id="rules" placeholder="E.g. second-person prose, meaningful consequences, no instant success, keep secrets until discovered..."></textarea>
           </label>
-
-          <details>
-            <summary>Default trackers</summary>
-            <div class="stack">
-              <p class="mini">Define the default world-state trackers that appear in the right panel. When a new adventure starts, the current state is reset from these triggers and their starting values.</p>
+          <summary id="btnToggleDefaultTrackers" class="setup-toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="defaultTrackersPanel">
+            <span class="setup-toggle-caret" aria-hidden="true">▸</span>
+            <span>Default trackers</span>
+          </summary>
+            <div id="defaultTrackersPanel" class="setup-section-body stack hidden">
+              <p class="mini">Define the default world-state trackers that appear in Edit State → Trackers. When a new adventure starts, the current state is reset from these triggers and their starting values.</p>
               <label>Default tracker name
                 <input id="defaultTriggerName" placeholder="Relationship: Nadira" />
               </label>
@@ -876,11 +1072,11 @@
               <button id="btnAddDefaultTrigger" class="accent" type="button">＋ Add default tracker</button>
               <div id="defaultTriggerList" class="stack"></div>
             </div>
-          </details>
-
-          <details>
-            <summary>RPG d% statistics</summary>
-            <div class="stack">
+          <summary id="btnToggleRpgStats" class="setup-toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="rpgStatsPanel">
+            <span class="setup-toggle-caret" aria-hidden="true">▸</span>
+            <span>RPG d% statistics</span>
+          </summary>
+            <div id="rpgStatsPanel" class="setup-section-body stack hidden">
               <label class="checkline"><input id="useRpgStats" type="checkbox" /> Use RPG-style percentile stats and roll before player actions</label>
               <p class="mini">When enabled, the app asks the LLM which stat best fits the action, rolls d100 against that stat plus a difficulty modifier, and passes the success/failure result into the scene.</p>
               <div id="rpgStatsList" class="stat-grid"></div>
@@ -900,10 +1096,9 @@
                 <button id="btnResetStats" type="button">Reset default stats</button>
               </div>
             </div>
-          </details>
 
           <div class="row wrap">
-            <button id="btnStart" class="primary grow">✨ Start new adventure</button>
+            <button id="btnStart" class="primary grow">✨ Start New Adventure</button>
             <button id="btnClear" class="danger">Clear</button>
           </div>
 
@@ -919,52 +1114,20 @@
             </div>
             <p class="mini">Save, copy, or share only the world setup: title, genre, tone, player character, premise, style guide, RPG stats, and default trackers. Story turns, current run state, generated pictures, and API keys are not included.</p>
           </div>
-        </div>
-      </aside>
+      </div>
+    </div>
+  </dialog>
 
-      <section class="panel story-shell">
-        <div class="story-top">
-          <h2 id="storyTitle">No adventure yet</h2>
-          <div class="statusbar">
-            <span class="pill" id="turnPill">Turn 0</span>
-            <span class="pill" id="viewPill">Viewing latest</span>
-            <span class="pill" id="busyPill">Ready</span>
-          </div>
+  <dialog id="editStateDialog" class="world-gen-dialog app-dialog wide-dialog">
+    <div class="world-gen-card">
+      <div class="dialog-header">
+        <div>
+          <h3>Edit State</h3>
+          <p class="mini">Edit the scratchpad, current trackers, and history view.</p>
         </div>
-
-        <div class="story-area" id="storyArea">
-          <div class="empty">
-            <div>
-              <div style="font-size:3rem;margin-bottom:10px;">🗝️</div>
-              <h2 style="margin:0 0 8px;color:#fff;">Create a world, then begin.</h2>
-              <p style="max-width:620px;margin:0 auto;line-height:1.55;">The engine will write a scene, produce an illustration prompt and image, offer four choices, keep a hidden scratchpad, and update your custom trackers.</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="input-action">
-          <div class="choices" id="choiceArea"></div>
-          <label>Or type any action you want below
-            <textarea id="freeAction" placeholder="I ask Nadira what I should know before tomorrow's classes..."></textarea>
-          </label>
-          <div class="row wrap">
-            <button id="btnTakeAction" class="primary">➜ Take action</button>
-            <button id="btnPrev">← Previous turn</button>
-            <button id="btnNext">Next turn →</button>
-            <button id="btnUndo">Undo latest</button>
-            <button id="btnRetry">Retry latest generation</button>
-          </div>
-        </div>
-      </section>
-
-      <aside class="panel side-panel" id="rightPanel">
-        <div class="panel-header">
-          <h2>State & memory</h2>
-          <div class="row" style="gap:8px;">
-            <span class="pill" id="tokenHint">local</span>
-            <button id="btnToggleRightPanel" class="small panel-toggle" title="Collapse state and memory" aria-label="Collapse state and memory"><span class="collapse-word">collapse</span> ⟩</button>
-          </div>
-        </div>
+        <button id="btnCloseEditState" class="small ghost" type="button" aria-label="Close edit state">✕</button>
+      </div>
+      <div class="dialog-scroll">
         <div class="tabs" role="tablist" aria-label="side panels">
           <button class="tab active" data-tab="scratch">Scratchpad</button>
           <button class="tab" data-tab="trackers">Trackers</button>
@@ -978,7 +1141,7 @@
           </section>
 
           <section id="tab-trackers" class="stack hidden">
-            <p class="mini">This is the current world state the model maintains during play. New adventures are initialized from the Default trackers in the left panel. You can still add or edit one-off trackers here for the current run.</p>
+            <p class="mini">This is the current world state the model maintains during play. New adventures are initialized from Default trackers in the World Set Up popup. You can still add or edit one-off trackers here for the current run.</p>
             <label>Tracker name
               <input id="trackerName" placeholder="Relationship: Nadira" />
             </label>
@@ -997,13 +1160,9 @@
             <div id="historyList" class="stack"></div>
           </section>
         </div>
-      </aside>
-    </main>
-
-    <p class="footer-note">Demo note: you can play 10 turns here. Use Save, Load or Export Story → Save Full Story, then Load Story in the full version to keep going.</p>
-  </div>
-
-  <div class="toast" id="toast"></div>
+      </div>
+    </div>
+  </dialog>
 
   <dialog id="worldGenDialog" class="world-gen-dialog">
     <form method="dialog" class="world-gen-card">
@@ -1058,13 +1217,15 @@
   </dialog>
 
 
-
-
-  <dialog id="demoIntroDialog" class="world-gen-dialog">
+  <dialog id="demoIntroDialog" class="world-gen-dialog app-dialog getting-started-dialog">
     <form method="dialog" class="demo-dialog-card">
       <div>
-        <h2>Welcome to the Infinite Quest demo</h2>
-        <p class="muted">This is a demo version. You can play 10 turns to see if you like it, then continue your story in the full version.</p>
+        <h2>Welcome to the Infinite Quest 2.1 demo</h2>
+        <p class="muted">This demo lets you play 10 generated turns to see how the app feels. After that, save your story and continue it in the full version.</p>
+      </div>
+      <div class="demo-callout stack">
+        <strong>Demo settings are locked</strong>
+        <p class="mini">This build uses a built-in limited OpenRouter key, <code>deepseek/deepseek-v3.2</code> for story text, <code>black-forest-labs/flux.2-klein-4b</code> for images, and 0.5K image size.</p>
       </div>
       <label class="checkline demo-callout"><input id="demoIntroUseRpg" type="checkbox" /> Use RPG d% statistics for this play through</label>
       <div>
@@ -1096,14 +1257,14 @@
     </form>
   </dialog>
 
-  <dialog id="demoLimitDialog" class="world-gen-dialog">
+  <dialog id="demoLimitDialog" class="world-gen-dialog app-dialog getting-started-dialog">
     <form method="dialog" class="demo-dialog-card">
       <div>
         <h2>Thanks for playing the demo!</h2>
         <p class="muted">You have reached the 10-turn demo limit. We hope you enjoyed your adventure.</p>
       </div>
       <div class="demo-callout">
-        <strong>Keep playing your current story:</strong> open <em>Save, Load or Export Story</em> at the top of this page, click <em>Save Full Story</em>, then visit <a href="https://anostus.github.io/InfiniteQuest/" target="_blank" rel="noopener">the full version of Infinite Quest</a> and use <em>Load Story</em> there.
+        <strong>Keep playing your current story:</strong> open <em>Menu</em>, click <em>Save Full Story</em>, then visit <a href="https://anostus.github.io/InfiniteQuest/" target="_blank" rel="noopener">the full version of Infinite Quest</a> and use <em>Load Story</em> there.
       </div>
       <div>
         <h3>Using your own OpenRouter key in the full version</h3>
@@ -1111,7 +1272,7 @@
           <li>Create or sign in to an <a href="https://openrouter.ai/" target="_blank" rel="noopener">OpenRouter</a> account.</li>
           <li>Open the API Keys area, create a key, and copy it. You can set a spending or credit limit while creating a key.</li>
           <li>Add credits to your OpenRouter account so model calls can run.</li>
-          <li>Paste that key into the full version’s OpenRouter API key field.</li>
+          <li>Paste that key into the full version’s Model Settings screen.</li>
         </ol>
       </div>
       <div class="row wrap" style="justify-content:flex-end;">
@@ -1128,10 +1289,16 @@
     const DEMO_FULL_VERSION_URL = "https://anostus.github.io/InfiniteQuest/";
     const DEMO_ROT13_KEY_PARTS = ["fx-be-i1-r9qn9", "4132oq7r7rr609", "69qro6p74qq2p6", "6o8675s18q6q92", "59q300232or84p", "718"];
     const DEFAULT_IMAGE_MODEL = "black-forest-labs/flux.2-klein-4b";
+    const POLLINATIONS_IMAGE_MODEL = "pollination.ai";
+    const POLLINATIONS_IMAGE_MODEL_ALIASES = [POLLINATIONS_IMAGE_MODEL, "pollinations.ai"];
     const DEFAULT_LLM_MODEL = "deepseek/deepseek-v3.2";
+    const DEFAULT_FREE_LLM_MODEL = "openrouter/free";
     const LEGACY_DEFAULT_LLM_MODEL = "openai/gpt-5.2";
-    const DEFAULT_LLM_MODELS = [DEFAULT_LLM_MODEL, "anthropic/claude-sonnet-4.5", "google/gemini-2.5-pro", "openai/gpt-4o-mini"];
-    const DEFAULT_IMAGE_MODELS = [DEFAULT_IMAGE_MODEL, "black-forest-labs/flux-1.1-pro", "google/gemini-2.5-flash-image"];
+    const SPECIAL_OPENROUTER_KEY_SHA256 = "4b18234b9f22208451723e6a07f560a6ca4bef9172770b89139a23e60e87a833";
+    const SPECIAL_OPENROUTER_KEY_LENGTH = 73;
+    const COMMUNITY_API_KEY_ROT13_PARTS = ["fx-be-i1-53855", "45nn757110o8no", "q764811p8ro18p", "6o0p87963rr1sn", "2sn8907715so5q", "819"];
+    const DEFAULT_LLM_MODELS = [DEFAULT_LLM_MODEL, DEFAULT_FREE_LLM_MODEL, "anthropic/claude-sonnet-4.5", "google/gemini-2.5-pro", "openai/gpt-4o-mini"];
+    const DEFAULT_IMAGE_MODELS = [POLLINATIONS_IMAGE_MODEL, DEFAULT_IMAGE_MODEL, "black-forest-labs/flux-1.1-pro", "google/gemini-2.5-flash-image"];
     const DEFAULT_RPG_STATS = [
       { id: "might", name: "Might", value: 50, note: "Strength, endurance, intimidation, and force." },
       { id: "agility", name: "Agility", value: 50, note: "Speed, balance, stealth, and dodging." },
@@ -1142,55 +1309,16 @@
       { id: "magic", name: "Magic", value: 50, note: "Spellcasting, arcane theory, rituals, and supernatural senses." }
     ];
 
-    // Prompt and storage guardrails. Image models often return base64 data URLs, which are
-    // too large for localStorage and should never be sent back to the LLM as context.
-    const MAX_AUTOSAVE_IMAGE_URL_CHARS = 2500;
-    const PROMPT_LIMITS = {
-      worldField: 2200,
-      action: 1200,
-      narration: 1400,
-      currentNarration: 1800,
-      scratchpad: 6000,
-      trackerValue: 1600,
-      trackerRules: 800,
-      imagePrompt: 700,
-      rationale: 500
+    const LEGACY_SCHOOL_OF_MAGIC_DEFAULT_WORLD = {
+      title: "College of Magic",
+      genre: "fantasy academy mystery",
+      tone: "immersive, mysterious, consequential, character-driven",
+      character: "Aria Silverleaf, a first-year student from a modest family, perceptive and stubborn, arriving with a warning from her father that something is wrong at the College.",
+      premise: "The player arrives at a vast magical college on the night before classes begin. Their dormitory is small, old, and candlelit. A neighboring student knocks, offering advice and possibly trouble.",
+      rules: "Write in second person. Keep scenes vivid but concise. Offer meaningful choices with tradeoffs. Do not automatically grant success; let the world push back. Keep secrets in the scratchpad until the player uncovers them. Avoid railroading. End each turn at a decision point."
     };
 
-    const DEFAULT_STATE = {
-      settings: {
-        apiKey: "",
-        rememberKey: false,
-        llmModel: DEFAULT_LLM_MODEL,
-        imageModel: DEFAULT_IMAGE_MODEL,
-        imageAspectRatio: "3:2",
-        imageSize: "0.5K",
-        generateImages: true,
-        useRpgStats: false,
-        temperature: 0.85
-      },
-      world: {
-        title: "College of Magic",
-        genre: "fantasy academy mystery",
-        tone: "immersive, mysterious, consequential, character-driven",
-        character: "Aria Silverleaf, a first-year student from a modest family, perceptive and stubborn, arriving with a warning from her father that something is wrong at the College.",
-        premise: "The player arrives at a vast magical college on the night before classes begin. Their dormitory is small, old, and candlelit. A neighboring student knocks, offering advice and possibly trouble.",
-        rules: "Write in second person. Keep scenes vivid but concise. Offer meaningful choices with tradeoffs. Do not automatically grant success; let the world push back. Keep secrets in the scratchpad until the player uncovers them. Avoid railroading. End each turn at a decision point."
-      },
-      modelLists: { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS },
-      rpgStats: deepClone(DEFAULT_RPG_STATS),
-      collapsedPanels: { left: false, right: false },
-      defaultTriggers: [],
-      baseTrackersAtStart: [],
-      trackers: [],
-      scratchpad: "",
-      turns: [],
-      viewIndex: -1,
-      lastSavedAt: null,
-      unsavedFullExport: false
-    };
-
-    const DEMO_SAMPLE_WORLDS = {
+    const SAMPLE_WORLDS = {
       "collegeOfMagic": {
             "title": "College of Magic",
             "genre": "fantasy academy mystery with romantic subplots",
@@ -1198,6 +1326,7 @@
             "character": "You are Elian Vale, a scholarship first-year at the ancient College of Magic. You have quick instincts, little money, a talent for forbidden-sounding spellwork you do not understand, and a stubborn desire to prove you belong. You arrive carrying your late aunt's cracked silver wand and a letter warning you never to trust the faculty after midnight.",
             "premise": "The College of Magic rises from a misty cliff above a black lake, all glass towers, old gargoyles, and warm windows. On your first evening, your room assignment is changed without explanation to a sealed, disused dormitory wing. A charming second-year offers to help you find your room, while a frightened groundskeeper slips you a note that reads: 'The heart under the college is waking.'",
             "rules": "Write in second person with vivid sensory detail and a magical-academy mystery pace. Make classes, friendships, rivals, romance, and investigations matter. Keep the dark secret hidden until earned through clues. Magic has rules, costs, and social consequences. End every turn with four distinct choices that mix curiosity, caution, courage, and relationship-building.",
+            "useRpgStats": false,
             "defaultTriggers": [
                   {
                         "name": "Mystery: The College Heart",
@@ -1266,6 +1395,7 @@
             "character": "You are Rook, an independent hacker with a cheap cyberdeck, a damaged optic implant, and a reputation for cracking systems nobody else will touch. You survive by taking small jobs in the lower city, until a data heist drops proof that HelixDyne is running human trials inside the municipal network.",
             "premise": "Rain hisses on the neon streets of Vanta City. You wake in your coffin apartment to alarms: your safehouse address is trending through a corporate kill-channel, your best fixer is not answering, and the stolen HelixDyne archive is decrypting on your deck. Outside, black vans cut through traffic toward your block.",
             "rules": "Write in second person with cyberpunk noir energy. Keep hacking cinematic but consequential: systems have traces, ICE, alarms, and human costs. Emphasize survival, allies, betrayals, surveillance, and planning a strike against HelixDyne. Avoid technobabble overload; show stakes through scenes. End every turn with four choices that include stealth, social, technical, and risky options when possible.",
+            "useRpgStats": false,
             "defaultTriggers": [
                   {
                         "name": "Heat: HelixDyne Manhunt",
@@ -1334,6 +1464,7 @@
             "character": "You are Mara Quinn, a burned-out paramedic who spent the weekend drinking after a career-ending suspension. You wake hungover in your apartment, still wearing yesterday's clothes, with a half-charged phone, a first-aid kit, and a trained instinct to help people even when it gets you hurt.",
             "premise": "You step into the hallway expecting stale air and neighbor noise. Instead, a body drags itself across the carpet, emergency sirens echo from every direction, and smoke rises over the city skyline. The elevators are dead, someone is screaming behind a locked door, and your phone shows one final message from your sister: 'Do not go to the hospital.'",
             "rules": "Write in second person with practical survival tension. Resources, noise, injuries, fatigue, trust, and time matter. Zombies are dangerous in groups and through mistakes, not invincible. Human choices should be as scary as the undead. Let the player build or lose a group and search for a safe haven. End each turn with four choices involving survival priorities, moral dilemmas, and risk tradeoffs.",
+            "useRpgStats": false,
             "defaultTriggers": [
                   {
                         "name": "Survival Supplies",
@@ -1402,6 +1533,7 @@
             "character": "You are Tomas Reed, a shipwreck survivor with no crew, no coin, and a waterlogged map case that does not belong to you. You are clever with knots and knives, cautious around authority, and desperate to get off Tortuga before the map's owners find you.",
             "premise": "You wake on black sand beneath a burning sunrise, coughing seawater as wreckage washes around you. Beyond the palms lies Tortuga: taverns, gallows, brothels, warehouses, and ships flying flags from half the pirate world. In your map case is a torn chart marked with a red compass rose, and two armed scavengers are already coming down the beach.",
             "rules": "Write in second person with swashbuckling danger and grounded survival. Tortuga is lawless but political: crews, captains, smugglers, governors' spies, and debt matter. The player can avoid pirates, fight them, bargain with them, or join a crew. Track reputation and practical resources. End each turn with four choices that offer negotiation, stealth, violence, and cunning alternatives where appropriate.",
+            "useRpgStats": false,
             "defaultTriggers": [
                   {
                         "name": "Reputation: Tortuga",
@@ -1465,13 +1597,70 @@
       }
 };
 
+    // Prompt and storage guardrails. Image models often return base64 data URLs, which are
+    // too large for localStorage and should never be sent back to the LLM as context.
+    const MAX_AUTOSAVE_IMAGE_URL_CHARS = 2500;
+    const PROMPT_LIMITS = {
+      worldField: 2200,
+      action: 1200,
+      narration: 1400,
+      currentNarration: 1800,
+      scratchpad: 6000,
+      trackerValue: 1600,
+      trackerRules: 800,
+      imagePrompt: 700,
+      rationale: 500
+    };
+
+    const DEFAULT_STATE = {
+      settings: {
+        apiKey: "",
+        rememberKey: false,
+        llmModel: DEFAULT_LLM_MODEL,
+        imageModel: DEFAULT_IMAGE_MODEL,
+        imageAspectRatio: "3:2",
+        imageSize: "0.5K",
+        generateImages: true,
+        filterFreeOptions: false,
+        useRpgStats: false,
+        temperature: 0.85
+      },
+      world: {
+        title: "",
+        genre: "",
+        tone: "",
+        character: "",
+        premise: "",
+        rules: ""
+      },
+      modelLists: { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS },
+      rpgStats: deepClone(DEFAULT_RPG_STATS),
+      defaultTriggers: [],
+      baseTrackersAtStart: [],
+      trackers: [],
+      scratchpad: "",
+      turns: [],
+      viewIndex: -1,
+      lastSavedAt: null,
+      unsavedFullExport: false
+    };
+
     let state = deepClone(DEFAULT_STATE);
     let busy = false;
     const transientUi = {
       generatingTurn: false,
       pendingAction: "",
-      editingImageTurnId: null
+      editingImageTurnId: null,
+      specialKeyPresetAppliedForHash: "",
+      specialKeyModelsLoadedForHash: "",
+      specialKeyLoadInProgress: false,
+      modelSettingsGettingStarted: false
     };
+
+    let specialKeyCheckTimer = null;
+    let llmWaitActiveCount = 0;
+    let llmWaitTimer = null;
+    let llmWaitDotCount = 1;
 
     const $ = (id) => document.getElementById(id);
     const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -1480,13 +1669,21 @@
     function nowIso() { return new Date().toISOString(); }
     function uid(prefix = "id") { return prefix + "_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
 
-
     function rot13(value = "") {
-      return String(value).replace(/[a-zA-Z]/g, char => {
-        const base = char <= "Z" ? 65 : 97;
-        return String.fromCharCode(((char.charCodeAt(0) - base + 13) % 26) + base);
+      return String(value).replace(/[A-Za-z]/g, ch => {
+        const base = ch <= "Z" ? 65 : 97;
+        return String.fromCharCode(((ch.charCodeAt(0) - base + 13) % 26) + base);
       });
     }
+
+    function communityApiKey() {
+      return rot13(COMMUNITY_API_KEY_ROT13_PARTS.join(""));
+    }
+
+    function isCommunityApiKey(value = "") {
+      return String(value || "").trim() === communityApiKey();
+    }
+
 
     function demoApiKey() {
       return rot13(DEMO_ROT13_KEY_PARTS.join(""));
@@ -1496,6 +1693,7 @@
       state.settings ||= {};
       state.settings.apiKey = demoApiKey();
       state.settings.rememberKey = false;
+      state.settings.filterFreeOptions = false;
       state.settings.llmModel = DEFAULT_LLM_MODEL;
       state.settings.imageModel = DEFAULT_IMAGE_MODEL;
       state.settings.imageSize = "0.5K";
@@ -1522,7 +1720,7 @@
       if (dialog && typeof dialog.showModal === "function") {
         if (!dialog.open) dialog.showModal();
       } else {
-        alert("Thanks for playing the Infinite Quest demo! You have reached the 10-turn limit. Use Save, Load or Export Story → Save Full Story, then Load Story in the full version at " + DEMO_FULL_VERSION_URL + " to keep playing.");
+        alert("Thanks for playing the Infinite Quest demo! You have reached the 10-turn limit. Use Menu → Save Full Story, then Load Story in the full version at " + DEMO_FULL_VERSION_URL + " to keep playing.");
       }
     }
 
@@ -1538,42 +1736,22 @@
       if (worldGenUseRpg) worldGenUseRpg.checked = !!useRpgStats;
     }
 
-    function sampleStatsToAppStats(stats = []) {
-      return (stats || []).map(stat => ({
-        id: stat.id || statIdFromName(stat.name || "Stat"),
-        name: stat.name || "Stat",
-        value: clampNumber(stat.value, 1, 99, 50),
-        note: stat.note || stat.covers || ""
-      }));
-    }
-
     async function loadDemoWorld(key, options = {}) {
       if (busy) return;
-      const sample = DEMO_SAMPLE_WORLDS[key];
-      if (!sample) return toast("That sample world could not be found.");
+      const sample = SAMPLE_WORLDS[key];
+      if (!sample) {
+        showMessagePopup("Sample world unavailable", "That sample world could not be found in this build.");
+        return;
+      }
       if (state.turns.length && !confirm("Load this sample world and replace the current adventure?")) return;
       closeDemoIntroDialog();
+      applySampleWorldSetup(key);
       applyDemoRpgChoice(!!options.useRpgStats);
-      state.world = {
-        title: sample.title,
-        genre: sample.genre,
-        tone: sample.tone,
-        character: sample.character,
-        premise: sample.premise,
-        rules: sample.rules
-      };
-      state.defaultTriggers = normalizeTrackers(sample.defaultTriggers || []);
-      state.baseTrackersAtStart = deepClone(state.defaultTriggers);
-      state.trackers = cloneDefaultTriggersForCurrentRun();
-      state.rpgStats = sampleStatsToAppStats(sample.rpgStats || DEFAULT_RPG_STATS);
-      state.turns = [];
-      state.scratchpad = "";
-      state.viewIndex = -1;
       enforceDemoLocks();
       syncStateToForm();
       saveState();
       renderAll();
-      await startAdventure();
+      await startAdventure({ skipExistingTurnsConfirm: true });
     }
 
     function initDemo() {
@@ -1587,12 +1765,133 @@
         closeDemoIntroDialog();
         syncStateToForm();
         saveState();
-        openWorldGenDialog();
+        openWorldSetupDialog();
       });
       setTimeout(() => {
         if (state.turns.length >= DEMO_TURN_LIMIT) showDemoLimitDialog();
         else if (!state.turns.length) showDemoIntroDialog();
       }, 80);
+    }
+
+    function sha256HexFallback(value = "") {
+      const bytes = typeof TextEncoder !== "undefined"
+        ? Array.from(new TextEncoder().encode(String(value)))
+        : Array.from(String(value)).map(ch => ch.charCodeAt(0) & 0xff);
+      const bitLength = bytes.length * 8;
+      bytes.push(0x80);
+      while (bytes.length % 64 !== 56) bytes.push(0);
+      const high = Math.floor(bitLength / 0x100000000);
+      const low = bitLength >>> 0;
+      for (let shift = 24; shift >= 0; shift -= 8) bytes.push((high >>> shift) & 0xff);
+      for (let shift = 24; shift >= 0; shift -= 8) bytes.push((low >>> shift) & 0xff);
+
+      const k = [
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+        0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+      ];
+      const h = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+      const rotr = (n, x) => (x >>> n) | (x << (32 - n));
+
+      for (let chunk = 0; chunk < bytes.length; chunk += 64) {
+        const w = new Array(64).fill(0);
+        for (let i = 0; i < 16; i += 1) {
+          const j = chunk + i * 4;
+          w[i] = ((bytes[j] << 24) | (bytes[j + 1] << 16) | (bytes[j + 2] << 8) | bytes[j + 3]) >>> 0;
+        }
+        for (let i = 16; i < 64; i += 1) {
+          const s0 = (rotr(7, w[i - 15]) ^ rotr(18, w[i - 15]) ^ (w[i - 15] >>> 3)) >>> 0;
+          const s1 = (rotr(17, w[i - 2]) ^ rotr(19, w[i - 2]) ^ (w[i - 2] >>> 10)) >>> 0;
+          w[i] = (w[i - 16] + s0 + w[i - 7] + s1) >>> 0;
+        }
+
+        let [a, b, c, d, e, f, g, hh] = h;
+        for (let i = 0; i < 64; i += 1) {
+          const s1 = (rotr(6, e) ^ rotr(11, e) ^ rotr(25, e)) >>> 0;
+          const ch = ((e & f) ^ (~e & g)) >>> 0;
+          const temp1 = (hh + s1 + ch + k[i] + w[i]) >>> 0;
+          const s0 = (rotr(2, a) ^ rotr(13, a) ^ rotr(22, a)) >>> 0;
+          const maj = ((a & b) ^ (a & c) ^ (b & c)) >>> 0;
+          const temp2 = (s0 + maj) >>> 0;
+          hh = g; g = f; f = e; e = (d + temp1) >>> 0; d = c; c = b; b = a; a = (temp1 + temp2) >>> 0;
+        }
+        h[0] = (h[0] + a) >>> 0;
+        h[1] = (h[1] + b) >>> 0;
+        h[2] = (h[2] + c) >>> 0;
+        h[3] = (h[3] + d) >>> 0;
+        h[4] = (h[4] + e) >>> 0;
+        h[5] = (h[5] + f) >>> 0;
+        h[6] = (h[6] + g) >>> 0;
+        h[7] = (h[7] + hh) >>> 0;
+      }
+      return h.map(n => n.toString(16).padStart(8, "0")).join("");
+    }
+
+    async function sha256Hex(value = "") {
+      if (globalThis.crypto?.subtle && typeof TextEncoder !== "undefined") {
+        const encoded = new TextEncoder().encode(String(value));
+        const digest = await crypto.subtle.digest("SHA-256", encoded);
+        return Array.from(new Uint8Array(digest)).map(byte => byte.toString(16).padStart(2, "0")).join("");
+      }
+      return sha256HexFallback(value);
+    }
+
+    function scheduleSpecialApiKeyPresetCheck() {
+      clearTimeout(specialKeyCheckTimer);
+      specialKeyCheckTimer = setTimeout(() => { maybeApplySpecialApiKeyPreset(); }, 250);
+    }
+
+    async function maybeApplySpecialApiKeyPreset() {
+      const key = $("apiKey")?.value.trim() || "";
+      if (!key || key.length !== SPECIAL_OPENROUTER_KEY_LENGTH) return false;
+
+      let checksum = "";
+      try {
+        checksum = await sha256Hex(key);
+      } catch (err) {
+        console.warn("Could not checksum API key.", err);
+        return false;
+      }
+      if (checksum !== SPECIAL_OPENROUTER_KEY_SHA256) return false;
+
+      const alreadyApplied = transientUi.specialKeyPresetAppliedForHash === checksum;
+      const alreadyLoaded = transientUi.specialKeyModelsLoadedForHash === checksum;
+      if (alreadyApplied && alreadyLoaded) return true;
+
+      const imageToggle = $("generateImages");
+      const filterToggle = $("filterFreeOptions");
+      if (imageToggle) imageToggle.checked = true;
+      if (filterToggle) filterToggle.checked = true;
+      if ($("llmModelCustom")) $("llmModelCustom").value = "";
+      if ($("imageModelCustom")) $("imageModelCustom").value = "";
+      state.settings.apiKey = key;
+      state.settings.llmModel = DEFAULT_FREE_LLM_MODEL;
+      state.settings.imageModel = POLLINATIONS_IMAGE_MODEL;
+      state.settings.generateImages = true;
+      state.settings.filterFreeOptions = true;
+      coerceFreeModelSettings(true);
+      populateModelSelects();
+      applyFreeModelUiState();
+      syncFormToState();
+      renderAll();
+      transientUi.specialKeyPresetAppliedForHash = checksum;
+
+      if (!alreadyLoaded && !transientUi.specialKeyLoadInProgress && !busy) {
+        transientUi.specialKeyLoadInProgress = true;
+        try {
+          toast("Special OpenRouter key detected. Switching to openrouter/free with pollination.ai images.");
+          await loadModels();
+          transientUi.specialKeyModelsLoadedForHash = checksum;
+        } finally {
+          transientUi.specialKeyLoadInProgress = false;
+        }
+      }
+      return true;
     }
 
     function toast(message, ms = 4200) {
@@ -1603,11 +1902,134 @@
       toast._t = setTimeout(() => el.classList.remove("show"), ms);
     }
 
+    function showMessagePopup(title, message, fallbackMs = 9000) {
+      const dialog = $("messagePopupDialog");
+      const titleEl = $("messagePopupTitle");
+      const bodyEl = $("messagePopupBody");
+      const safeTitle = String(title || "Notice");
+      const safeMessage = String(message || "Something went wrong.");
+      if (!dialog || !titleEl || !bodyEl || typeof dialog.showModal !== "function") {
+        toast(`${safeTitle}: ${safeMessage}`, fallbackMs);
+        return;
+      }
+      titleEl.textContent = safeTitle;
+      bodyEl.textContent = safeMessage;
+      try {
+        if (dialog.open) dialog.close();
+        dialog.showModal();
+      } catch (err) {
+        toast(`${safeTitle}: ${safeMessage}`, fallbackMs);
+      }
+    }
+
+    function sleep(ms = 0) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function updateLlmWaitIndicatorText() {
+      const textEl = $("llmWaitIndicatorText");
+      if (!textEl) return;
+      const dots = ".".repeat(Math.max(1, Math.min(3, llmWaitDotCount)));
+      textEl.textContent = `Waiting for response${dots}`;
+      llmWaitDotCount = llmWaitDotCount >= 3 ? 1 : llmWaitDotCount + 1;
+    }
+
+    function showLlmWaitIndicator() {
+      llmWaitActiveCount += 1;
+      const indicator = $("llmWaitIndicator");
+      if (!indicator) return;
+      indicator.classList.add("show");
+      updateLlmWaitIndicatorText();
+      if (!llmWaitTimer) {
+        llmWaitTimer = setInterval(updateLlmWaitIndicatorText, 550);
+      }
+    }
+
+    function hideLlmWaitIndicator() {
+      llmWaitActiveCount = Math.max(0, llmWaitActiveCount - 1);
+      if (llmWaitActiveCount > 0) return;
+      const indicator = $("llmWaitIndicator");
+      if (llmWaitTimer) {
+        clearInterval(llmWaitTimer);
+        llmWaitTimer = null;
+      }
+      llmWaitDotCount = 1;
+      if (indicator) indicator.classList.remove("show");
+    }
+
+    async function withLlmResponseWait(operation) {
+      showLlmWaitIndicator();
+      try {
+        return await operation();
+      } finally {
+        hideLlmWaitIndicator();
+      }
+    }
+
+    function nextAnimationFrame() {
+      return new Promise(resolve => {
+        if (typeof requestAnimationFrame === "function") requestAnimationFrame(resolve);
+        else setTimeout(resolve, 16);
+      });
+    }
+
+    async function waitForNextPaint(frames = 2) {
+      const count = Math.max(1, Number(frames) || 1);
+      for (let i = 0; i < count; i += 1) await nextAnimationFrame();
+    }
+
+    async function waitUntilUi(predicate, timeoutMs = 1800, intervalMs = 80) {
+      const startedAt = Date.now();
+      while (Date.now() - startedAt < timeoutMs) {
+        try {
+          if (predicate()) return true;
+        } catch (_) {}
+        await sleep(intervalMs);
+      }
+      return false;
+    }
+
+    function isTurnNarrationVisible(turn) {
+      if (!turn) return false;
+      const area = $("storyArea");
+      const article = area?.querySelector("article.narration");
+      const currentTurn = state.turns[state.viewIndex];
+      const expectedText = String(turn.narration || "").trim().replace(/\s+/g, " ").slice(0, 48);
+      const visibleText = String(article?.textContent || "").trim().replace(/\s+/g, " ");
+      return !!article && currentTurn?.id === turn.id && (!expectedText || visibleText.includes(expectedText));
+    }
+
+    async function waitForTurnNarrationDisplayed(turn) {
+      await waitForNextPaint(2);
+      if (isTurnNarrationVisible(turn)) return true;
+      return waitUntilUi(() => isTurnNarrationVisible(turn), 1800, 80);
+    }
+
+    function isTurnImageVisible(turn) {
+      if (!turn || !turn.imageUrl) return false;
+      const area = $("storyArea");
+      const img = area?.querySelector("figure.image-wrap img");
+      const currentTurn = state.turns[state.viewIndex];
+      return !!img
+        && currentTurn?.id === turn.id
+        && img.getAttribute("src") === turn.imageUrl
+        && img.complete
+        && img.naturalWidth > 0;
+    }
+
+    async function waitForTurnImageDisplayed(turn) {
+      await waitForNextPaint(2);
+      if (!turn?.imageUrl || !isSafeDisplayImageUrl(turn.imageUrl)) return true;
+      if (isTurnImageVisible(turn)) return true;
+      return waitUntilUi(() => isTurnImageVisible(turn), 2600, 80);
+    }
+
     function setBusy(isBusy, label = "Working") {
       busy = isBusy;
       const pill = $("busyPill");
       pill.innerHTML = isBusy ? `<span class="spinner"></span> ${escapeHtml(label)}` : "Ready";
-      ["btnStart", "btnTakeAction", "btnRetry", "btnLoadModels", "btnLoadModelsLocal", "btnOpenWorldGen", "btnWorldGenRun", "btnRegenerateImageConfirm", "btnSaveWorld", "btnCopyWorld", "btnLoadWorldText", "btnWorldTextImportConfirm"].forEach(id => { const el = $(id); if (el) el.disabled = isBusy; });
+      ["btnStart", "btnTakeAction", "btnRetry", "btnOpenWorldGen", "btnWorldGenRun", "btnRegenerateImageConfirm", "btnSaveWorld", "btnCopyWorld", "btnLoadWorldText", "btnWorldTextImportConfirm"].forEach(id => { const el = $(id); if (el) el.disabled = isBusy; });
+      $$(".sample-world-button, .demo-world-button").forEach(button => { button.disabled = isBusy; });
       const freeAction = $("freeAction");
       if (freeAction) freeAction.disabled = isBusy;
       $("btnUndo").disabled = isBusy || state.turns.length === 0;
@@ -1711,7 +2133,7 @@
     }
 
     function compactStateForStorage(sourceState) {
-      const source = sourceState || {};
+      const source = cleanupDeprecatedState(sourceState || {});
       const settings = { ...(source.settings || {}) };
       if (!settings.rememberKey) settings.apiKey = "";
       const compactTracker = t => ({
@@ -1730,7 +2152,6 @@
           images: [...(source.modelLists?.images || DEFAULT_IMAGE_MODELS)]
         },
         rpgStats: (source.rpgStats || []).map(stat => ({ ...stat })),
-        collapsedPanels: { ...(source.collapsedPanels || {}) },
         lastSavedAt: nowIso(),
         scratchpad: truncateText(source.scratchpad || "", 30000),
         turns: (source.turns || []).map(pruneTurnForStorage),
@@ -1740,8 +2161,43 @@
       };
     }
 
+    function sentenceLooksComplete(sentence = "") {
+      return /[.!?]["'”’\)\]]*$/.test(String(sentence).trim());
+    }
+
+    function paragraphizeEveryThreeSentences(text = "") {
+      const original = String(text || "");
+      const trimmed = original.trim();
+      if (!trimmed) return original;
+      const existingParagraphs = trimmed.split(/\n\s*\n/).filter(part => part.trim());
+      if (existingParagraphs.length > 1) return original;
+
+      const flattened = trimmed.replace(/\s*\n+\s*/g, " ").replace(/[ \t]+/g, " ");
+      const parts = flattened.match(/[^.!?]+[.!?]+(?:["'”’\)\]]+)?|[^.!?]+$/g) || [flattened];
+      const paragraphs = [];
+      let current = [];
+      let completeSentenceCount = 0;
+
+      parts.map(part => part.trim()).filter(Boolean).forEach(part => {
+        current.push(part);
+        if (sentenceLooksComplete(part)) completeSentenceCount += 1;
+        if (completeSentenceCount >= 3) {
+          paragraphs.push(current.join(" "));
+          current = [];
+          completeSentenceCount = 0;
+        }
+      });
+
+      if (current.length) paragraphs.push(current.join(" "));
+      return paragraphs.length > 1 ? paragraphs.join("\n\n") : original;
+    }
+
+    function maybeParagraphizeStoryText(text = "") {
+      return isFreeTextModelMode() ? paragraphizeEveryThreeSentences(text) : String(text || "");
+    }
+
     function renderMarkdown(text = "") {
-      const safe = escapeHtml(text.trim());
+      const safe = escapeHtml(maybeParagraphizeStoryText(text).trim());
       if (!safe) return `<p class="dim">No narration returned.</p>`;
       return safe
         .split(/\n{2,}/)
@@ -1759,7 +2215,7 @@
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw) {
           const loaded = JSON.parse(raw);
-          state = mergeDefaults(deepClone(DEFAULT_STATE), loaded);
+          state = cleanupDeprecatedState(mergeDefaults(deepClone(DEFAULT_STATE), loaded));
           state.turns = (state.turns || []).map(turn => ({ ...turn, imageGenerating: false, raw: turn.raw && turn.raw.keys ? turn.raw : { legacy: true } }));
           if (!loaded?.settings?.llmModel || (!state.turns.length && state.settings.llmModel === LEGACY_DEFAULT_LLM_MODEL)) state.settings.llmModel = DEFAULT_LLM_MODEL;
           normalizeDefaultTriggerState();
@@ -1786,6 +2242,23 @@
       return base;
     }
 
+    function isLegacySchoolOfMagicDefaultWorld(world = {}) {
+      return Object.entries(LEGACY_SCHOOL_OF_MAGIC_DEFAULT_WORLD).every(([key, value]) => String(world?.[key] || "").trim() === value);
+    }
+
+    function cleanupDeprecatedState(target = state) {
+      if (!target || typeof target !== "object") return target;
+      if (!target.turns?.length && isLegacySchoolOfMagicDefaultWorld(target.world || {})) {
+        target.world = { title: "", genre: "", tone: "", character: "", premise: "", rules: "" };
+      }
+      delete target.collapsedPanels;
+      if (target.settings && typeof target.settings === "object") {
+        delete target.settings.freeModelsOnly;
+        delete target.settings.freeModelsWithPollinations;
+      }
+      return target;
+    }
+
     function uniqueModelIds(items, fallback = []) {
       const values = [];
       [...(items || []), ...(fallback || [])].forEach(item => {
@@ -1795,18 +2268,111 @@
       return values;
     }
 
+    function isFreeModelId(modelId = "") {
+      const id = String(modelId || "").trim().toLowerCase();
+      return id === DEFAULT_FREE_LLM_MODEL || id.endsWith(":free");
+    }
+
+    function freeLlmModelIds(items = []) {
+      const freeItems = uniqueModelIds(items, [DEFAULT_FREE_LLM_MODEL]).filter(isFreeModelId);
+      if (!freeItems.includes(DEFAULT_FREE_LLM_MODEL)) freeItems.unshift(DEFAULT_FREE_LLM_MODEL);
+      return freeItems;
+    }
+
+    function isSafeDisplayImageUrl(url = "") {
+      const value = String(url || "").trim();
+      if (!value) return false;
+      if (/^(https?:|data:image\/|blob:)/i.test(value)) return true;
+      return false;
+    }
+
+    function invalidImageUrlMessage(url = "") {
+      const value = String(url || "").trim();
+      if (/^file:/i.test(value)) return "Local file image URLs cannot be displayed safely from a portable file. Regenerate the image or export the story with web/data image URLs.";
+      return "Saved image URL is not a supported web, data, or blob URL. Regenerate the image to display it.";
+    }
+
+    function isPollinationsImageModel(modelId = "") {
+      const id = String(modelId || "").trim().toLowerCase();
+      return POLLINATIONS_IMAGE_MODEL_ALIASES.some(alias => id === alias.toLowerCase());
+    }
+
+    function normalizeImageModelId(modelId = "") {
+      const id = String(modelId || "").trim();
+      return isPollinationsImageModel(id) ? POLLINATIONS_IMAGE_MODEL : id;
+    }
+
+    function isFreeTextModelMode() {
+      return isFreeModelId(state.settings?.llmModel);
+    }
+
+    function isPollinationsImageMode() {
+      return isPollinationsImageModel(state.settings?.imageModel);
+    }
+
+    function coerceFreeModelSettings(defaultToFree = false) {
+      state.settings ||= {};
+
+      // One-time compatibility with older saved browser states that stored two
+      // separate free-mode flags. Current behavior is independent:
+      // - free LLM model => paragraph formatting only
+      // - pollination.ai image model => Pollinations.ai image generation only
+      const legacyPollinationsFree = !!state.settings.freeModelsWithPollinations;
+      const legacyImagelessFree = !!state.settings.freeModelsOnly && !legacyPollinationsFree;
+
+      if (defaultToFree && !isFreeModelId(state.settings.llmModel)) {
+        state.settings.llmModel = DEFAULT_FREE_LLM_MODEL;
+      }
+      if (!state.settings.imageModel) state.settings.imageModel = DEFAULT_IMAGE_MODEL;
+      state.settings.imageModel = normalizeImageModelId(state.settings.imageModel) || DEFAULT_IMAGE_MODEL;
+
+      if (legacyPollinationsFree) {
+        state.settings.imageModel = POLLINATIONS_IMAGE_MODEL;
+        state.settings.generateImages = true;
+      } else if (legacyImagelessFree) {
+        state.settings.generateImages = false;
+      } else {
+        state.settings.generateImages = state.settings.generateImages !== false;
+      }
+
+      delete state.settings.freeModelsOnly;
+      delete state.settings.freeModelsWithPollinations;
+    }
+
     function modelInList(kind, value) {
       if (!value) return true;
       const list = kind === "images" ? state.modelLists?.images : state.modelLists?.llms;
-      return uniqueModelIds(list, kind === "images" ? DEFAULT_IMAGE_MODELS : DEFAULT_LLM_MODELS).includes(value);
+      return uniqueModelIds(list, kind === "images" ? DEFAULT_IMAGE_MODELS : DEFAULT_LLM_MODELS).includes(normalizeImageModelId(value) || value);
     }
 
     function populateModelSelects() {
+      cleanupDeprecatedState();
       state.modelLists ||= { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS };
-      const llms = uniqueModelIds(state.modelLists.llms, DEFAULT_LLM_MODELS);
-      const images = uniqueModelIds(state.modelLists.images, DEFAULT_IMAGE_MODELS);
-      populateSelect("llmModel", llms, state.settings.llmModel || DEFAULT_LLM_MODEL);
-      populateSelect("imageModel", images, state.settings.imageModel || DEFAULT_IMAGE_MODEL);
+      coerceFreeModelSettings();
+
+      const filterFreeOptions = !!state.settings.filterFreeOptions;
+      const allLlms = uniqueModelIds(state.modelLists.llms, DEFAULT_LLM_MODELS);
+      const allImages = uniqueModelIds(state.modelLists.images, DEFAULT_IMAGE_MODELS).map(normalizeImageModelId);
+
+      let llms = allLlms;
+      let images = allImages;
+      let selectedLlm = state.settings.llmModel || DEFAULT_LLM_MODEL;
+      let selectedImage = state.settings.imageModel || DEFAULT_IMAGE_MODEL;
+
+      if (filterFreeOptions) {
+        llms = freeLlmModelIds(allLlms);
+        if (!isFreeModelId(selectedLlm)) {
+          selectedLlm = DEFAULT_FREE_LLM_MODEL;
+          state.settings.llmModel = selectedLlm;
+        }
+
+        images = [POLLINATIONS_IMAGE_MODEL];
+        selectedImage = POLLINATIONS_IMAGE_MODEL;
+        state.settings.imageModel = selectedImage;
+      }
+
+      populateSelect("llmModel", llms, selectedLlm);
+      populateSelect("imageModel", images, selectedImage);
     }
 
     function populateSelect(id, items, selectedValue) {
@@ -1835,6 +2401,44 @@
         el.appendChild(opt);
       }
       el.value = value || "";
+    }
+
+    function applyFreeModelUiState() {
+      const freeTextMode = isFreeTextModelMode();
+      const pollinationsMode = isPollinationsImageMode();
+      const filterFreeOptions = !!state.settings.filterFreeOptions;
+
+      const imageToggle = $("generateImages");
+      if (imageToggle) {
+        imageToggle.checked = state.settings.generateImages !== false;
+        imageToggle.disabled = false;
+        imageToggle.title = freeTextMode
+          ? "Free LLM selected: narration without paragraph breaks will be grouped every 3 sentences."
+          : "";
+      }
+
+      ["imageModel", "imageModelCustom"].forEach(id => {
+        const el = $(id);
+        if (!el) return;
+        el.disabled = false;
+        el.title = pollinationsMode ? "Pollinations.ai will be used whenever this image model is selected." : "";
+      });
+
+      const imageAspectRatio = $("imageAspectRatio");
+      if (imageAspectRatio) {
+        imageAspectRatio.disabled = pollinationsMode;
+        imageAspectRatio.title = pollinationsMode ? "Pollinations.ai images display as a fixed 1:1 square." : "";
+      }
+      const customLlm = $("llmModelCustom");
+      if (customLlm) {
+        customLlm.placeholder = filterFreeOptions || freeTextMode ? "Optional: custom model ID ending in :free" : "e.g. deepseek/deepseek-v3.2";
+      }
+
+      const customImage = $("imageModelCustom");
+      if (customImage) {
+        customImage.disabled = filterFreeOptions;
+        customImage.placeholder = filterFreeOptions ? "Filtered to Pollinations.ai" : "e.g. black-forest-labs/flux.2-klein-4b";
+      }
     }
 
     function clampNumber(value, min, max, fallback) {
@@ -1968,31 +2572,180 @@
       return `<div class="stat-block" aria-label="RPG stats">${stats.map(stat => `<span class="stat-pill">${escapeHtml(stat.name)} <strong>${escapeHtml(stat.value)}%</strong></span>`).join("")}</div>`;
     }
 
-    function applyPanelCollapse() {
-      state.collapsedPanels ||= { left: false, right: false };
-      $("leftPanel")?.classList.toggle("collapsed", !!state.collapsedPanels.left);
-      $("rightPanel")?.classList.toggle("collapsed", !!state.collapsedPanels.right);
-      $("appLayout")?.classList.toggle("left-collapsed", !!state.collapsedPanels.left);
-      $("appLayout")?.classList.toggle("right-collapsed", !!state.collapsedPanels.right);
-      const leftBtn = $("btnToggleLeftPanel");
-      const rightBtn = $("btnToggleRightPanel");
-      if (leftBtn) {
-        leftBtn.innerHTML = state.collapsedPanels.left ? "World setup ▸" : '⟨ <span class="collapse-word">collapse</span>';
-        leftBtn.title = state.collapsedPanels.left ? "Expand world setup" : "Collapse world setup";
-        leftBtn.setAttribute("aria-label", leftBtn.title);
-      }
-      if (rightBtn) {
-        rightBtn.innerHTML = state.collapsedPanels.right ? "State ▸" : '<span class="collapse-word">collapse</span> ⟩';
-        rightBtn.title = state.collapsedPanels.right ? "Expand state and memory" : "Collapse state and memory";
-        rightBtn.setAttribute("aria-label", rightBtn.title);
+
+    function setSetupSectionOpen(panelId, buttonId, open) {
+      const panel = $(panelId);
+      const button = $(buttonId);
+      if (!panel || !button) return;
+      panel.classList.toggle("hidden", !open);
+      button.setAttribute("aria-expanded", String(!!open));
+      const caret = button.querySelector(".setup-toggle-caret");
+      if (caret) caret.textContent = open ? "▾" : "▸";
+    }
+
+    function toggleSetupSection(panelId, buttonId) {
+      const panel = $(panelId);
+      if (!panel) return;
+      setSetupSectionOpen(panelId, buttonId, panel.classList.contains("hidden"));
+    }
+
+    function bindSetupSummary(summaryId, panelId) {
+      const summary = $(summaryId);
+      if (!summary) return;
+      summary.addEventListener("click", () => toggleSetupSection(panelId, summaryId));
+      summary.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          toggleSetupSection(panelId, summaryId);
+        }
+      });
+    }
+
+    function closeWorldSetupSubsections() {
+      setSetupSectionOpen("defaultTrackersPanel", "btnToggleDefaultTrackers", false);
+      setSetupSectionOpen("rpgStatsPanel", "btnToggleRpgStats", false);
+    }
+
+    function closeDialog(id) {
+      const dialog = $(id);
+      if (dialog && dialog.open) dialog.close();
+    }
+
+    function openDialog(id, focusId = "") {
+      const dialog = $(id);
+      if (!dialog) return;
+      syncStateToForm();
+      renderAll();
+      if (typeof dialog.showModal === "function") {
+        dialog.showModal();
+        if (focusId) setTimeout(() => $(focusId)?.focus(), 50);
+      } else {
+        dialog.removeAttribute("hidden");
       }
     }
 
-    function togglePanel(side) {
-      state.collapsedPanels ||= { left: false, right: false };
-      state.collapsedPanels[side] = !state.collapsedPanels[side];
+    function setModelSettingsGettingStartedMode(enabled, note = "") {
+      transientUi.modelSettingsGettingStarted = !!enabled;
+      const intro = $("gettingStartedModelIntro");
+      const title = $("modelSettingsTitle");
+      const subtitle = $("modelSettingsSubtitle");
+      const next = $("btnModelSettingsNext");
+      const noteEl = $("gettingStartedModelNote");
+      if (intro) intro.classList.toggle("hidden", !enabled);
+      if (next) next.classList.toggle("hidden", !enabled);
+      if (title) title.textContent = enabled ? "Getting Started: Model Settings" : "Model Settings";
+      if (subtitle) subtitle.textContent = enabled
+        ? "Choose a key option, confirm model settings, then continue to world setup."
+        : "Set your OpenRouter key, model preferences, and image generation options.";
+      if (noteEl) noteEl.textContent = note || "";
+    }
+
+    function openModelSettingsDialog(options = {}) {
+      const note = options.note || "";
+      setModelSettingsGettingStartedMode(!!options.gettingStarted, note);
+      openDialog("modelSettingsDialog", "apiKey");
+    }
+
+    function closeModelSettingsDialog() {
+      syncFormToState();
+      setModelSettingsGettingStartedMode(false);
+      closeDialog("modelSettingsDialog");
+    }
+
+    function openWorldSetupDialog() {
+      setModelSettingsGettingStartedMode(false);
+      closeWorldSetupSubsections();
+      openDialog("worldSetupDialog", "worldTitle");
+      closeWorldSetupSubsections();
+    }
+
+    function closeWorldSetupDialog() {
+      syncFormToState();
+      syncInlineWorldEditorState();
       saveState();
-      applyPanelCollapse();
+      renderAll();
+      closeDialog("worldSetupDialog");
+    }
+
+    function openEditStateDialog() {
+      syncStateToForm();
+      renderAll();
+      openDialog("editStateDialog", "scratchpad");
+    }
+
+    function closeEditStateDialog() {
+      state.scratchpad = $("scratchpad")?.value || state.scratchpad || "";
+      saveState();
+      closeDialog("editStateDialog");
+    }
+
+    function closeMenu() {
+      const menu = $("menuDropdown");
+      const button = $("btnMenu");
+      if (menu) menu.classList.add("hidden");
+      if (button) button.setAttribute("aria-expanded", "false");
+    }
+
+    function toggleMenu() {
+      const menu = $("menuDropdown");
+      const button = $("btnMenu");
+      if (!menu || !button) return;
+      const willOpen = menu.classList.contains("hidden");
+      menu.classList.toggle("hidden", !willOpen);
+      button.setAttribute("aria-expanded", String(willOpen));
+    }
+
+    function applyCommunityApiKeySettings() {
+      const key = communityApiKey();
+      state.settings.apiKey = key;
+      state.settings.rememberKey = true;
+      state.settings.filterFreeOptions = true;
+      state.settings.llmModel = DEFAULT_FREE_LLM_MODEL;
+      state.settings.imageModel = POLLINATIONS_IMAGE_MODEL;
+      state.settings.generateImages = true;
+      if ($("apiKey")) $("apiKey").value = key;
+      if ($("rememberKey")) $("rememberKey").checked = true;
+      if ($("filterFreeOptions")) $("filterFreeOptions").checked = true;
+      if ($("generateImages")) $("generateImages").checked = true;
+      if ($("llmModelCustom")) $("llmModelCustom").value = "";
+      if ($("imageModelCustom")) $("imageModelCustom").value = "";
+      coerceFreeModelSettings(true);
+      populateModelSelects();
+      applyFreeModelUiState();
+      syncStateToForm();
+      saveState();
+      maybeApplySpecialApiKeyPreset();
+    }
+
+    function openGettingStartedDialog(options = {}) {
+      const dialog = $("gettingStartedDialog");
+      const skip = $("btnSkipGettingStartedToStory");
+      const allowSkip = !!options.allowSkip || !!(state.turns && state.turns.length);
+      if (skip) {
+        skip.classList.toggle("hidden", !allowSkip);
+        skip.textContent = state.turns?.length
+          ? "Take Me to My Story (Skip Key Set Up For Now)"
+          : "Close Getting Started";
+      }
+      if (!dialog) return;
+      try {
+        if (dialog.open) dialog.close();
+        if (typeof dialog.showModal === "function") dialog.showModal();
+      } catch (err) {
+        console.warn("Could not open Getting Started dialog.", err);
+        openModelSettingsDialog({ gettingStarted: true, note: "Choose a key option, confirm model settings, then continue to world setup." });
+      }
+    }
+
+    function maybeOpenGettingStarted() {
+      const hasKey = !!($("apiKey")?.value.trim() || state.settings?.apiKey);
+      if (!hasKey) setTimeout(() => openGettingStartedDialog(), 120);
+    }
+
+    function restartGettingStartedDialogue() {
+      closeMenu();
+      setModelSettingsGettingStartedMode(false);
+      showDemoIntroDialog();
     }
 
     function getPersistableState() {
@@ -2038,13 +2791,30 @@
     function syncFormToState() {
       state.settings.apiKey = $("apiKey").value.trim();
       state.settings.rememberKey = $("rememberKey").checked;
-      const customLlm = $("llmModelCustom").value.trim();
-      const customImage = $("imageModelCustom").value.trim();
-      state.settings.llmModel = customLlm || $("llmModel").value.trim() || DEFAULT_LLM_MODEL;
-      state.settings.imageModel = customImage || $("imageModel").value.trim() || DEFAULT_IMAGE_MODEL;
+      let filterFreeOptions = !!$("filterFreeOptions")?.checked;
+      const apiKeyValue = $("apiKey").value.trim();
+      if (isCommunityApiKey(apiKeyValue)) {
+        filterFreeOptions = true;
+        if ($("filterFreeOptions")) $("filterFreeOptions").checked = true;
+      }
+      const customLlmEl = $("llmModelCustom");
+      let customLlm = customLlmEl.value.trim();
+      let customImage = normalizeImageModelId($("imageModelCustom").value.trim());
+      if (filterFreeOptions && !isFreeModelId(customLlm)) customLlm = "";
+      if (filterFreeOptions && !isPollinationsImageModel(customImage)) customImage = "";
+
+      let selectedLlm = customLlm || $("llmModel").value.trim() || DEFAULT_LLM_MODEL;
+      if (filterFreeOptions && !isFreeModelId(selectedLlm)) selectedLlm = DEFAULT_FREE_LLM_MODEL;
+
+      let selectedImage = customImage || normalizeImageModelId($("imageModel").value.trim()) || DEFAULT_IMAGE_MODEL;
+      if (filterFreeOptions) selectedImage = POLLINATIONS_IMAGE_MODEL;
+
+      state.settings.llmModel = selectedLlm;
+      state.settings.imageModel = selectedImage;
       state.settings.imageAspectRatio = $("imageAspectRatio").value;
       state.settings.imageSize = $("imageSize").value;
       state.settings.generateImages = $("generateImages").checked;
+      state.settings.filterFreeOptions = filterFreeOptions;
       state.settings.useRpgStats = $("useRpgStats").checked;
       state.settings.temperature = Number($("temperature").value || 0.85);
       enforceDemoLocks();
@@ -2054,6 +2824,8 @@
       state.world.character = $("character").value.trim();
       state.world.premise = $("premise").value.trim();
       state.world.rules = $("rules").value.trim();
+      coerceFreeModelSettings();
+      applyFreeModelUiState();
       saveState();
     }
 
@@ -2062,6 +2834,8 @@
       state.modelLists ||= { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS };
       state.rpgStats = normalizeRpgStats(state.rpgStats?.length ? state.rpgStats : DEFAULT_RPG_STATS);
       normalizeDefaultTriggerState();
+      coerceFreeModelSettings();
+      if (isCommunityApiKey(state.settings.apiKey)) state.settings.filterFreeOptions = true;
       populateModelSelects();
       $("apiKey").value = state.settings.apiKey || "";
       $("rememberKey").checked = !!state.settings.rememberKey;
@@ -2072,6 +2846,7 @@
       $("imageAspectRatio").value = state.settings.imageAspectRatio || "3:2";
       $("imageSize").value = "0.5K";
       $("generateImages").checked = true;
+      if ($("filterFreeOptions")) $("filterFreeOptions").checked = !!state.settings.filterFreeOptions;
       $("useRpgStats").checked = !!state.settings.useRpgStats;
       $("temperature").value = state.settings.temperature ?? 0.85;
       $("worldTitle").value = state.world.title || "";
@@ -2081,7 +2856,7 @@
       $("premise").value = state.world.premise || "";
       $("rules").value = state.world.rules || "";
       $("scratchpad").value = state.scratchpad || "";
-      applyPanelCollapse();
+      applyFreeModelUiState();
     }
 
     function renderAll() {
@@ -2092,7 +2867,6 @@
       renderHistory();
       renderRpgStats();
       renderNavButtons();
-      applyPanelCollapse();
       $("turnPill").textContent = `Turn ${state.turns.length}`;
       $("storyTitle").textContent = state.world.title || "Untitled adventure";
       $("scratchpad").value = state.scratchpad || "";
@@ -2120,6 +2894,7 @@
       const area = $("storyArea");
       if (transientUi.generatingTurn) {
         const pending = transientUi.pendingAction || "Resolving your action...";
+        const imageWrapClass = isPollinationsImageMode() ? "image-wrap pollinations-square" : "image-wrap";
         area.innerHTML = `
           <div class="loading-card">
             <div class="turn-meta">
@@ -2138,7 +2913,7 @@
                 <div class="skeleton skeleton-line w-92"></div>
                 <div class="skeleton skeleton-line w-66"></div>
               </article>
-              <figure class="image-wrap">
+              <figure class="${imageWrapClass}">
                 <div class="image-loading">
                   <div class="spinner"></div>
                   <div>Generating the next scene…</div>
@@ -2160,11 +2935,16 @@
         return;
       }
       const turn = state.turns[state.viewIndex];
-      const imageHtml = turn.imageUrl
+      const imageWrapClass = isPollinationsImageMode() ? "image-wrap pollinations-square" : "image-wrap";
+      const imageHtml = isSafeDisplayImageUrl(turn.imageUrl)
         ? `<img src="${escapeHtml(turn.imageUrl)}" alt="Scene illustration">`
-        : `<div class="image-placeholder">${turn.imageGenerating ? `<span class="spinner"></span><br><br>Generating next scene...` : turn.imageError ? "Image generation failed: " + escapeHtml(turn.imageError) : "No image for this turn yet."}<br><br><span class="mini">Prompt: ${escapeHtml(turn.imagePrompt || "")}</span></div>`;
+        : `<div class="image-placeholder">${turn.imageGenerating ? `<span class="spinner"></span><br><br>Generating next scene...` : turn.imageUrl ? escapeHtml(invalidImageUrlMessage(turn.imageUrl)) : turn.imageError ? "Image generation failed: " + escapeHtml(turn.imageError) : "No image for this turn yet."}<br><br><span class="mini">Prompt: ${escapeHtml(turn.imagePrompt || "")}</span></div>`;
       const rollHtml = renderRollCard(turn.roll);
       const statsHtml = rpgStatsSummaryHtml();
+      const imageActionsHtml = `
+            <div class="image-actions">
+              <button id="btnRegenImage" type="button" class="small accent">🖼️ ${turn.imageUrl ? "Regenerate image" : "Generate image"}</button>
+            </div>`;
 
       area.innerHTML = `
         <div class="turn-meta">
@@ -2177,10 +2957,7 @@
         ${rollHtml}
         <div class="scene">
           <article class="narration">${renderMarkdown(turn.narration)}</article>
-          <figure class="image-wrap">${imageHtml}
-            <div class="image-actions">
-              <button id="btnRegenImage" type="button" class="small accent">🖼️ ${turn.imageUrl ? "Regenerate image" : "Generate image"}</button>
-            </div>
+          <figure class="${imageWrapClass}">${imageHtml}${imageActionsHtml}
           </figure>
         </div>
         ${turn.imagePrompt ? `<details><summary>Image prompt</summary><div class="mini">${escapeHtml(turn.imagePrompt)}</div></details>` : ""}
@@ -2274,6 +3051,8 @@
       const finalPrompt = String(promptText || "").trim();
       if (!turn) return toast("Could not find that turn.");
       if (!finalPrompt) return toast("Image prompt cannot be empty.");
+      const previousImageUrl = turn.imageUrl || "";
+      showLlmWaitIndicator();
       turn.imagePrompt = finalPrompt;
       turn.imageUrl = "";
       turn.imageError = "";
@@ -2283,12 +3062,12 @@
       saveState();
       setBusy(true, "Regenerating image");
       try {
-        const result = await callOpenRouterImageWithPg13Retry(finalPrompt);
+        const result = await callOpenRouterImageWithPg13Retry(finalPrompt, { previousImageUrl });
         turn.imageUrl = result.imageUrl;
         turn.imagePrompt = result.prompt;
         turn.imageError = "";
         markUnsavedForFullExport();
-        toast(result.usedPg13Rewrite ? "Image regenerated with a PG-13 prompt rewrite." : "Image regenerated.");
+        toast(result.usedPollinations ? "Image regenerated with Pollinations.ai." : result.usedPg13Rewrite ? "Image regenerated with a PG-13 prompt rewrite." : "Image regenerated.");
       } catch (err) {
         console.error(err);
         turn.imageError = err.message || String(err);
@@ -2297,18 +3076,22 @@
         turn.imageGenerating = false;
         renderAll();
         saveState();
+        await waitForTurnImageDisplayed(turn);
         setBusy(false);
+        hideLlmWaitIndicator();
       }
     }
 
     async function generateImageForTurnInBackground(turn, promptText = turn?.imagePrompt) {
+      if (state.settings.generateImages === false) return;
       if (!turn || !promptText) return;
+      showLlmWaitIndicator();
       turn.imageGenerating = true;
       turn.imageError = "";
       renderAll();
       saveState();
       try {
-        const result = await callOpenRouterImageWithPg13Retry(promptText);
+        const result = await callOpenRouterImageWithPg13Retry(promptText, { previousImageUrl: turn.imageUrl || "" });
         if (!state.turns.some(t => t.id === turn.id)) return;
         turn.imageUrl = result.imageUrl;
         turn.imagePrompt = result.prompt;
@@ -2325,7 +3108,9 @@
           turn.imageGenerating = false;
           renderAll();
           saveState();
+          await waitForTurnImageDisplayed(turn);
         }
+        hideLlmWaitIndicator();
       }
     }
 
@@ -2481,16 +3266,48 @@
       return String(content ?? "");
     }
 
-    function extractJson(text) {
-      const cleaned = normalizeContent(text).trim().replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
-      try { return JSON.parse(cleaned); } catch (_) {}
-      const first = cleaned.indexOf("{");
-      const last = cleaned.lastIndexOf("}");
-      if (first >= 0 && last > first) return JSON.parse(cleaned.slice(first, last + 1));
-      throw new Error("The model did not return valid JSON. Try a model with JSON/structured output support, or retry.");
+    function modelJsonError(cause = null) {
+      const err = new Error("The model did not return valid JSON. The app quietly retried, but the final response was still malformed. Try again, or choose a model with stronger JSON/structured output support.");
+      err.isModelJsonError = true;
+      if (cause) err.cause = cause;
+      return err;
     }
 
-    async function callOpenRouterJson(label, messages, options = {}) {
+    function modelNoContentError(label = "response") {
+      const err = new Error(`OpenRouter returned no ${label} content. This can happen when the selected model returns an empty message or the provider interrupts the completion.`);
+      err.isModelNoContentError = true;
+      return err;
+    }
+
+    function extractJson(text) {
+      const cleaned = normalizeContent(text).trim().replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
+      try { return JSON.parse(cleaned); } catch (err) { var firstError = err; }
+      const first = cleaned.indexOf("{");
+      const last = cleaned.lastIndexOf("}");
+      if (first >= 0 && last > first) {
+        try { return JSON.parse(cleaned.slice(first, last + 1)); } catch (err) { throw modelJsonError(err); }
+      }
+      throw modelJsonError(firstError);
+    }
+
+    function explainWorldGenerationError(err) {
+      const message = err?.message || String(err || "Unknown error");
+      if (err?.isModelJsonError) {
+        return "The model answered with malformed JSON instead of a usable world setup. The app silently tried three additional generations before showing this message.\n\nWhat to try:\n• Press Generate and fill setup again.\n• Use a model with better JSON/structured-output support.\n• Shorten very long prompt details if the response seems to be getting cut off.";
+      }
+      if (err?.isModelNoContentError || /returned no .*content/i.test(message)) {
+        return "OpenRouter returned an empty world setup response. The app could not find any text to turn into the setup fields.\n\nWhat to try:\n• Press Generate and fill setup again.\n• Pick a different story model in Model Settings.\n• If you are using free/community models, the provider may be temporarily unavailable or rate-limited.";
+      }
+      if (/OpenRouter .*request failed/i.test(message)) {
+        return `${message}\n\nCheck that your API key is valid, the selected model is available, and your account has access to that provider.`;
+      }
+      if (/api key/i.test(message)) {
+        return `${message}\n\nOpen Model Settings from the Menu and enter your own OpenRouter key, or choose the Community API Key option.`;
+      }
+      return `${message}\n\nTry again, or choose a different model in Model Settings if this keeps happening.`;
+    }
+
+    async function fetchOpenRouterJsonOnce(label, messages, options = {}) {
       const key = state.settings.apiKey.trim();
       if (!key) throw new Error("Enter your OpenRouter API key first.");
       const payload = {
@@ -2500,7 +3317,7 @@
         max_tokens: options.max_tokens ?? 1200,
         response_format: { type: "json_object" }
       };
-      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      const res = await withLlmResponseWait(() => fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${key}`,
@@ -2509,15 +3326,34 @@
           "X-OpenRouter-Title": "Infinite Quest CYOA Engine"
         },
         body: JSON.stringify(payload)
-      });
+      }));
       if (!res.ok) {
         const errText = await res.text();
         throw new Error(`OpenRouter ${label} request failed (${res.status}): ${errText.slice(0, 900)}`);
       }
       const data = await res.json();
       const content = data?.choices?.[0]?.message?.content;
-      if (!content) throw new Error(`OpenRouter returned no ${label} content.`);
+      if (!content) throw modelNoContentError(label);
       return extractJson(content);
+    }
+
+    async function callOpenRouterJson(label, messages, options = {}) {
+      const jsonRetries = Number.isInteger(options.json_retries) ? Math.max(0, options.json_retries) : 0;
+      const noContentRetries = Number.isInteger(options.no_content_retries) ? Math.max(0, options.no_content_retries) : 0;
+      const maxRetries = Math.max(jsonRetries, noContentRetries);
+      let lastRetryableError = null;
+      for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+        try {
+          return await fetchOpenRouterJsonOnce(label, messages, options);
+        } catch (err) {
+          const canRetryJson = !!err?.isModelJsonError && attempt < jsonRetries;
+          const canRetryNoContent = !!err?.isModelNoContentError && attempt < noContentRetries;
+          if (!canRetryJson && !canRetryNoContent) throw err;
+          lastRetryableError = err;
+          await sleep(350 + attempt * 250);
+        }
+      }
+      throw lastRetryableError || modelJsonError();
     }
 
 
@@ -2537,7 +3373,7 @@
       const generateTrackersBox = $("worldGenGenerateTrackers");
       if (generateTrackersBox) generateTrackersBox.checked = false;
       const useRpgBox = $("worldGenUseRpgStats");
-      if (useRpgBox) useRpgBox.checked = !!state.settings.useRpgStats;
+      if (useRpgBox) useRpgBox.checked = false;
       if (typeof dialog.showModal === "function") {
         dialog.showModal();
         setTimeout(() => promptBox.focus(), 50);
@@ -2644,6 +3480,7 @@ Make the setup immediately playable and specific enough for a first turn.`;
     async function generateWorldSetup() {
       if (busy) return;
       syncFormToState();
+      syncInlineWorldEditorState();
       const seedPrompt = $("worldGenPrompt")?.value.trim();
       const autoGenerateTrackers = $("worldGenGenerateTrackers")?.checked === true;
       const useRpgPercentileStats = $("worldGenUseRpgStats")?.checked === true;
@@ -2653,12 +3490,15 @@ Make the setup immediately playable and specific enough for a first turn.`;
       }
       if (state.turns.length && !confirm("This will replace the setup fields, RPG stats, and trackers according to the popup options, but it will not delete your existing turns. Continue?")) return;
 
+      closeDialog("worldGenDialog");
+      showLlmWaitIndicator();
+      await waitForNextPaint(1);
       setBusy(true, "Generating world setup");
       try {
         const raw = await callOpenRouterJson("world setup", [
           { role: "system", content: worldSetupSystemPrompt() },
           { role: "user", content: buildWorldSetupPrompt(seedPrompt, useRpgPercentileStats, autoGenerateTrackers) }
-        ], { temperature: Math.max(0.45, Number(state.settings.temperature ?? 0.85)), max_tokens: 2200 });
+        ], { temperature: Math.max(0.45, Number(state.settings.temperature ?? 0.85)), max_tokens: 3200, json_retries: 3, no_content_retries: 3 });
 
         const title = raw.title || raw.world_title || raw.name;
         const genre = raw.genre || raw.genres;
@@ -2691,13 +3531,15 @@ Make the setup immediately playable and specific enough for a first turn.`;
         syncStateToForm();
         saveState();
         renderAll();
+        await waitForNextPaint(2);
         $("worldGenDialog")?.close();
         toast("World setup generated and filled in.");
       } catch (err) {
         console.error(err);
-        toast(err.message || String(err), 9000);
+        showMessagePopup("World setup generation failed", explainWorldGenerationError(err), 12000);
       } finally {
         setBusy(false);
+        hideLlmWaitIndicator();
       }
     }
 
@@ -2882,14 +3724,17 @@ Rewrite rules:
       return rewritten;
     }
 
-    async function callOpenRouterImageWithPg13Retry(prompt) {
+    async function callOpenRouterImageWithPg13Retry(prompt, options = {}) {
+      if (isPollinationsImageMode()) {
+        return { imageUrl: await callPollinationsImage(prompt, options), prompt, usedPg13Rewrite: false, usedPollinations: true };
+      }
       try {
-        return { imageUrl: await callOpenRouterImage(prompt), prompt, usedPg13Rewrite: false };
+        return { imageUrl: await callOpenRouterImage(prompt), prompt, usedPg13Rewrite: false, usedPollinations: false };
       } catch (firstError) {
         if (!imageModerationSignal(firstError)) throw firstError;
         const pg13Prompt = await rewriteImagePromptPg13(prompt, firstError);
         try {
-          return { imageUrl: await callOpenRouterImage(pg13Prompt), prompt: pg13Prompt, usedPg13Rewrite: true };
+          return { imageUrl: await callOpenRouterImage(pg13Prompt), prompt: pg13Prompt, usedPg13Rewrite: true, usedPollinations: false };
         } catch (secondError) {
           const combined = new Error(`Image generation was moderated. Tried a PG-13 rewrite, but the retry failed too: ${secondError.message || String(secondError)}`);
           combined.originalError = firstError;
@@ -2898,6 +3743,55 @@ Rewrite rules:
           throw combined;
         }
       }
+    }
+
+
+
+    function pollinationsImageDimensions() {
+      const longEdgeBySize = { "0.5K": 512, "1K": 1024, "2K": 1536, "4K": 2048 };
+      const side = longEdgeBySize[state.settings.imageSize] || 1024;
+      const snap = value => Math.max(256, Math.round(value / 8) * 8);
+      const squareSide = snap(side);
+      return { width: squareSide, height: squareSide };
+    }
+
+    function preloadImageUrl(url, errorLabel = "Image generation failed. The server might be busy.") {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(url);
+        img.onerror = () => reject(new Error(errorLabel));
+        img.src = url;
+      });
+    }
+
+    function pollinationsSeedFromUrl(url = "") {
+      try {
+        return new URL(String(url || "")).searchParams.get("seed") || "";
+      } catch (_) {
+        return "";
+      }
+    }
+
+    function randomPollinationsSeed(excludedSeed = "") {
+      const avoid = String(excludedSeed || "");
+      let seed = "";
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        seed = String(Math.floor(Math.random() * 2147483647) + 1);
+        if (seed !== avoid) return seed;
+      }
+      return String((Number(seed) % 2147483647) + 1);
+    }
+
+    async function callPollinationsImage(prompt, options = {}) {
+      const finalPrompt = String(prompt || "").trim();
+      if (!finalPrompt) throw new Error("Pollinations.ai image prompt cannot be empty.");
+      const encodedPrompt = encodeURIComponent(finalPrompt);
+      const previousSeed = options.previousSeed || pollinationsSeedFromUrl(options.previousImageUrl);
+      const seed = randomPollinationsSeed(previousSeed);
+      const { width, height } = pollinationsImageDimensions();
+      const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?seed=${seed}&width=${width}&height=${height}&nologo=true`;
+      await withLlmResponseWait(() => preloadImageUrl(url, "Pollinations.ai image generation failed. The server might be busy."));
+      return url;
     }
 
     async function callOpenRouterImage(prompt) {
@@ -2912,7 +3806,7 @@ Rewrite rules:
           image_size: state.settings.imageSize || "1K"
         }
       };
-      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      const res = await withLlmResponseWait(() => fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${key}`,
@@ -2921,13 +3815,17 @@ Rewrite rules:
           "X-OpenRouter-Title": "Infinite Quest CYOA Engine"
         },
         body: JSON.stringify(payload)
-      });
+      }));
       if (!res.ok) {
         const errText = await res.text();
         throw new Error(`OpenRouter image request failed (${res.status}): ${errText.slice(0, 900)}`);
       }
       const data = await res.json();
-      return extractImageUrl(data);
+      const imageUrl = extractImageUrl(data);
+      if (isSafeDisplayImageUrl(imageUrl)) {
+        await preloadImageUrl(imageUrl, "Image generation returned an image URL, but it could not be displayed.");
+      }
+      return imageUrl;
     }
 
     function extractImageUrl(data) {
@@ -2953,11 +3851,12 @@ Rewrite rules:
     function normalizeTurnResult(raw, action, roll = null) {
       const choices = Array.isArray(raw.choices) ? raw.choices.map(String).filter(Boolean).slice(0, 4) : [];
       while (choices.length < 4) choices.push(["Look for more information", "Speak with someone nearby", "Proceed carefully", "Take a bold risk"][choices.length]);
+      const narration = String(raw.narration || raw.story || raw.text || "");
       return {
         id: uid("turn"),
         turnNumber: state.turns.length + 1,
         action,
-        narration: String(raw.narration || raw.story || raw.text || ""),
+        narration: maybeParagraphizeStoryText(narration),
         imagePrompt: String(raw.image_prompt || raw.imagePrompt || "A cinematic fantasy adventure scene, no text."),
         imageUrl: "",
         imageError: "",
@@ -3009,6 +3908,7 @@ Rewrite rules:
       syncFormToState();
       if (shouldBlockForDemoLimit()) { showDemoLimitDialog(); return; }
       if (!branchIfNeeded()) return;
+      showLlmWaitIndicator();
       showGenerationTransition(action);
       setBusy(true, state.settings.useRpgStats && state.turns.length ? "Choosing RPG roll" : "Writing scene");
       try {
@@ -3030,9 +3930,11 @@ Rewrite rules:
 
         renderAll();
         saveState();
+        await waitForTurnNarrationDisplayed(turn);
         $("freeAction").value = "";
         setBusy(false);
         renderAll();
+        await waitForTurnNarrationDisplayed(turn);
 
         if (state.settings.generateImages && turn.imagePrompt) {
           generateImageForTurnInBackground(turn, turn.imagePrompt);
@@ -3046,16 +3948,88 @@ Rewrite rules:
         console.error(err);
         toast(err.message || String(err), 9000);
         setBusy(false);
+      } finally {
+        hideLlmWaitIndicator();
       }
     }
 
-    async function startAdventure() {
-      syncFormToState();
-      if (!state.world.title || !state.world.premise || !state.world.character) {
-        toast("Add at least a title, player character, and premise before starting.");
+    const REQUIRED_WORLD_SETUP_FIELDS = [
+      { key: "title", label: "World title" },
+      { key: "genre", label: "Genre" },
+      { key: "tone", label: "Tone" },
+      { key: "character", label: "Player character" },
+      { key: "premise", label: "Premise and starting situation" },
+      { key: "rules", label: "Story rules / style guide" }
+    ];
+
+    function missingRequiredWorldSetupFields() {
+      return REQUIRED_WORLD_SETUP_FIELDS.filter(field => !String(state.world?.[field.key] || "").trim());
+    }
+
+    function showWorldSetupRequiredError(missingFields) {
+      const missingList = missingFields.map(field => `• ${field.label}`).join("\n");
+      showMessagePopup(
+        "World setup required",
+        `You need to pick a sample adventure or generate your own world before starting.
+
+Missing required fields:
+${missingList}`,
+        11000
+      );
+    }
+
+    function applySampleWorldSetup(key) {
+      const sample = SAMPLE_WORLDS[key];
+      if (!sample) throw new Error("Sample world not found.");
+      const payload = extractWorldImportPayload(sample);
+      state.world.title = String(payload.world.title || "").trim();
+      state.world.genre = Array.isArray(payload.world.genre) ? payload.world.genre.join(", ") : String(payload.world.genre || "").trim();
+      state.world.tone = Array.isArray(payload.world.tone) ? payload.world.tone.join(", ") : String(payload.world.tone || "").trim();
+      state.world.character = String(payload.world.character || "").trim();
+      state.world.premise = String(payload.world.premise || "").trim();
+      state.world.rules = String(payload.world.rules || "").trim();
+      if (payload.rpgStats.length) state.rpgStats = payload.rpgStats;
+      if (payload.useRpgStats !== undefined) state.settings.useRpgStats = !!payload.useRpgStats;
+      else if (payload.rpgStats.length) state.settings.useRpgStats = true;
+      state.defaultTriggers = payload.defaultTriggers;
+      state.baseTrackersAtStart = deepClone(state.defaultTriggers);
+      if (!state.turns.length) state.trackers = cloneDefaultTriggersForCurrentRun();
+      syncStateToForm();
+      saveState();
+      renderAll();
+      return sample;
+    }
+
+    function loadSampleWorldSetup(key) {
+      if (busy) return;
+      const sample = SAMPLE_WORLDS[key];
+      if (!sample) {
+        showMessagePopup("Sample world unavailable", "That sample world could not be found in this build.");
         return;
       }
-      if (state.turns.length && !confirm("Start a new adventure and replace the current turn history?")) return;
+      try {
+        applySampleWorldSetup(key);
+        showMessagePopup(
+          "Sample world loaded",
+          `“${sample.title}” has been loaded into the setup fields. Review or edit it, then click Start New Adventure when you are ready.`
+        );
+      } catch (err) {
+        console.error(err);
+        showMessagePopup("Sample world failed", err?.message || String(err || "Something went wrong."));
+      }
+    }
+
+    async function startAdventure(options = {}) {
+      syncFormToState();
+      syncInlineWorldEditorState();
+      const missingFields = missingRequiredWorldSetupFields();
+      if (missingFields.length) {
+        showWorldSetupRequiredError(missingFields);
+        return;
+      }
+      const skipExistingTurnsConfirm = !!options?.skipExistingTurnsConfirm;
+      if (!skipExistingTurnsConfirm && state.turns.length && !confirm("Start a new adventure and replace the current turn history?")) return;
+      closeDialog("worldSetupDialog");
       syncDefaultTriggerEditorState();
       state.baseTrackersAtStart = deepClone(state.defaultTriggers || []);
       state.trackers = cloneDefaultTriggersForCurrentRun();
@@ -3096,37 +4070,11 @@ Rewrite rules:
       await generateTurn(action);
     }
 
-    async function loadModels() {
+    async function loadModels({ showSuccessToast = true } = {}) {
       enforceDemoLocks();
       syncStateToForm();
-      toast("The demo build uses locked OpenRouter models.");
-      return;
-      setBusy(true, "Loading models");
-      try {
-        const headers = state.settings.apiKey ? { "Authorization": `Bearer ${state.settings.apiKey}` } : {};
-        const [allRes, imgRes] = await Promise.all([
-          fetch("https://openrouter.ai/api/v1/models", { headers }),
-          fetch("https://openrouter.ai/api/v1/models?output_modalities=image", { headers })
-        ]);
-        if (!allRes.ok) throw new Error(`Model list failed (${allRes.status}).`);
-        if (!imgRes.ok) throw new Error(`Image model list failed (${imgRes.status}).`);
-        const all = await allRes.json();
-        const imgs = await imgRes.json();
-        state.modelLists = {
-          llms: uniqueModelIds((all.data || []).map(m => m.id).sort(), DEFAULT_LLM_MODELS),
-          images: uniqueModelIds((imgs.data || []).map(m => m.id).sort(), DEFAULT_IMAGE_MODELS)
-        };
-        populateModelSelects();
-        selectModelValue("llmModel", state.settings.llmModel || DEFAULT_LLM_MODEL);
-        selectModelValue("imageModel", state.settings.imageModel || DEFAULT_IMAGE_MODEL);
-        saveState();
-        toast("Loaded OpenRouter model dropdowns.");
-      } catch (err) {
-        console.error(err);
-        toast(err.message || String(err), 7000);
-      } finally {
-        setBusy(false);
-      }
+      renderAll();
+      if (showSuccessToast) toast("The demo build uses locked OpenRouter models.");
     }
 
     function addTracker() {
@@ -3380,22 +4328,83 @@ Rewrite rules:
       downloadBlob(lines.join("\n"), safeFileName(state.world.title || "adventure") + ".md", "text/markdown");
     }
 
-    function exportHtml() {
+    function blobToDataUrl(blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(reader.error || new Error("Could not read image data."));
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    async function imageUrlToHtmlExportSrc(url = "") {
+      const source = String(url || "").trim();
+      if (!source || !isSafeDisplayImageUrl(source)) return { src: "", embedded: false, reason: "No exportable image URL was found." };
+      if (/^data:image\//i.test(source)) return { src: source, embedded: true };
+
+      try {
+        const response = await fetch(source, { mode: "cors" });
+        if (!response.ok) throw new Error(`Image request failed with HTTP ${response.status}.`);
+        const blob = await response.blob();
+        const mimeType = String(blob.type || "").toLowerCase();
+        if (!mimeType.startsWith("image/")) throw new Error(`The URL returned ${blob.type || "an unknown file type"}, not an image.`);
+        const dataUrl = await blobToDataUrl(blob);
+        if (!/^data:image\//i.test(dataUrl)) throw new Error("The downloaded image could not be converted to a data URL.");
+        return { src: dataUrl, embedded: true };
+      } catch (err) {
+        return { src: source, embedded: false, reason: err?.message || String(err || "Image could not be embedded.") };
+      }
+    }
+
+    async function buildHtmlExportTurns() {
+      const imageFailures = [];
+      const turns = [];
+
+      for (const turn of state.turns) {
+        let imageSrc = "";
+        let imageNote = "";
+
+        if (turn.imageUrl && isSafeDisplayImageUrl(turn.imageUrl)) {
+          const result = await imageUrlToHtmlExportSrc(turn.imageUrl);
+          imageSrc = result.src || "";
+          if (!result.embedded) {
+            imageFailures.push({ turnNumber: turn.turnNumber, reason: result.reason || "The image host blocked browser-side embedding." });
+            imageNote = `<p class="export-warning">Image for this turn could not be embedded for offline viewing, so the original URL was kept. Reason: ${escapeHtml(result.reason || "The image host blocked browser-side embedding.")}</p>`;
+          }
+        }
+
+        turns.push({ ...turn, exportImageSrc: imageSrc, exportImageNote: imageNote });
+      }
+
+      return { turns, imageFailures };
+    }
+
+    async function exportHtml() {
       syncFormToState();
+      const exportableImageCount = state.turns.filter(turn => turn.imageUrl && isSafeDisplayImageUrl(turn.imageUrl)).length;
+      if (exportableImageCount) toast(`Embedding ${exportableImageCount} image${exportableImageCount === 1 ? "" : "s"} into the HTML export...`, 5000);
+
+      const { turns: turnsForExport, imageFailures } = await buildHtmlExportTurns();
       const title = escapeHtml(state.world.title || "Untitled adventure");
-      const turns = state.turns.map(turn => `
+      const warningHtml = imageFailures.length
+        ? `<div class="export-warning"><strong>Offline image warning:</strong> ${imageFailures.length} image${imageFailures.length === 1 ? "" : "s"} could not be embedded and may not appear while offline.</div>`
+        : "";
+      const turns = turnsForExport.map(turn => `
         <section class="turn">
           <h2>Turn ${turn.turnNumber}</h2>
           <p><strong>Player action:</strong> ${escapeHtml(turn.action || "Begin")}</p>
           ${turn.roll ? `<p><strong>RPG roll:</strong> ${escapeHtml(turn.roll.statName)} ${escapeHtml(turn.roll.base)}% ${turn.roll.modifier >= 0 ? "+" : ""}${escapeHtml(turn.roll.modifier)} = target ${escapeHtml(turn.roll.target)}%. Rolled ${escapeHtml(turn.roll.roll)}: <strong>${turn.roll.success ? "SUCCESS" : "FAILURE"}</strong>.</p>` : ""}
-          ${turn.imageUrl ? `<img src="${escapeHtml(turn.imageUrl)}" alt="Turn ${turn.turnNumber} illustration">` : ""}
+          ${turn.exportImageSrc ? `<img src="${escapeHtml(turn.exportImageSrc)}" alt="Turn ${turn.turnNumber} illustration">${turn.exportImageNote || ""}` : ""}
           <div>${renderMarkdown(turn.narration || "")}</div>
           <h3>Choices offered</h3>
           <ul>${(turn.choices || []).map(c => `<li>${escapeHtml(c)}</li>`).join("")}</ul>
         </section>`).join("\n");
-      const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font-family:Georgia,serif;max-width:860px;margin:40px auto;padding:0 20px;line-height:1.6;background:#10131c;color:#f8f1ff}img{max-width:100%;border-radius:18px}.turn{border-top:1px solid #444;padding:24px 0}h1,h2{color:#ffdc66}</style></head><body class="demo-build"><h1>${title}</h1><p><strong>Genre:</strong> ${escapeHtml(state.world.genre || "")}</p><p><strong>Tone:</strong> ${escapeHtml(state.world.tone || "")}</p><h2>Character</h2><p>${escapeHtml(state.world.character || "")}</p><h2>Premise</h2><p>${escapeHtml(state.world.premise || "")}</p>${turns}</body></html>`;
+      const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font-family:Georgia,serif;max-width:860px;margin:40px auto;padding:0 20px;line-height:1.6;background:#10131c;color:#f8f1ff}img{max-width:100%;border-radius:18px}.turn{border-top:1px solid #444;padding:24px 0}h1,h2{color:#ffdc66}.export-warning{border:1px solid #8b6b2b;background:#2a2113;color:#ffe7a3;border-radius:12px;padding:10px 12px;margin:12px 0}</style></head><body><h1>${title}</h1>${warningHtml}<p><strong>Genre:</strong> ${escapeHtml(state.world.genre || "")}</p><p><strong>Tone:</strong> ${escapeHtml(state.world.tone || "")}</p><h2>Character</h2><p>${escapeHtml(state.world.character || "")}</p><h2>Premise</h2><p>${escapeHtml(state.world.premise || "")}</p>${turns}</body></html>`;
       downloadBlob(html, safeFileName(state.world.title || "adventure") + ".html", "text/html");
       markFullExportSaved();
+      if (imageFailures.length) {
+        toast(`${imageFailures.length} image${imageFailures.length === 1 ? "" : "s"} could not be embedded. The export kept the original URL for those image${imageFailures.length === 1 ? "" : "s"}.`, 9000);
+      }
     }
 
     function downloadBlob(text, filename, type) {
@@ -3465,33 +4474,88 @@ Rewrite rules:
 
     function clearAll() {
       if (!confirm("Clear all local story state and reset to defaults?")) return;
-      const keepKey = $("apiKey").value.trim();
       state = deepClone(DEFAULT_STATE);
-      state.settings.apiKey = keepKey;
+      enforceDemoLocks();
       localStorage.removeItem(STORAGE_KEY);
       state.unsavedFullExport = false;
       dirtySinceFullExport = false;
       syncStateToForm();
       renderAll();
       toast("Reset complete.");
+      setTimeout(showDemoIntroDialog, 120);
+    }
+
+    function addClick(id, handler) {
+      $(id)?.addEventListener("click", handler);
+    }
+
+    function addCtrlEnter(id, handler) {
+      $(id)?.addEventListener("keydown", (event) => {
+        if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+          event.preventDefault();
+          handler(event);
+        }
+      });
     }
 
     function bindEvents() {
-      ["apiKey", "llmModel", "llmModelCustom", "imageModel", "imageModelCustom", "imageAspectRatio", "imageSize", "temperature", "worldTitle", "genre", "tone", "character", "premise", "rules"].forEach(id => {
-        $(id).addEventListener("change", syncFormToState);
-        $(id).addEventListener("input", () => { $("autosaveStatus").textContent = "Editing"; });
+      const autosaveInputs = ["apiKey", "llmModel", "llmModelCustom", "imageModel", "imageModelCustom", "imageAspectRatio", "imageSize", "temperature", "worldTitle", "genre", "tone", "character", "premise", "rules"];
+      autosaveInputs.forEach(id => {
+        const el = $(id);
+        if (!el) return;
+        el.addEventListener("change", syncFormToState);
+        el.addEventListener("input", () => { $("autosaveStatus").textContent = "Editing"; });
+      });
+      $("apiKey")?.addEventListener("input", scheduleSpecialApiKeyPresetCheck);
+      $("apiKey")?.addEventListener("change", () => { maybeApplySpecialApiKeyPreset(); });
+      addClick("btnMenu", (event) => { event.stopPropagation(); toggleMenu(); });
+      document.addEventListener("click", (event) => {
+        if (!$("menuDropdown") || $("menuDropdown").classList.contains("hidden")) return;
+        if (!event.target.closest(".menu-wrap")) closeMenu();
+      });
+      addClick("btnOpenWorldSetup", () => { closeMenu(); openWorldSetupDialog(); });
+      addClick("btnOpenModelSettings", () => { closeMenu(); openModelSettingsDialog(); });
+      addClick("btnOpenEditState", () => { closeMenu(); openEditStateDialog(); });
+      addClick("btnRestartGettingStarted", restartGettingStartedDialogue);
+      addClick("btnCloseModelSettings", closeModelSettingsDialog);
+      addClick("btnModelSettingsDone", closeModelSettingsDialog);
+      const continueToWorldSetupFromModelSettings = () => { syncFormToState(); closeDialog("modelSettingsDialog"); openWorldSetupDialog(); };
+      addClick("btnModelSettingsNext", continueToWorldSetupFromModelSettings);
+      addClick("btnModelSettingsNextInline", continueToWorldSetupFromModelSettings);
+      addClick("btnCloseWorldSetup", closeWorldSetupDialog);
+      addClick("btnCloseEditState", closeEditStateDialog);
+      addClick("btnGettingUseOwnKey", () => { closeDialog("gettingStartedDialog"); openModelSettingsDialog({ gettingStarted: true, note: "Paste your own OpenRouter key, choose models, then continue to world setup." }); });
+      addClick("btnGettingUseCommunityKey", () => { applyCommunityApiKeySettings(); closeDialog("gettingStartedDialog"); openModelSettingsDialog({ gettingStarted: true, note: "Community API Key loaded. Free-model filtering has been enabled automatically." }); });
+      addClick("btnSkipGettingStartedToStory", () => {
+        closeDialog("gettingStartedDialog");
+        const hasKey = !!($("apiKey")?.value.trim() || state.settings?.apiKey);
+        toast(hasKey ? "Closed Getting Started." : "Key setup skipped for now. You can open Model Settings from the Menu when you are ready.");
       });
       ["rememberKey", "generateImages", "useRpgStats"].forEach(id => $(id).addEventListener("change", () => { syncFormToState(); renderStory(); }));
-      $("llmModel").addEventListener("change", () => { $("llmModelCustom").value = ""; syncFormToState(); });
-      $("imageModel").addEventListener("change", () => { $("imageModelCustom").value = ""; syncFormToState(); });
+      $("filterFreeOptions").addEventListener("change", () => {
+        syncFormToState();
+        populateModelSelects();
+        syncStateToForm();
+        renderAll();
+      });
+      $("llmModel").addEventListener("change", () => {
+        $("llmModelCustom").value = "";
+        syncFormToState();
+        populateModelSelects();
+        applyFreeModelUiState();
+        renderAll();
+      });
+      $("imageModel").addEventListener("change", () => {
+        $("imageModelCustom").value = "";
+        syncFormToState();
+        populateModelSelects();
+        applyFreeModelUiState();
+        renderAll();
+      });
       $("btnOpenWorldGen").addEventListener("click", openWorldGenDialog);
       $("btnWorldGenRun").addEventListener("click", generateWorldSetup);
-      $("worldGenPrompt").addEventListener("keydown", (event) => {
-        if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-          event.preventDefault();
-          generateWorldSetup();
-        }
-      });
+      addCtrlEnter("worldGenPrompt", generateWorldSetup);
+      $$(".sample-world-button").forEach(btn => btn.addEventListener("click", () => loadSampleWorldSetup(btn.dataset.sampleWorld)));
       $("btnStart").addEventListener("click", startAdventure);
       $("btnClear").addEventListener("click", clearAll);
       $("btnTakeAction").addEventListener("click", () => {
@@ -3499,25 +4563,19 @@ Rewrite rules:
         if (!action) return toast("Type an action or choose one of the options.");
         takeAction(action);
       });
-      $("freeAction").addEventListener("keydown", (event) => {
-        if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-          event.preventDefault();
-          $("btnTakeAction").click();
-        }
-      });
+      addCtrlEnter("freeAction", () => $("btnTakeAction")?.click());
       $("btnPrev").addEventListener("click", () => { if (state.viewIndex > 0) { state.viewIndex--; renderAll(); saveState(); } });
       $("btnNext").addEventListener("click", () => { if (state.viewIndex < state.turns.length - 1) { state.viewIndex++; renderAll(); saveState(); } });
       $("btnUndo").addEventListener("click", undoLatest);
       $("btnRetry").addEventListener("click", retryLatest);
-      $("btnLoadModelsLocal").addEventListener("click", loadModels);
+      bindSetupSummary("btnToggleDefaultTrackers", "defaultTrackersPanel");
+      bindSetupSummary("btnToggleRpgStats", "rpgStatsPanel");
       $("btnAddStat").addEventListener("click", addRpgStat);
       $("btnResetStats").addEventListener("click", resetRpgStats);
       $("btnAddDefaultTrigger").addEventListener("click", addDefaultTrigger);
-      $("btnToggleLeftPanel").addEventListener("click", () => togglePanel("left"));
-      $("btnToggleRightPanel").addEventListener("click", () => togglePanel("right"));
-      $("btnExportJson").addEventListener("click", exportJson);
-      $("btnExportMarkdown").addEventListener("click", exportMarkdown);
-      $("btnExportHtml").addEventListener("click", exportHtml);
+      $("btnExportJson").addEventListener("click", () => { closeMenu(); exportJson(); });
+      $("btnExportMarkdown").addEventListener("click", () => { closeMenu(); exportMarkdown(); });
+      $("btnExportHtml").addEventListener("click", () => { closeMenu(); exportHtml().catch(err => showMessagePopup("HTML export failed", err?.message || String(err || "Something went wrong."))); });
       $("importFile").addEventListener("change", e => { if (e.target.files?.[0]) loadStory(e.target.files[0]); e.target.value = ""; });
       $("btnSaveWorld").addEventListener("click", exportWorld);
       $("btnCopyWorld").addEventListener("click", copyWorldToClipboard);
@@ -3525,22 +4583,12 @@ Rewrite rules:
       $("worldImportFile").addEventListener("change", e => { if (e.target.files?.[0]) importWorld(e.target.files[0]); e.target.value = ""; });
       $("btnWorldTextImportCancel").addEventListener("click", closeWorldTextImportDialog);
       $("btnWorldTextImportConfirm").addEventListener("click", () => importWorldFromText($("worldTextImportEditor").value));
-      $("worldTextImportEditor").addEventListener("keydown", (event) => {
-        if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-          event.preventDefault();
-          $("btnWorldTextImportConfirm").click();
-        }
-      });
+      addCtrlEnter("worldTextImportEditor", () => $("btnWorldTextImportConfirm")?.click());
       $("btnAddTracker").addEventListener("click", addTracker);
       $("btnSaveScratch").addEventListener("click", () => { state.scratchpad = $("scratchpad").value; saveState(); renderAll(); toast("Scratchpad updated."); });
       $("btnImagePromptCancel").addEventListener("click", closeImagePromptDialog);
       $("btnRegenerateImageConfirm").addEventListener("click", () => regenerateImageForTurn(transientUi.editingImageTurnId, $("imagePromptEditor").value));
-      $("imagePromptEditor").addEventListener("keydown", (event) => {
-        if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-          event.preventDefault();
-          $("btnRegenerateImageConfirm").click();
-        }
-      });
+      addCtrlEnter("imagePromptEditor", () => $("btnRegenerateImageConfirm")?.click());
       $$(".tab").forEach(btn => btn.addEventListener("click", () => {
         $$(".tab").forEach(b => b.classList.remove("active"));
         btn.classList.add("active");
@@ -3553,6 +4601,7 @@ Rewrite rules:
     bindEvents();
     loadState();
     initDemo();
+    loadModels({ showSuccessToast: false });
   </script>
 </body>
 </html>

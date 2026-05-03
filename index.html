@@ -101,24 +101,19 @@
       font-size: .98rem;
     }
 
-    .top-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      justify-content: flex-end;
-    }
 
     .layout {
       display: grid;
-      grid-template-columns: minmax(285px, 360px) minmax(420px, 1fr) minmax(285px, 380px);
+      grid-template-columns: minmax(420px, 1fr);
       gap: 18px;
       align-items: start;
+      max-width: min(1040px, 100%);
+      margin: 0 auto;
     }
 
     @media (max-width: 1120px) {
       .layout { grid-template-columns: 1fr; }
       header { flex-direction: column; align-items: stretch; }
-      .top-actions { justify-content: flex-start; }
     }
 
     .panel {
@@ -130,22 +125,6 @@
       overflow: hidden;
     }
 
-    .panel-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 16px 17px;
-      border-bottom: 1px solid var(--border);
-      background: rgba(255,255,255,.035);
-    }
-
-    .panel-header h2, .panel-header h3 {
-      margin: 0;
-      font-size: 1rem;
-      color: #fff;
-      letter-spacing: .02em;
-    }
 
     .panel-body { padding: 16px; }
     .stack { display: grid; gap: 12px; }
@@ -153,7 +132,6 @@
     .row.wrap { flex-wrap: wrap; }
     .grow { flex: 1 1 auto; }
     .mini { font-size: .82rem; color: var(--dim); }
-    .muted { color: var(--muted); }
     .dim { color: var(--dim); }
 
     label {
@@ -419,7 +397,6 @@
 
     .track-card h4, .history-card h4 { margin: 0; font-size: .95rem; color: #fff; }
     .track-card p, .history-card p { margin: 0; color: var(--dim); font-size: .86rem; line-height: 1.45; }
-    .track-value { white-space: pre-wrap; color: #e9e1ff; }
 
     details {
       border: 1px solid rgba(255,255,255,.12);
@@ -436,6 +413,59 @@
     }
 
     details > div { padding: 0 12px 12px; }
+
+
+    summary.setup-toggle {
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      justify-content: flex-start;
+      min-height: 50px;
+      border: 1px solid rgba(255,255,255,.14);
+      border-radius: 16px;
+      background: rgba(255,255,255,.055);
+      color: var(--gold2);
+      font-weight: 800;
+      text-align: left;
+      padding: 12px 14px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    summary.setup-toggle::-webkit-details-marker { display: none; }
+    summary.setup-toggle::marker { content: ""; }
+
+    summary.setup-toggle:hover {
+      background: rgba(255,255,255,.09);
+    }
+
+    summary.setup-toggle:focus-visible {
+      border-color: rgba(201,156,255,.72);
+      box-shadow: 0 0 0 4px rgba(201,156,255,.12);
+      outline: none;
+    }
+
+    summary.setup-toggle[aria-expanded="true"] {
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+    }
+
+    .setup-toggle-caret {
+      width: 1.1em;
+      color: var(--gold2);
+      font-weight: 900;
+    }
+
+    .setup-section-body {
+      padding: 12px;
+      border: 1px solid rgba(255,255,255,.14);
+      border-top: 0;
+      border-radius: 0 0 16px 16px;
+      background: rgba(255,255,255,.045);
+      margin-top: -12px;
+    }
 
     .toast {
       position: fixed;
@@ -457,6 +487,31 @@
 
     .toast.show { opacity: 1; transform: translateY(0); }
 
+    .llm-wait-indicator {
+      position: fixed;
+      left: 18px;
+      bottom: 18px;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      max-width: min(360px, calc(100vw - 36px));
+      padding: 12px 14px;
+      background: rgba(7, 13, 24, .94);
+      border: 1px solid rgba(255,255,255,.17);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      color: var(--text);
+      z-index: 49;
+      transform: translateY(16px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .2s ease, transform .2s ease;
+    }
+
+    .llm-wait-indicator.show { opacity: 1; transform: translateY(0); }
+    .llm-wait-indicator .spinner { flex: 0 0 auto; }
+    .llm-wait-indicator-text { min-width: 170px; }
+
     .spinner {
       width: 16px;
       height: 16px;
@@ -472,77 +527,6 @@
     .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     @media (max-width: 560px) { .two-col { grid-template-columns: 1fr; } }
 
-
-    .top-tools {
-      min-width: min(100%, 520px);
-      border: 1px solid rgba(255,255,255,.12);
-      border-radius: 16px;
-      background: rgba(255,255,255,.045);
-      overflow: hidden;
-    }
-
-    .top-tools summary {
-      padding: 11px 13px;
-      list-style: none;
-    }
-
-    .top-tools summary::-webkit-details-marker { display: none; }
-    .top-tools summary::before { content: "☰ "; color: var(--gold2); }
-
-    .top-tool-body {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      justify-content: flex-end;
-      padding: 0 12px 12px;
-    }
-
-    .side-panel.collapsed .panel-body,
-    .side-panel.collapsed .tabs,
-    .side-panel.collapsed .panel-header h2,
-    .side-panel.collapsed .panel-header .pill {
-      display: none !important;
-    }
-
-    .side-panel.collapsed .panel-header {
-      justify-content: center;
-      padding: 10px 6px;
-      border-bottom: 0;
-      writing-mode: vertical-rl;
-      min-height: 150px;
-    }
-
-    .panel-toggle {
-      min-width: 36px;
-      min-height: 36px;
-      padding: 6px 8px;
-    }
-
-    .panel-toggle .collapse-word {
-      font-size: .68rem;
-      line-height: 1;
-      opacity: .78;
-      letter-spacing: .02em;
-      text-transform: lowercase;
-    }
-
-    .layout.left-collapsed { grid-template-columns: 58px minmax(420px, 1fr) minmax(285px, 380px); }
-    .layout.right-collapsed { grid-template-columns: minmax(285px, 360px) minmax(420px, 1fr) 58px; }
-    .layout.left-collapsed.right-collapsed { grid-template-columns: 58px minmax(420px, 1fr) 58px; }
-
-    @media (max-width: 1120px) {
-      .layout.left-collapsed,
-      .layout.right-collapsed,
-      .layout.left-collapsed.right-collapsed { grid-template-columns: 1fr; }
-      .side-panel.collapsed .panel-header { writing-mode: horizontal-tb; min-height: auto; }
-    }
-
-    .model-help {
-      border: 1px solid rgba(116,228,255,.18);
-      background: rgba(116,228,255,.055);
-      border-radius: 15px;
-      padding: 10px;
-    }
 
     .stat-grid { display: grid; gap: 10px; }
 
@@ -629,6 +613,33 @@
       background: rgba(255,255,255,.045);
     }
 
+    .sample-worlds {
+      display: grid;
+      gap: 10px;
+    }
+
+    .sample-world-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    @media (max-width: 640px) { .sample-world-grid { grid-template-columns: 1fr; } }
+
+    .sample-world-button {
+      display: grid;
+      align-content: start;
+      justify-content: stretch;
+      gap: 6px;
+      min-height: 132px;
+      padding: 13px;
+      text-align: left;
+    }
+
+    .sample-world-button strong { color: #fff; font-size: 1rem; }
+    .sample-world-button span { color: var(--muted); font-size: .86rem; line-height: 1.4; font-weight: 500; }
+
+
     .image-actions {
       position: absolute;
       right: 12px;
@@ -686,6 +697,62 @@
 
     .world-gen-card textarea#imagePromptEditor { min-height: 220px; }
 
+
+    .menu-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      min-width: min(100%, 340px);
+    }
+
+    .menu-button { min-width: 112px; }
+
+    .menu-dropdown {
+      position: absolute;
+      top: calc(100% + 10px);
+      right: 0;
+      width: min(320px, calc(100vw - 28px));
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 18px;
+      background: rgba(7, 13, 24, .97);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(16px);
+      z-index: 60;
+    }
+
+    .menu-dropdown button,
+    .menu-dropdown .buttonish {
+      width: 100%;
+      justify-content: flex-start;
+      text-align: left;
+    }
+
+    .menu-file { cursor: pointer; }
+
+    dialog.app-dialog { width: min(920px, calc(100vw - 28px)); }
+    dialog.app-dialog.wide-dialog { width: min(1040px, calc(100vw - 28px)); }
+    dialog.getting-started-dialog { width: min(680px, calc(100vw - 28px)); }
+
+    .dialog-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      gap: 14px;
+    }
+
+    .dialog-scroll {
+      max-height: min(72vh, 760px);
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .dialog-actions { justify-content: flex-end; }
+
     .footer-note {
       margin-top: 18px;
       color: var(--dim);
@@ -704,178 +771,26 @@
           <p class="subtitle">A single-page OpenRouter-powered choose-your-own-adventure story engine.</p>
         </div>
       </div>
-      <details class="top-tools">
-        <summary>Save, Load or Export Story</summary>
-        <div class="top-tool-body">
-          <button id="btnExportJson">Save Full Story</button>
-          <button id="btnExportMarkdown">Export to Markdown</button>
-          <button id="btnExportHtml">Export to HTML</button>
-          <label class="buttonish small" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;">
+      <div class="menu-wrap">
+        <span class="pill" id="autosaveStatus">Autosaved</span>
+        <button id="btnMenu" class="menu-button primary" type="button" aria-expanded="false" aria-controls="menuDropdown">☰ Menu</button>
+        <div id="menuDropdown" class="menu-dropdown hidden" role="menu" aria-label="Main menu">
+          <button id="btnOpenWorldSetup" type="button" role="menuitem">World Set Up</button>
+          <button id="btnExportJson" type="button" role="menuitem">Save Full Story</button>
+          <label class="buttonish menu-file" role="menuitem">
             <input id="importFile" type="file" class="hidden" />
             <span>Load Story</span>
           </label>
+          <button id="btnExportMarkdown" type="button" role="menuitem">Export to Markdown</button>
+          <button id="btnExportHtml" type="button" role="menuitem">Export to HTML</button>
+          <button id="btnOpenModelSettings" type="button" role="menuitem">Model Settings</button>
+          <button id="btnOpenEditState" type="button" role="menuitem">Edit State</button>
+          <button id="btnRestartGettingStarted" type="button" role="menuitem">Restart Getting Started Dialogue</button>
         </div>
-      </details>
+      </div>
     </header>
 
     <main class="layout" id="appLayout">
-      <aside class="panel side-panel" id="leftPanel">
-        <div class="panel-header">
-          <h2>World setup</h2>
-          <div class="row" style="gap:8px;">
-            <span class="pill" id="autosaveStatus">Autosaved</span>
-            <button id="btnToggleLeftPanel" class="small panel-toggle" title="Collapse world setup" aria-label="Collapse world setup">⟨ <span class="collapse-word">collapse</span></button>
-          </div>
-        </div>
-        <div class="panel-body stack">
-          <label>OpenRouter API key
-            <input id="apiKey" type="password" autocomplete="off" placeholder="sk-or-..." />
-          </label>
-          <label class="checkline"><input id="rememberKey" type="checkbox" /> Remember key in this browser</label>
-          <p class="mini">This is a purely client-side app. Calls go directly from your browser to OpenRouter; no key is sent anywhere else by this file.</p>
-
-          <div class="model-help stack">
-            <div class="row wrap">
-              <button id="btnLoadModelsLocal" class="accent grow" type="button">↻ Load OpenRouter model dropdowns</button>
-            </div>
-            <p class="mini">Loads text and image-capable OpenRouter models into dropdown menus. You can also type a custom model ID below if a model is missing.</p>
-          </div>
-
-          <div class="two-col">
-            <label>Story LLM model
-              <select id="llmModel"></select>
-            </label>
-            <label>Temperature
-              <input id="temperature" type="number" min="0" max="2" step="0.05" />
-            </label>
-          </div>
-          <label class="checkline"><input id="freeModelsOnly" type="checkbox" /> Filter to only free models, disable images.</label>
-          <label class="checkline"><input id="freeModelsPollinations" type="checkbox" /> Filter to only free models, use Pollinations.ai for free images.</label>
-          <label>Custom story model ID, optional
-            <input id="llmModelCustom" placeholder="e.g. deepseek/deepseek-v3.2" />
-          </label>
-
-          <label>Image model
-            <select id="imageModel"></select>
-          </label>
-          <label>Custom image model ID, optional
-            <input id="imageModelCustom" placeholder="e.g. black-forest-labs/flux.2-klein-4b" />
-          </label>
-
-          <div class="two-col">
-            <label>Image aspect ratio
-              <select id="imageAspectRatio">
-                <option>1:1</option>
-                <option>3:2</option>
-                <option>4:3</option>
-                <option>16:9</option>
-                <option>2:3</option>
-                <option>3:4</option>
-                <option>9:16</option>
-              </select>
-            </label>
-            <label>Image size
-              <select id="imageSize">
-                <option>1K</option>
-                <option>0.5K</option>
-                <option>2K</option>
-                <option>4K</option>
-              </select>
-            </label>
-          </div>
-          <label class="checkline"><input id="generateImages" type="checkbox" /> Generate an image each turn</label>
-
-          <hr style="width:100%;border:0;border-top:1px solid rgba(255,255,255,.12);" />
-
-
-          <div class="world-gen-box stack">
-            <button id="btnOpenWorldGen" class="primary" type="button">✨ Generate world setup from prompt</button>
-            <p class="mini">Give the LLM a sparse seed or a detailed brief. It will fill in the genre, tone, player character, premise, style guide, and any optional generated RPG stats or trackers.</p>
-          </div>
-
-          <label>World title
-            <input id="worldTitle" placeholder="College of Magic" />
-          </label>
-          <div class="two-col">
-            <label>Genre
-              <input id="genre" placeholder="fantasy, mystery, sci-fi..." />
-            </label>
-            <label>Tone
-              <input id="tone" placeholder="wonder, danger, cozy, grim..." />
-            </label>
-          </div>
-          <label>Player character
-            <textarea id="character" placeholder="Who is the player? Include name, role, wants, flaws, and visual details."></textarea>
-          </label>
-          <label>Premise and starting situation
-            <textarea id="premise" placeholder="What is the world, what just happened, and where does the first scene begin?"></textarea>
-          </label>
-          <label>Story rules / style guide
-            <textarea id="rules" placeholder="E.g. second-person prose, meaningful consequences, no instant success, keep secrets until discovered..."></textarea>
-          </label>
-
-          <details>
-            <summary>Default trackers</summary>
-            <div class="stack">
-              <p class="mini">Define the default world-state trackers that appear in the right panel. When a new adventure starts, the current state is reset from these triggers and their starting values.</p>
-              <label>Default tracker name
-                <input id="defaultTriggerName" placeholder="Relationship: Nadira" />
-              </label>
-              <label>When/how should the LLM update it?
-                <textarea id="defaultTriggerRules" placeholder="Update after any interaction with Nadira. Track trust, debts, secrets shared, and attitude."></textarea>
-              </label>
-              <label>Starting value
-                <textarea id="defaultTriggerValue" placeholder="Neutral; curious about the player."></textarea>
-              </label>
-              <button id="btnAddDefaultTrigger" class="accent" type="button">＋ Add default tracker</button>
-              <div id="defaultTriggerList" class="stack"></div>
-            </div>
-          </details>
-
-          <details>
-            <summary>RPG d% statistics</summary>
-            <div class="stack">
-              <label class="checkline"><input id="useRpgStats" type="checkbox" /> Use RPG-style percentile stats and roll before player actions</label>
-              <p class="mini">When enabled, the app asks the LLM which stat best fits the action, rolls d100 against that stat plus a difficulty modifier, and passes the success/failure result into the scene.</p>
-              <div id="rpgStatsList" class="stat-grid"></div>
-              <div class="two-col">
-                <label>New stat name
-                  <input id="newStatName" placeholder="Alchemy" />
-                </label>
-                <label>Score, d%
-                  <input id="newStatValue" type="number" min="1" max="99" step="1" placeholder="50" />
-                </label>
-              </div>
-              <label>What this stat covers
-                <input id="newStatNote" placeholder="Brewing, identifying reagents, and improvising potions." />
-              </label>
-              <div class="row wrap">
-                <button id="btnAddStat" class="accent" type="button">＋ Add stat</button>
-                <button id="btnResetStats" type="button">Reset default stats</button>
-              </div>
-            </div>
-          </details>
-
-          <div class="row wrap">
-            <button id="btnStart" class="primary grow">✨ Start new adventure</button>
-            <button id="btnClear" class="danger">Clear</button>
-          </div>
-
-          <div class="world-gen-box stack" aria-label="Save or load world setup">
-            <div class="row wrap">
-              <button id="btnSaveWorld" class="accent grow" type="button">💾 Save world</button>
-              <button id="btnCopyWorld" class="accent" type="button">📋 Copy world to clipboard</button>
-              <label class="buttonish small" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;">
-                <input id="worldImportFile" type="file" class="hidden" />
-                <span>📂 Load world from file</span>
-              </label>
-              <button id="btnLoadWorldText" type="button">📝 Load world from text</button>
-            </div>
-            <p class="mini">Save, copy, or share only the world setup: title, genre, tone, player character, premise, style guide, RPG stats, and default trackers. Story turns, current run state, generated pictures, and API keys are not included.</p>
-          </div>
-        </div>
-      </aside>
-
       <section class="panel story-shell">
         <div class="story-top">
           <h2 id="storyTitle">No adventure yet</h2>
@@ -910,15 +825,256 @@
           </div>
         </div>
       </section>
+    </main>
 
-      <aside class="panel side-panel" id="rightPanel">
-        <div class="panel-header">
-          <h2>State & memory</h2>
-          <div class="row" style="gap:8px;">
-            <span class="pill" id="tokenHint">local</span>
-            <button id="btnToggleRightPanel" class="small panel-toggle" title="Collapse state and memory" aria-label="Collapse state and memory"><span class="collapse-word">collapse</span> ⟩</button>
-          </div>
+    <p class="footer-note">Tip: this file is portable. Save it anywhere, open it in a browser, paste your OpenRouter key, and use Save Full Story and Load Story to continue later.</p>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <div class="llm-wait-indicator" id="llmWaitIndicator" aria-live="polite" aria-atomic="true">
+    <span class="spinner" aria-hidden="true"></span>
+    <span id="llmWaitIndicatorText" class="llm-wait-indicator-text">Waiting for response.</span>
+  </div>
+
+  <dialog id="messagePopupDialog" class="world-gen-dialog message-popup-dialog">
+    <form method="dialog" class="world-gen-card">
+      <div>
+        <h3 id="messagePopupTitle">Notice</h3>
+        <p id="messagePopupBody" class="mini" style="white-space:pre-wrap;"></p>
+      </div>
+      <div class="row wrap" style="justify-content:flex-end;">
+        <button id="btnMessagePopupClose" class="primary" type="submit">OK</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="gettingStartedDialog" class="world-gen-dialog app-dialog getting-started-dialog">
+    <div class="world-gen-card">
+      <div class="dialog-header">
+        <div>
+          <h3>Getting Started</h3>
+          <p class="mini">Choose how you want Infinite Quest to connect to OpenRouter.</p>
         </div>
+      </div>
+      <div class="world-gen-box stack">
+        <p>You can paste your own OpenRouter API key, or use the Community API Key, which is limited to free models.</p>
+        <div class="row wrap">
+          <button id="btnGettingUseOwnKey" class="accent grow" type="button">Use My Own OpenRouter API Key</button>
+          <button id="btnGettingUseCommunityKey" class="primary grow" type="button">Use Community API Key (Limited to Only Free Models)</button>
+        </div>
+      </div>
+      <button id="btnSkipGettingStartedToStory" class="ghost hidden" type="button">Take Me to My Story (Skip Key Set Up For Now)</button>
+    </div>
+  </dialog>
+
+  <dialog id="modelSettingsDialog" class="world-gen-dialog app-dialog">
+    <div class="world-gen-card">
+      <div class="dialog-header">
+        <div>
+          <h3 id="modelSettingsTitle">Model Settings</h3>
+          <p class="mini" id="modelSettingsSubtitle">Set your OpenRouter key, model preferences, and image generation options.</p>
+        </div>
+        <button id="btnCloseModelSettings" class="small ghost" type="button" aria-label="Close model settings">✕</button>
+      </div>
+      <div id="gettingStartedModelIntro" class="world-gen-box stack hidden">
+        <p><strong>Getting Started:</strong> confirm your key and model settings below. You can return to these settings from the Menu at any time.</p>
+        <p class="mini" id="gettingStartedModelNote"></p>
+        <div class="row wrap">
+          <button id="btnModelSettingsNextInline" class="primary" type="button">Next (Set Up World or Story)</button>
+        </div>
+      </div>
+      <div class="dialog-scroll stack">
+          <label>OpenRouter API key
+            <input id="apiKey" type="password" autocomplete="off" placeholder="sk-or-..." />
+          </label>
+          <label class="checkline"><input id="rememberKey" type="checkbox" /> Remember key in this browser</label>
+          <p class="mini">This is a purely client-side app. Calls go directly from your browser to OpenRouter; no key is sent anywhere else by this file.</p>
+
+          <label class="checkline"><input id="filterFreeOptions" type="checkbox" /> Filter for free options</label>
+          <p class="mini">When enabled, the story model list shows only <code>openrouter/free</code> and models ending in <code>:free</code>; the image model list shows only the Pollinations.ai option.</p>
+
+          <div class="two-col">
+            <label>Story LLM model
+              <select id="llmModel"></select>
+            </label>
+            <label>Temperature
+              <input id="temperature" type="number" min="0" max="2" step="0.05" />
+            </label>
+          </div>
+          <label>Custom story model ID, optional
+            <input id="llmModelCustom" placeholder="e.g. deepseek/deepseek-v3.2" />
+          </label>
+
+          <label>Image model
+            <select id="imageModel"></select>
+          </label>
+          <label>Custom image model ID, optional
+            <input id="imageModelCustom" placeholder="e.g. black-forest-labs/flux.2-klein-4b" />
+          </label>
+
+          <div class="two-col">
+            <label>Image aspect ratio
+              <select id="imageAspectRatio">
+                <option>1:1</option>
+                <option>3:2</option>
+                <option>4:3</option>
+                <option>16:9</option>
+                <option>2:3</option>
+                <option>3:4</option>
+                <option>9:16</option>
+              </select>
+            </label>
+            <label>Image size
+              <select id="imageSize">
+                <option>1K</option>
+                <option>0.5K</option>
+                <option>2K</option>
+                <option>4K</option>
+              </select>
+            </label>
+          </div>
+          <label class="checkline"><input id="generateImages" type="checkbox" /> Generate an image each turn</label>
+      </div>
+      <div class="row wrap dialog-actions">
+        <button id="btnModelSettingsDone" type="button">Done</button>
+        <button id="btnModelSettingsNext" class="primary hidden" type="button">Next (Set Up World or Story)</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="worldSetupDialog" class="world-gen-dialog app-dialog wide-dialog">
+    <div class="world-gen-card">
+      <div class="dialog-header">
+        <div>
+          <h3>World Set Up</h3>
+          <p class="mini">Create, import, save, or start the world for your story.</p>
+        </div>
+        <button id="btnCloseWorldSetup" class="small ghost" type="button" aria-label="Close world setup">✕</button>
+      </div>
+      <div class="dialog-scroll stack">
+          <div class="world-gen-box stack">
+            <div class="sample-worlds">
+              <div>
+                <h4 style="margin:0;color:#fff;">Load a sample world</h4>
+                <p class="mini">Choose one to fill the setup fields, then click Start New Adventure when you are ready.</p>
+              </div>
+              <div class="sample-world-grid">
+                <button class="sample-world-button accent" type="button" data-sample-world="collegeOfMagic">
+                  <strong>College of Magic</strong>
+                  <span>Study magic, uncover the college’s dark secret, and maybe find romance along the way.</span>
+                </button>
+                <button class="sample-world-button accent" type="button" data-sample-world="neonShadows">
+                  <strong>Neon Shadows</strong>
+                  <span>A hacker hunted by megacorp agents needs allies, leverage, and a plan to hit back.</span>
+                </button>
+                <button class="sample-world-button accent" type="button" data-sample-world="outbreak">
+                  <strong>Outbreak</strong>
+                  <span>After a lost weekend, the city is undead. Find supplies, allies, and a safe haven.</span>
+                </button>
+                <button class="sample-world-button accent" type="button" data-sample-world="tortuga">
+                  <strong>Tortuga</strong>
+                  <span>Shipwrecked on a pirate den, survive, escape, fight the crews, or join them.</span>
+                </button>
+              </div>
+            </div>
+            <button id="btnOpenWorldGen" class="primary" type="button">✨ Generate world setup from prompt</button>
+            <p class="mini">Give the LLM a sparse seed or a detailed brief. It will fill in the genre, tone, player character, premise, style guide, and any optional generated RPG stats or trackers.</p>
+          </div>
+
+          <label>World title
+            <input id="worldTitle" placeholder="College of Magic" />
+          </label>
+          <div class="two-col">
+            <label>Genre
+              <input id="genre" placeholder="fantasy, mystery, sci-fi..." />
+            </label>
+            <label>Tone
+              <input id="tone" placeholder="wonder, danger, cozy, grim..." />
+            </label>
+          </div>
+          <label>Player character
+            <textarea id="character" placeholder="Who is the player? Include name, role, wants, flaws, and visual details."></textarea>
+          </label>
+          <label>Premise and starting situation
+            <textarea id="premise" placeholder="What is the world, what just happened, and where does the first scene begin?"></textarea>
+          </label>
+          <label>Story rules / style guide
+            <textarea id="rules" placeholder="E.g. second-person prose, meaningful consequences, no instant success, keep secrets until discovered..."></textarea>
+          </label>
+          <summary id="btnToggleDefaultTrackers" class="setup-toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="defaultTrackersPanel">
+            <span class="setup-toggle-caret" aria-hidden="true">▸</span>
+            <span>Default trackers</span>
+          </summary>
+            <div id="defaultTrackersPanel" class="setup-section-body stack hidden">
+              <p class="mini">Define the default world-state trackers that appear in Edit State → Trackers. When a new adventure starts, the current state is reset from these triggers and their starting values.</p>
+              <label>Default tracker name
+                <input id="defaultTriggerName" placeholder="Relationship: Nadira" />
+              </label>
+              <label>When/how should the LLM update it?
+                <textarea id="defaultTriggerRules" placeholder="Update after any interaction with Nadira. Track trust, debts, secrets shared, and attitude."></textarea>
+              </label>
+              <label>Starting value
+                <textarea id="defaultTriggerValue" placeholder="Neutral; curious about the player."></textarea>
+              </label>
+              <button id="btnAddDefaultTrigger" class="accent" type="button">＋ Add default tracker</button>
+              <div id="defaultTriggerList" class="stack"></div>
+            </div>
+          <summary id="btnToggleRpgStats" class="setup-toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="rpgStatsPanel">
+            <span class="setup-toggle-caret" aria-hidden="true">▸</span>
+            <span>RPG d% statistics</span>
+          </summary>
+            <div id="rpgStatsPanel" class="setup-section-body stack hidden">
+              <label class="checkline"><input id="useRpgStats" type="checkbox" /> Use RPG-style percentile stats and roll before player actions</label>
+              <p class="mini">When enabled, the app asks the LLM which stat best fits the action, rolls d100 against that stat plus a difficulty modifier, and passes the success/failure result into the scene.</p>
+              <div id="rpgStatsList" class="stat-grid"></div>
+              <div class="two-col">
+                <label>New stat name
+                  <input id="newStatName" placeholder="Alchemy" />
+                </label>
+                <label>Score, d%
+                  <input id="newStatValue" type="number" min="1" max="99" step="1" placeholder="50" />
+                </label>
+              </div>
+              <label>What this stat covers
+                <input id="newStatNote" placeholder="Brewing, identifying reagents, and improvising potions." />
+              </label>
+              <div class="row wrap">
+                <button id="btnAddStat" class="accent" type="button">＋ Add stat</button>
+                <button id="btnResetStats" type="button">Reset default stats</button>
+              </div>
+            </div>
+
+          <div class="row wrap">
+            <button id="btnStart" class="primary grow">✨ Start New Adventure</button>
+            <button id="btnClear" class="danger">Clear</button>
+          </div>
+
+          <div class="world-gen-box stack" aria-label="Save or load world setup">
+            <div class="row wrap">
+              <button id="btnSaveWorld" class="accent grow" type="button">💾 Save world</button>
+              <button id="btnCopyWorld" class="accent" type="button">📋 Copy world to clipboard</button>
+              <label class="buttonish small" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;">
+                <input id="worldImportFile" type="file" class="hidden" />
+                <span>📂 Load world from file</span>
+              </label>
+              <button id="btnLoadWorldText" type="button">📝 Load world from text</button>
+            </div>
+            <p class="mini">Save, copy, or share only the world setup: title, genre, tone, player character, premise, style guide, RPG stats, and default trackers. Story turns, current run state, generated pictures, and API keys are not included.</p>
+          </div>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="editStateDialog" class="world-gen-dialog app-dialog wide-dialog">
+    <div class="world-gen-card">
+      <div class="dialog-header">
+        <div>
+          <h3>Edit State</h3>
+          <p class="mini">Edit the scratchpad, current trackers, and history view.</p>
+        </div>
+        <button id="btnCloseEditState" class="small ghost" type="button" aria-label="Close edit state">✕</button>
+      </div>
+      <div class="dialog-scroll">
         <div class="tabs" role="tablist" aria-label="side panels">
           <button class="tab active" data-tab="scratch">Scratchpad</button>
           <button class="tab" data-tab="trackers">Trackers</button>
@@ -932,7 +1088,7 @@
           </section>
 
           <section id="tab-trackers" class="stack hidden">
-            <p class="mini">This is the current world state the model maintains during play. New adventures are initialized from the Default trackers in the left panel. You can still add or edit one-off trackers here for the current run.</p>
+            <p class="mini">This is the current world state the model maintains during play. New adventures are initialized from Default trackers in the World Set Up popup. You can still add or edit one-off trackers here for the current run.</p>
             <label>Tracker name
               <input id="trackerName" placeholder="Relationship: Nadira" />
             </label>
@@ -951,13 +1107,9 @@
             <div id="historyList" class="stack"></div>
           </section>
         </div>
-      </aside>
-    </main>
-
-    <p class="footer-note">Tip: this file is portable. Save it anywhere, open it in a browser, paste your OpenRouter key, and use Save Full Story and Load Story to continue later.</p>
-  </div>
-
-  <div class="toast" id="toast"></div>
+      </div>
+    </div>
+  </dialog>
 
   <dialog id="worldGenDialog" class="world-gen-dialog">
     <form method="dialog" class="world-gen-card">
@@ -1015,13 +1167,16 @@
   <script>
     const STORAGE_KEY = "infiniteQuestOpenRouterState.v1";
     const DEFAULT_IMAGE_MODEL = "black-forest-labs/flux.2-klein-4b";
+    const POLLINATIONS_IMAGE_MODEL = "pollination.ai";
+    const POLLINATIONS_IMAGE_MODEL_ALIASES = [POLLINATIONS_IMAGE_MODEL, "pollinations.ai"];
     const DEFAULT_LLM_MODEL = "deepseek/deepseek-v3.2";
     const DEFAULT_FREE_LLM_MODEL = "openrouter/free";
     const LEGACY_DEFAULT_LLM_MODEL = "openai/gpt-5.2";
     const SPECIAL_OPENROUTER_KEY_SHA256 = "4b18234b9f22208451723e6a07f560a6ca4bef9172770b89139a23e60e87a833";
     const SPECIAL_OPENROUTER_KEY_LENGTH = 73;
+    const COMMUNITY_API_KEY_ROT13_PARTS = ["fx-be-i1-53855", "45nn757110o8no", "q764811p8ro18p", "6o0p87963rr1sn", "2sn8907715so5q", "819"];
     const DEFAULT_LLM_MODELS = [DEFAULT_LLM_MODEL, DEFAULT_FREE_LLM_MODEL, "anthropic/claude-sonnet-4.5", "google/gemini-2.5-pro", "openai/gpt-4o-mini"];
-    const DEFAULT_IMAGE_MODELS = [DEFAULT_IMAGE_MODEL, "black-forest-labs/flux-1.1-pro", "google/gemini-2.5-flash-image"];
+    const DEFAULT_IMAGE_MODELS = [POLLINATIONS_IMAGE_MODEL, DEFAULT_IMAGE_MODEL, "black-forest-labs/flux-1.1-pro", "google/gemini-2.5-flash-image"];
     const DEFAULT_RPG_STATS = [
       { id: "might", name: "Might", value: 50, note: "Strength, endurance, intimidation, and force." },
       { id: "agility", name: "Agility", value: 50, note: "Speed, balance, stealth, and dodging." },
@@ -1031,6 +1186,294 @@
       { id: "charm", name: "Charm", value: 50, note: "Persuasion, empathy, deception, and social grace." },
       { id: "magic", name: "Magic", value: 50, note: "Spellcasting, arcane theory, rituals, and supernatural senses." }
     ];
+
+    const LEGACY_SCHOOL_OF_MAGIC_DEFAULT_WORLD = {
+      title: "College of Magic",
+      genre: "fantasy academy mystery",
+      tone: "immersive, mysterious, consequential, character-driven",
+      character: "Aria Silverleaf, a first-year student from a modest family, perceptive and stubborn, arriving with a warning from her father that something is wrong at the College.",
+      premise: "The player arrives at a vast magical college on the night before classes begin. Their dormitory is small, old, and candlelit. A neighboring student knocks, offering advice and possibly trouble.",
+      rules: "Write in second person. Keep scenes vivid but concise. Offer meaningful choices with tradeoffs. Do not automatically grant success; let the world push back. Keep secrets in the scratchpad until the player uncovers them. Avoid railroading. End each turn at a decision point."
+    };
+
+    const SAMPLE_WORLDS = {
+      "collegeOfMagic": {
+            "title": "College of Magic",
+            "genre": "fantasy academy mystery with romantic subplots",
+            "tone": "wonder, candlelit secrets, emotional stakes, slow-burn danger",
+            "character": "You are Elian Vale, a scholarship first-year at the ancient College of Magic. You have quick instincts, little money, a talent for forbidden-sounding spellwork you do not understand, and a stubborn desire to prove you belong. You arrive carrying your late aunt's cracked silver wand and a letter warning you never to trust the faculty after midnight.",
+            "premise": "The College of Magic rises from a misty cliff above a black lake, all glass towers, old gargoyles, and warm windows. On your first evening, your room assignment is changed without explanation to a sealed, disused dormitory wing. A charming second-year offers to help you find your room, while a frightened groundskeeper slips you a note that reads: 'The heart under the college is waking.'",
+            "rules": "Write in second person with vivid sensory detail and a magical-academy mystery pace. Make classes, friendships, rivals, romance, and investigations matter. Keep the dark secret hidden until earned through clues. Magic has rules, costs, and social consequences. End every turn with four distinct choices that mix curiosity, caution, courage, and relationship-building.",
+            "useRpgStats": false,
+            "defaultTriggers": [
+                  {
+                        "name": "Mystery: The College Heart",
+                        "rules": "Update when the player finds clues about the hidden power, old rituals, missing students, or midnight faculty activity.",
+                        "value": "The phrase 'heart under the college' has appeared in a warning note, but its meaning is unknown."
+                  },
+                  {
+                        "name": "Reputation: First-Year Circle",
+                        "rules": "Update when the player impresses, alienates, helps, or deceives classmates and dormmates.",
+                        "value": "Unknown scholarship student; curiosity and mild suspicion surround you."
+                  },
+                  {
+                        "name": "Relationship: Rowan Ash",
+                        "rules": "Update after meaningful interactions with Rowan, including trust, attraction, rivalry, secrets, and favors.",
+                        "value": "Rowan, a charming second-year, has offered help. Motives unclear."
+                  },
+                  {
+                        "name": "Inventory & Magic",
+                        "rules": "Track notable items, active spell effects, injuries, debts, and magical consequences.",
+                        "value": "Cracked silver wand; warning letter; no active spells."
+                  }
+            ],
+            "rpgStats": [
+                  {
+                        "id": "arcana",
+                        "name": "Arcana",
+                        "value": 62,
+                        "note": "Spell theory, sensing enchantments, ritual logic, and magical improvisation."
+                  },
+                  {
+                        "id": "wits",
+                        "name": "Wits",
+                        "value": 58,
+                        "note": "Deduction, puzzles, quick plans, and academic insight."
+                  },
+                  {
+                        "id": "charm",
+                        "name": "Charm",
+                        "value": 52,
+                        "note": "Persuasion, empathy, flirtation, and navigating school politics."
+                  },
+                  {
+                        "id": "will",
+                        "name": "Will",
+                        "value": 55,
+                        "note": "Courage, resisting fear, maintaining focus, and mental defenses."
+                  },
+                  {
+                        "id": "agility",
+                        "name": "Agility",
+                        "value": 45,
+                        "note": "Sneaking, dodging, climbing, and fast physical reactions."
+                  },
+                  {
+                        "id": "luck",
+                        "name": "Luck",
+                        "value": 48,
+                        "note": "Coincidences, risky gambits, and uncertain magical side effects."
+                  }
+            ]
+      },
+      "neonShadows": {
+            "title": "Neon Shadows",
+            "genre": "cyberpunk thriller and hacker conspiracy",
+            "tone": "noir, tense, stylish, dangerous, morally gray",
+            "character": "You are Rook, an independent hacker with a cheap cyberdeck, a damaged optic implant, and a reputation for cracking systems nobody else will touch. You survive by taking small jobs in the lower city, until a data heist drops proof that HelixDyne is running human trials inside the municipal network.",
+            "premise": "Rain hisses on the neon streets of Vanta City. You wake in your coffin apartment to alarms: your safehouse address is trending through a corporate kill-channel, your best fixer is not answering, and the stolen HelixDyne archive is decrypting on your deck. Outside, black vans cut through traffic toward your block.",
+            "rules": "Write in second person with cyberpunk noir energy. Keep hacking cinematic but consequential: systems have traces, ICE, alarms, and human costs. Emphasize survival, allies, betrayals, surveillance, and planning a strike against HelixDyne. Avoid technobabble overload; show stakes through scenes. End every turn with four choices that include stealth, social, technical, and risky options when possible.",
+            "useRpgStats": false,
+            "defaultTriggers": [
+                  {
+                        "name": "Heat: HelixDyne Manhunt",
+                        "rules": "Update when the player triggers surveillance, defeats agents, changes safehouses, or exposes evidence.",
+                        "value": "HelixDyne knows your home district and is moving fast, but they do not yet have your exact escape route."
+                  },
+                  {
+                        "name": "Asset: Stolen Archive",
+                        "rules": "Track what has been decrypted, copied, shared, or damaged from the HelixDyne archive.",
+                        "value": "Encrypted archive at 18% decrypt; contents point to illegal human trials."
+                  },
+                  {
+                        "name": "Network: Allies & Favors",
+                        "rules": "Update after deals with fixers, gangs, journalists, activists, or other hackers.",
+                        "value": "Your fixer is missing; no active backup yet."
+                  },
+                  {
+                        "name": "Gear & Injuries",
+                        "rules": "Track cyberdeck condition, implants, weapons, tools, wounds, and resource shortages.",
+                        "value": "Cheap cyberdeck; damaged optic implant; emergency credstick; no major injuries."
+                  }
+            ],
+            "rpgStats": [
+                  {
+                        "id": "hacking",
+                        "name": "Hacking",
+                        "value": 68,
+                        "note": "Intrusion, ICE combat, spoofing, decrypting, and digital sabotage."
+                  },
+                  {
+                        "id": "streetwise",
+                        "name": "Streetwise",
+                        "value": 56,
+                        "note": "Reading the city, finding contacts, black-market deals, and gang politics."
+                  },
+                  {
+                        "id": "stealth",
+                        "name": "Stealth",
+                        "value": 52,
+                        "note": "Avoiding cameras, tailing targets, silent movement, and escapes."
+                  },
+                  {
+                        "id": "cool",
+                        "name": "Cool",
+                        "value": 54,
+                        "note": "Pressure, intimidation, bluffing, and staying calm under fire."
+                  },
+                  {
+                        "id": "tech",
+                        "name": "Tech",
+                        "value": 60,
+                        "note": "Repairing gear, hardware mods, electronics, drones, and improvised devices."
+                  },
+                  {
+                        "id": "combat",
+                        "name": "Combat",
+                        "value": 42,
+                        "note": "Fights, shooting, melee, tactical positioning, and resisting physical danger."
+                  }
+            ]
+      },
+      "outbreak": {
+            "title": "Outbreak",
+            "genre": "urban zombie survival drama",
+            "tone": "gritty, desperate, human, suspenseful, occasionally hopeful",
+            "character": "You are Mara Quinn, a burned-out paramedic who spent the weekend drinking after a career-ending suspension. You wake hungover in your apartment, still wearing yesterday's clothes, with a half-charged phone, a first-aid kit, and a trained instinct to help people even when it gets you hurt.",
+            "premise": "You step into the hallway expecting stale air and neighbor noise. Instead, a body drags itself across the carpet, emergency sirens echo from every direction, and smoke rises over the city skyline. The elevators are dead, someone is screaming behind a locked door, and your phone shows one final message from your sister: 'Do not go to the hospital.'",
+            "rules": "Write in second person with practical survival tension. Resources, noise, injuries, fatigue, trust, and time matter. Zombies are dangerous in groups and through mistakes, not invincible. Human choices should be as scary as the undead. Let the player build or lose a group and search for a safe haven. End each turn with four choices involving survival priorities, moral dilemmas, and risk tradeoffs.",
+            "useRpgStats": false,
+            "defaultTriggers": [
+                  {
+                        "name": "Survival Supplies",
+                        "rules": "Track food, water, medical supplies, weapons, tools, and transport resources.",
+                        "value": "First-aid kit; apartment keys; half-charged phone; little food; no weapon."
+                  },
+                  {
+                        "name": "Threat: Local Outbreak",
+                        "rules": "Update zombie density, fire, blocked routes, hostile survivors, and environmental dangers.",
+                        "value": "Apartment building compromised; streets chaotic; hospital warned against."
+                  },
+                  {
+                        "name": "People: Allies & Dependents",
+                        "rules": "Update who is with the player, their trust, injuries, skills, and conflicts.",
+                        "value": "No allies yet. A neighbor may be trapped behind a locked door."
+                  },
+                  {
+                        "name": "Goal: Safe Haven",
+                        "rules": "Track leads on shelters, vehicles, secure buildings, and information about the player's sister.",
+                        "value": "Sister texted: 'Do not go to the hospital.' No safe route identified."
+                  }
+            ],
+            "rpgStats": [
+                  {
+                        "id": "medical",
+                        "name": "Medical",
+                        "value": 66,
+                        "note": "First aid, triage, infection control, anatomy, and emergency judgment."
+                  },
+                  {
+                        "id": "endurance",
+                        "name": "Endurance",
+                        "value": 50,
+                        "note": "Fatigue, pain tolerance, carrying loads, and sustained effort."
+                  },
+                  {
+                        "id": "perception",
+                        "name": "Perception",
+                        "value": 57,
+                        "note": "Noticing danger, quiet sounds, useful supplies, and route problems."
+                  },
+                  {
+                        "id": "nerve",
+                        "name": "Nerve",
+                        "value": 53,
+                        "note": "Panic control, grim choices, resisting shock, and acting under pressure."
+                  },
+                  {
+                        "id": "improvise",
+                        "name": "Improvise",
+                        "value": 55,
+                        "note": "Makeshift tools, barricades, repairs, and emergency problem solving."
+                  },
+                  {
+                        "id": "fight",
+                        "name": "Fight",
+                        "value": 44,
+                        "note": "Close combat, breaking grabs, using weapons, and physical confrontations."
+                  }
+            ]
+      },
+      "tortuga": {
+            "title": "Tortuga",
+            "genre": "pirate survival adventure",
+            "tone": "salt-stung, dangerous, roguish, adventurous, politically treacherous",
+            "character": "You are Tomas Reed, a shipwreck survivor with no crew, no coin, and a waterlogged map case that does not belong to you. You are clever with knots and knives, cautious around authority, and desperate to get off Tortuga before the map's owners find you.",
+            "premise": "You wake on black sand beneath a burning sunrise, coughing seawater as wreckage washes around you. Beyond the palms lies Tortuga: taverns, gallows, brothels, warehouses, and ships flying flags from half the pirate world. In your map case is a torn chart marked with a red compass rose, and two armed scavengers are already coming down the beach.",
+            "rules": "Write in second person with swashbuckling danger and grounded survival. Tortuga is lawless but political: crews, captains, smugglers, governors' spies, and debt matter. The player can avoid pirates, fight them, bargain with them, or join a crew. Track reputation and practical resources. End each turn with four choices that offer negotiation, stealth, violence, and cunning alternatives where appropriate.",
+            "useRpgStats": false,
+            "defaultTriggers": [
+                  {
+                        "name": "Reputation: Tortuga",
+                        "rules": "Update how pirates, dockhands, smugglers, and authorities view the player.",
+                        "value": "Unknown castaway; easy prey unless you prove otherwise."
+                  },
+                  {
+                        "name": "Secret: Red Compass Map",
+                        "rules": "Track clues, owners, destinations, and who knows about the map case.",
+                        "value": "A torn chart with a red compass rose is hidden in your possession. Its owners are unknown."
+                  },
+                  {
+                        "name": "Resources & Wounds",
+                        "rules": "Track coin, weapons, food, water, clothing, tools, injuries, and seaworthiness.",
+                        "value": "Waterlogged clothes; knife; torn chart case; hungry and bruised but mobile."
+                  },
+                  {
+                        "name": "Crew & Factions",
+                        "rules": "Update offers, enemies, debts, crew affiliations, and faction conflicts.",
+                        "value": "No crew. Two armed scavengers are approaching the beach."
+                  }
+            ],
+            "rpgStats": [
+                  {
+                        "id": "seamanship",
+                        "name": "Seamanship",
+                        "value": 60,
+                        "note": "Sailing, knots, weather, navigation, boats, and shipboard hazards."
+                  },
+                  {
+                        "id": "blade",
+                        "name": "Blade",
+                        "value": 52,
+                        "note": "Knife work, swordplay, dirty fighting, and duels."
+                  },
+                  {
+                        "id": "cunning",
+                        "name": "Cunning",
+                        "value": 58,
+                        "note": "Tricks, schemes, spotting lies, ambushes, and clever escapes."
+                  },
+                  {
+                        "id": "charm",
+                        "name": "Charm",
+                        "value": 50,
+                        "note": "Bargaining, bravado, seduction, leadership, and pirate etiquette."
+                  },
+                  {
+                        "id": "stealth",
+                        "name": "Stealth",
+                        "value": 49,
+                        "note": "Sneaking, hiding contraband, picking routes, and avoiding patrols."
+                  },
+                  {
+                        "id": "grit",
+                        "name": "Grit",
+                        "value": 55,
+                        "note": "Pain, fear, hunger, exhaustion, and refusing to break."
+                  }
+            ]
+      }
+};
 
     // Prompt and storage guardrails. Image models often return base64 data URLs, which are
     // too large for localStorage and should never be sent back to the LLM as context.
@@ -1056,22 +1499,20 @@
         imageAspectRatio: "3:2",
         imageSize: "1K",
         generateImages: true,
-        freeModelsOnly: false,
-        freeModelsWithPollinations: false,
+        filterFreeOptions: false,
         useRpgStats: false,
         temperature: 0.85
       },
       world: {
-        title: "College of Magic",
-        genre: "fantasy academy mystery",
-        tone: "immersive, mysterious, consequential, character-driven",
-        character: "Aria Silverleaf, a first-year student from a modest family, perceptive and stubborn, arriving with a warning from her father that something is wrong at the College.",
-        premise: "The player arrives at a vast magical college on the night before classes begin. Their dormitory is small, old, and candlelit. A neighboring student knocks, offering advice and possibly trouble.",
-        rules: "Write in second person. Keep scenes vivid but concise. Offer meaningful choices with tradeoffs. Do not automatically grant success; let the world push back. Keep secrets in the scratchpad until the player uncovers them. Avoid railroading. End each turn at a decision point."
+        title: "",
+        genre: "",
+        tone: "",
+        character: "",
+        premise: "",
+        rules: ""
       },
       modelLists: { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS },
       rpgStats: deepClone(DEFAULT_RPG_STATS),
-      collapsedPanels: { left: false, right: false },
       defaultTriggers: [],
       baseTrackersAtStart: [],
       trackers: [],
@@ -1090,10 +1531,14 @@
       editingImageTurnId: null,
       specialKeyPresetAppliedForHash: "",
       specialKeyModelsLoadedForHash: "",
-      specialKeyLoadInProgress: false
+      specialKeyLoadInProgress: false,
+      modelSettingsGettingStarted: false
     };
 
     let specialKeyCheckTimer = null;
+    let llmWaitActiveCount = 0;
+    let llmWaitTimer = null;
+    let llmWaitDotCount = 1;
 
     const $ = (id) => document.getElementById(id);
     const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -1101,6 +1546,21 @@
     function deepClone(value) { return JSON.parse(JSON.stringify(value)); }
     function nowIso() { return new Date().toISOString(); }
     function uid(prefix = "id") { return prefix + "_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
+
+    function rot13(value = "") {
+      return String(value).replace(/[A-Za-z]/g, ch => {
+        const base = ch <= "Z" ? 65 : 97;
+        return String.fromCharCode(((ch.charCodeAt(0) - base + 13) % 26) + base);
+      });
+    }
+
+    function communityApiKey() {
+      return rot13(COMMUNITY_API_KEY_ROT13_PARTS.join(""));
+    }
+
+    function isCommunityApiKey(value = "") {
+      return String(value || "").trim() === communityApiKey();
+    }
 
     function sha256HexFallback(value = "") {
       const bytes = typeof TextEncoder !== "undefined"
@@ -1192,18 +1652,17 @@
       const alreadyLoaded = transientUi.specialKeyModelsLoadedForHash === checksum;
       if (alreadyApplied && alreadyLoaded) return true;
 
-      const freeBox = $("freeModelsOnly");
-      const pollinationsBox = $("freeModelsPollinations");
       const imageToggle = $("generateImages");
-      if (freeBox) freeBox.checked = true;
-      if (pollinationsBox) pollinationsBox.checked = false;
-      if (imageToggle) imageToggle.checked = false;
-      $("llmModelCustom").value = "";
+      const filterToggle = $("filterFreeOptions");
+      if (imageToggle) imageToggle.checked = true;
+      if (filterToggle) filterToggle.checked = true;
+      if ($("llmModelCustom")) $("llmModelCustom").value = "";
+      if ($("imageModelCustom")) $("imageModelCustom").value = "";
       state.settings.apiKey = key;
-      state.settings.freeModelsOnly = true;
-      state.settings.freeModelsWithPollinations = false;
       state.settings.llmModel = DEFAULT_FREE_LLM_MODEL;
-      state.settings.generateImages = false;
+      state.settings.imageModel = POLLINATIONS_IMAGE_MODEL;
+      state.settings.generateImages = true;
+      state.settings.filterFreeOptions = true;
       coerceFreeModelSettings(true);
       populateModelSelects();
       applyFreeModelUiState();
@@ -1214,7 +1673,7 @@
       if (!alreadyLoaded && !transientUi.specialKeyLoadInProgress && !busy) {
         transientUi.specialKeyLoadInProgress = true;
         try {
-          toast("Special OpenRouter key detected. Loading free model dropdowns and disabling images.");
+          toast("Special OpenRouter key detected. Switching to openrouter/free with pollination.ai images.");
           await loadModels();
           transientUi.specialKeyModelsLoadedForHash = checksum;
         } finally {
@@ -1232,11 +1691,134 @@
       toast._t = setTimeout(() => el.classList.remove("show"), ms);
     }
 
+    function showMessagePopup(title, message, fallbackMs = 9000) {
+      const dialog = $("messagePopupDialog");
+      const titleEl = $("messagePopupTitle");
+      const bodyEl = $("messagePopupBody");
+      const safeTitle = String(title || "Notice");
+      const safeMessage = String(message || "Something went wrong.");
+      if (!dialog || !titleEl || !bodyEl || typeof dialog.showModal !== "function") {
+        toast(`${safeTitle}: ${safeMessage}`, fallbackMs);
+        return;
+      }
+      titleEl.textContent = safeTitle;
+      bodyEl.textContent = safeMessage;
+      try {
+        if (dialog.open) dialog.close();
+        dialog.showModal();
+      } catch (err) {
+        toast(`${safeTitle}: ${safeMessage}`, fallbackMs);
+      }
+    }
+
+    function sleep(ms = 0) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function updateLlmWaitIndicatorText() {
+      const textEl = $("llmWaitIndicatorText");
+      if (!textEl) return;
+      const dots = ".".repeat(Math.max(1, Math.min(3, llmWaitDotCount)));
+      textEl.textContent = `Waiting for response${dots}`;
+      llmWaitDotCount = llmWaitDotCount >= 3 ? 1 : llmWaitDotCount + 1;
+    }
+
+    function showLlmWaitIndicator() {
+      llmWaitActiveCount += 1;
+      const indicator = $("llmWaitIndicator");
+      if (!indicator) return;
+      indicator.classList.add("show");
+      updateLlmWaitIndicatorText();
+      if (!llmWaitTimer) {
+        llmWaitTimer = setInterval(updateLlmWaitIndicatorText, 550);
+      }
+    }
+
+    function hideLlmWaitIndicator() {
+      llmWaitActiveCount = Math.max(0, llmWaitActiveCount - 1);
+      if (llmWaitActiveCount > 0) return;
+      const indicator = $("llmWaitIndicator");
+      if (llmWaitTimer) {
+        clearInterval(llmWaitTimer);
+        llmWaitTimer = null;
+      }
+      llmWaitDotCount = 1;
+      if (indicator) indicator.classList.remove("show");
+    }
+
+    async function withLlmResponseWait(operation) {
+      showLlmWaitIndicator();
+      try {
+        return await operation();
+      } finally {
+        hideLlmWaitIndicator();
+      }
+    }
+
+    function nextAnimationFrame() {
+      return new Promise(resolve => {
+        if (typeof requestAnimationFrame === "function") requestAnimationFrame(resolve);
+        else setTimeout(resolve, 16);
+      });
+    }
+
+    async function waitForNextPaint(frames = 2) {
+      const count = Math.max(1, Number(frames) || 1);
+      for (let i = 0; i < count; i += 1) await nextAnimationFrame();
+    }
+
+    async function waitUntilUi(predicate, timeoutMs = 1800, intervalMs = 80) {
+      const startedAt = Date.now();
+      while (Date.now() - startedAt < timeoutMs) {
+        try {
+          if (predicate()) return true;
+        } catch (_) {}
+        await sleep(intervalMs);
+      }
+      return false;
+    }
+
+    function isTurnNarrationVisible(turn) {
+      if (!turn) return false;
+      const area = $("storyArea");
+      const article = area?.querySelector("article.narration");
+      const currentTurn = state.turns[state.viewIndex];
+      const expectedText = String(turn.narration || "").trim().replace(/\s+/g, " ").slice(0, 48);
+      const visibleText = String(article?.textContent || "").trim().replace(/\s+/g, " ");
+      return !!article && currentTurn?.id === turn.id && (!expectedText || visibleText.includes(expectedText));
+    }
+
+    async function waitForTurnNarrationDisplayed(turn) {
+      await waitForNextPaint(2);
+      if (isTurnNarrationVisible(turn)) return true;
+      return waitUntilUi(() => isTurnNarrationVisible(turn), 1800, 80);
+    }
+
+    function isTurnImageVisible(turn) {
+      if (!turn || !turn.imageUrl) return false;
+      const area = $("storyArea");
+      const img = area?.querySelector("figure.image-wrap img");
+      const currentTurn = state.turns[state.viewIndex];
+      return !!img
+        && currentTurn?.id === turn.id
+        && img.getAttribute("src") === turn.imageUrl
+        && img.complete
+        && img.naturalWidth > 0;
+    }
+
+    async function waitForTurnImageDisplayed(turn) {
+      await waitForNextPaint(2);
+      if (!turn?.imageUrl || !isSafeDisplayImageUrl(turn.imageUrl)) return true;
+      if (isTurnImageVisible(turn)) return true;
+      return waitUntilUi(() => isTurnImageVisible(turn), 2600, 80);
+    }
+
     function setBusy(isBusy, label = "Working") {
       busy = isBusy;
       const pill = $("busyPill");
       pill.innerHTML = isBusy ? `<span class="spinner"></span> ${escapeHtml(label)}` : "Ready";
-      ["btnStart", "btnTakeAction", "btnRetry", "btnLoadModels", "btnLoadModelsLocal", "btnOpenWorldGen", "btnWorldGenRun", "btnRegenerateImageConfirm", "btnSaveWorld", "btnCopyWorld", "btnLoadWorldText", "btnWorldTextImportConfirm"].forEach(id => { const el = $(id); if (el) el.disabled = isBusy; });
+      ["btnStart", "btnTakeAction", "btnRetry", "btnOpenWorldGen", "btnWorldGenRun", "btnRegenerateImageConfirm", "btnSaveWorld", "btnCopyWorld", "btnLoadWorldText", "btnWorldTextImportConfirm"].forEach(id => { const el = $(id); if (el) el.disabled = isBusy; });
+      $$(".sample-world-button").forEach(button => { button.disabled = isBusy; });
       const freeAction = $("freeAction");
       if (freeAction) freeAction.disabled = isBusy;
       $("btnUndo").disabled = isBusy || state.turns.length === 0;
@@ -1340,7 +1922,7 @@
     }
 
     function compactStateForStorage(sourceState) {
-      const source = sourceState || {};
+      const source = cleanupDeprecatedState(sourceState || {});
       const settings = { ...(source.settings || {}) };
       if (!settings.rememberKey) settings.apiKey = "";
       const compactTracker = t => ({
@@ -1359,7 +1941,6 @@
           images: [...(source.modelLists?.images || DEFAULT_IMAGE_MODELS)]
         },
         rpgStats: (source.rpgStats || []).map(stat => ({ ...stat })),
-        collapsedPanels: { ...(source.collapsedPanels || {}) },
         lastSavedAt: nowIso(),
         scratchpad: truncateText(source.scratchpad || "", 30000),
         turns: (source.turns || []).map(pruneTurnForStorage),
@@ -1423,7 +2004,7 @@
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw) {
           const loaded = JSON.parse(raw);
-          state = mergeDefaults(deepClone(DEFAULT_STATE), loaded);
+          state = cleanupDeprecatedState(mergeDefaults(deepClone(DEFAULT_STATE), loaded));
           state.turns = (state.turns || []).map(turn => ({ ...turn, imageGenerating: false, raw: turn.raw && turn.raw.keys ? turn.raw : { legacy: true } }));
           if (!loaded?.settings?.llmModel || (!state.turns.length && state.settings.llmModel === LEGACY_DEFAULT_LLM_MODEL)) state.settings.llmModel = DEFAULT_LLM_MODEL;
           normalizeDefaultTriggerState();
@@ -1449,6 +2030,23 @@
       return base;
     }
 
+    function isLegacySchoolOfMagicDefaultWorld(world = {}) {
+      return Object.entries(LEGACY_SCHOOL_OF_MAGIC_DEFAULT_WORLD).every(([key, value]) => String(world?.[key] || "").trim() === value);
+    }
+
+    function cleanupDeprecatedState(target = state) {
+      if (!target || typeof target !== "object") return target;
+      if (!target.turns?.length && isLegacySchoolOfMagicDefaultWorld(target.world || {})) {
+        target.world = { title: "", genre: "", tone: "", character: "", premise: "", rules: "" };
+      }
+      delete target.collapsedPanels;
+      if (target.settings && typeof target.settings === "object") {
+        delete target.settings.freeModelsOnly;
+        delete target.settings.freeModelsWithPollinations;
+      }
+      return target;
+    }
+
     function uniqueModelIds(items, fallback = []) {
       const values = [];
       [...(items || []), ...(fallback || [])].forEach(item => {
@@ -1459,55 +2057,110 @@
     }
 
     function isFreeModelId(modelId = "") {
-      const id = String(modelId || "").trim();
+      const id = String(modelId || "").trim().toLowerCase();
       return id === DEFAULT_FREE_LLM_MODEL || id.endsWith(":free");
     }
 
     function freeLlmModelIds(items = []) {
-      return uniqueModelIds(items, [DEFAULT_FREE_LLM_MODEL]).filter(isFreeModelId);
+      const freeItems = uniqueModelIds(items, [DEFAULT_FREE_LLM_MODEL]).filter(isFreeModelId);
+      if (!freeItems.includes(DEFAULT_FREE_LLM_MODEL)) freeItems.unshift(DEFAULT_FREE_LLM_MODEL);
+      return freeItems;
+    }
+
+    function isSafeDisplayImageUrl(url = "") {
+      const value = String(url || "").trim();
+      if (!value) return false;
+      if (/^(https?:|data:image\/|blob:)/i.test(value)) return true;
+      return false;
+    }
+
+    function invalidImageUrlMessage(url = "") {
+      const value = String(url || "").trim();
+      if (/^file:/i.test(value)) return "Local file image URLs cannot be displayed safely from a portable file. Regenerate the image or export the story with web/data image URLs.";
+      return "Saved image URL is not a supported web, data, or blob URL. Regenerate the image to display it.";
+    }
+
+    function isPollinationsImageModel(modelId = "") {
+      const id = String(modelId || "").trim().toLowerCase();
+      return POLLINATIONS_IMAGE_MODEL_ALIASES.some(alias => id === alias.toLowerCase());
+    }
+
+    function normalizeImageModelId(modelId = "") {
+      const id = String(modelId || "").trim();
+      return isPollinationsImageModel(id) ? POLLINATIONS_IMAGE_MODEL : id;
     }
 
     function isFreeTextModelMode() {
-      return !!(state.settings?.freeModelsOnly || state.settings?.freeModelsWithPollinations);
+      return isFreeModelId(state.settings?.llmModel);
     }
 
     function isPollinationsImageMode() {
-      return !!state.settings?.freeModelsWithPollinations;
+      return isPollinationsImageModel(state.settings?.imageModel);
     }
 
     function coerceFreeModelSettings(defaultToFree = false) {
       state.settings ||= {};
-      state.settings.freeModelsOnly = !!state.settings.freeModelsOnly;
-      state.settings.freeModelsWithPollinations = !!state.settings.freeModelsWithPollinations;
-      if (state.settings.freeModelsOnly && state.settings.freeModelsWithPollinations) {
-        state.settings.freeModelsWithPollinations = false;
-      }
-      if (!isFreeTextModelMode()) return;
-      if (defaultToFree || !isFreeModelId(state.settings.llmModel)) {
+
+      // One-time compatibility with older saved browser states that stored two
+      // separate free-mode flags. Current behavior is independent:
+      // - free LLM model => paragraph formatting only
+      // - pollination.ai image model => Pollinations.ai image generation only
+      const legacyPollinationsFree = !!state.settings.freeModelsWithPollinations;
+      const legacyImagelessFree = !!state.settings.freeModelsOnly && !legacyPollinationsFree;
+
+      if (defaultToFree && !isFreeModelId(state.settings.llmModel)) {
         state.settings.llmModel = DEFAULT_FREE_LLM_MODEL;
       }
-      state.settings.generateImages = state.settings.freeModelsWithPollinations ? true : false;
+      if (!state.settings.imageModel) state.settings.imageModel = DEFAULT_IMAGE_MODEL;
+      state.settings.imageModel = normalizeImageModelId(state.settings.imageModel) || DEFAULT_IMAGE_MODEL;
+
+      if (legacyPollinationsFree) {
+        state.settings.imageModel = POLLINATIONS_IMAGE_MODEL;
+        state.settings.generateImages = true;
+      } else if (legacyImagelessFree) {
+        state.settings.generateImages = false;
+      } else {
+        state.settings.generateImages = state.settings.generateImages !== false;
+      }
+
+      delete state.settings.freeModelsOnly;
+      delete state.settings.freeModelsWithPollinations;
     }
 
     function modelInList(kind, value) {
       if (!value) return true;
       const list = kind === "images" ? state.modelLists?.images : state.modelLists?.llms;
-      if (kind === "llms" && isFreeTextModelMode()) return freeLlmModelIds(list).includes(value);
-      return uniqueModelIds(list, kind === "images" ? DEFAULT_IMAGE_MODELS : DEFAULT_LLM_MODELS).includes(value);
+      return uniqueModelIds(list, kind === "images" ? DEFAULT_IMAGE_MODELS : DEFAULT_LLM_MODELS).includes(normalizeImageModelId(value) || value);
     }
 
     function populateModelSelects() {
+      cleanupDeprecatedState();
       state.modelLists ||= { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS };
       coerceFreeModelSettings();
-      const llms = isFreeTextModelMode()
-        ? freeLlmModelIds(state.modelLists.llms)
-        : uniqueModelIds(state.modelLists.llms, DEFAULT_LLM_MODELS);
-      const images = uniqueModelIds(state.modelLists.images, DEFAULT_IMAGE_MODELS);
-      const selectedLlm = isFreeTextModelMode() && !isFreeModelId(state.settings.llmModel)
-        ? DEFAULT_FREE_LLM_MODEL
-        : (state.settings.llmModel || DEFAULT_LLM_MODEL);
+
+      const filterFreeOptions = !!state.settings.filterFreeOptions;
+      const allLlms = uniqueModelIds(state.modelLists.llms, DEFAULT_LLM_MODELS);
+      const allImages = uniqueModelIds(state.modelLists.images, DEFAULT_IMAGE_MODELS).map(normalizeImageModelId);
+
+      let llms = allLlms;
+      let images = allImages;
+      let selectedLlm = state.settings.llmModel || DEFAULT_LLM_MODEL;
+      let selectedImage = state.settings.imageModel || DEFAULT_IMAGE_MODEL;
+
+      if (filterFreeOptions) {
+        llms = freeLlmModelIds(allLlms);
+        if (!isFreeModelId(selectedLlm)) {
+          selectedLlm = DEFAULT_FREE_LLM_MODEL;
+          state.settings.llmModel = selectedLlm;
+        }
+
+        images = [POLLINATIONS_IMAGE_MODEL];
+        selectedImage = POLLINATIONS_IMAGE_MODEL;
+        state.settings.imageModel = selectedImage;
+      }
+
       populateSelect("llmModel", llms, selectedLlm);
-      populateSelect("imageModel", images, state.settings.imageModel || DEFAULT_IMAGE_MODEL);
+      populateSelect("imageModel", images, selectedImage);
     }
 
     function populateSelect(id, items, selectedValue) {
@@ -1539,38 +2192,40 @@
     }
 
     function applyFreeModelUiState() {
-      const disableImagesMode = !!state.settings.freeModelsOnly;
-      const pollinationsMode = !!state.settings.freeModelsWithPollinations;
-      const freeTextMode = disableImagesMode || pollinationsMode;
-      const freeBox = $("freeModelsOnly");
-      const pollinationsBox = $("freeModelsPollinations");
-      if (freeBox) freeBox.checked = disableImagesMode;
-      if (pollinationsBox) pollinationsBox.checked = pollinationsMode;
+      const freeTextMode = isFreeTextModelMode();
+      const pollinationsMode = isPollinationsImageMode();
+      const filterFreeOptions = !!state.settings.filterFreeOptions;
+
       const imageToggle = $("generateImages");
       if (imageToggle) {
-        if (disableImagesMode) imageToggle.checked = false;
-        if (pollinationsMode) imageToggle.checked = true;
-        imageToggle.disabled = freeTextMode;
-        imageToggle.title = disableImagesMode
-          ? "Disabled while filtering to free text models."
-          : pollinationsMode
-            ? "Enabled automatically while using Pollinations.ai free images."
-            : "";
+        imageToggle.checked = state.settings.generateImages !== false;
+        imageToggle.disabled = false;
+        imageToggle.title = freeTextMode
+          ? "Free LLM selected: narration without paragraph breaks will be grouped every 3 sentences."
+          : "";
       }
+
       ["imageModel", "imageModelCustom"].forEach(id => {
         const el = $(id);
         if (!el) return;
-        el.disabled = pollinationsMode;
-        el.title = pollinationsMode ? "Not used while Pollinations.ai free images are enabled." : "";
+        el.disabled = false;
+        el.title = pollinationsMode ? "Pollinations.ai will be used whenever this image model is selected." : "";
       });
+
       const imageAspectRatio = $("imageAspectRatio");
       if (imageAspectRatio) {
         imageAspectRatio.disabled = pollinationsMode;
-        imageAspectRatio.title = pollinationsMode ? "Pollinations.ai free images display as a fixed 1:1 square." : "";
+        imageAspectRatio.title = pollinationsMode ? "Pollinations.ai images display as a fixed 1:1 square." : "";
       }
       const customLlm = $("llmModelCustom");
       if (customLlm) {
-        customLlm.placeholder = freeTextMode ? "Optional: custom model ID ending in :free" : "e.g. deepseek/deepseek-v3.2";
+        customLlm.placeholder = filterFreeOptions || freeTextMode ? "Optional: custom model ID ending in :free" : "e.g. deepseek/deepseek-v3.2";
+      }
+
+      const customImage = $("imageModelCustom");
+      if (customImage) {
+        customImage.disabled = filterFreeOptions;
+        customImage.placeholder = filterFreeOptions ? "Filtered to Pollinations.ai" : "e.g. black-forest-labs/flux.2-klein-4b";
       }
     }
 
@@ -1705,31 +2360,180 @@
       return `<div class="stat-block" aria-label="RPG stats">${stats.map(stat => `<span class="stat-pill">${escapeHtml(stat.name)} <strong>${escapeHtml(stat.value)}%</strong></span>`).join("")}</div>`;
     }
 
-    function applyPanelCollapse() {
-      state.collapsedPanels ||= { left: false, right: false };
-      $("leftPanel")?.classList.toggle("collapsed", !!state.collapsedPanels.left);
-      $("rightPanel")?.classList.toggle("collapsed", !!state.collapsedPanels.right);
-      $("appLayout")?.classList.toggle("left-collapsed", !!state.collapsedPanels.left);
-      $("appLayout")?.classList.toggle("right-collapsed", !!state.collapsedPanels.right);
-      const leftBtn = $("btnToggleLeftPanel");
-      const rightBtn = $("btnToggleRightPanel");
-      if (leftBtn) {
-        leftBtn.innerHTML = state.collapsedPanels.left ? "World setup ▸" : '⟨ <span class="collapse-word">collapse</span>';
-        leftBtn.title = state.collapsedPanels.left ? "Expand world setup" : "Collapse world setup";
-        leftBtn.setAttribute("aria-label", leftBtn.title);
-      }
-      if (rightBtn) {
-        rightBtn.innerHTML = state.collapsedPanels.right ? "State ▸" : '<span class="collapse-word">collapse</span> ⟩';
-        rightBtn.title = state.collapsedPanels.right ? "Expand state and memory" : "Collapse state and memory";
-        rightBtn.setAttribute("aria-label", rightBtn.title);
+
+    function setSetupSectionOpen(panelId, buttonId, open) {
+      const panel = $(panelId);
+      const button = $(buttonId);
+      if (!panel || !button) return;
+      panel.classList.toggle("hidden", !open);
+      button.setAttribute("aria-expanded", String(!!open));
+      const caret = button.querySelector(".setup-toggle-caret");
+      if (caret) caret.textContent = open ? "▾" : "▸";
+    }
+
+    function toggleSetupSection(panelId, buttonId) {
+      const panel = $(panelId);
+      if (!panel) return;
+      setSetupSectionOpen(panelId, buttonId, panel.classList.contains("hidden"));
+    }
+
+    function bindSetupSummary(summaryId, panelId) {
+      const summary = $(summaryId);
+      if (!summary) return;
+      summary.addEventListener("click", () => toggleSetupSection(panelId, summaryId));
+      summary.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          toggleSetupSection(panelId, summaryId);
+        }
+      });
+    }
+
+    function closeWorldSetupSubsections() {
+      setSetupSectionOpen("defaultTrackersPanel", "btnToggleDefaultTrackers", false);
+      setSetupSectionOpen("rpgStatsPanel", "btnToggleRpgStats", false);
+    }
+
+    function closeDialog(id) {
+      const dialog = $(id);
+      if (dialog && dialog.open) dialog.close();
+    }
+
+    function openDialog(id, focusId = "") {
+      const dialog = $(id);
+      if (!dialog) return;
+      syncStateToForm();
+      renderAll();
+      if (typeof dialog.showModal === "function") {
+        dialog.showModal();
+        if (focusId) setTimeout(() => $(focusId)?.focus(), 50);
+      } else {
+        dialog.removeAttribute("hidden");
       }
     }
 
-    function togglePanel(side) {
-      state.collapsedPanels ||= { left: false, right: false };
-      state.collapsedPanels[side] = !state.collapsedPanels[side];
+    function setModelSettingsGettingStartedMode(enabled, note = "") {
+      transientUi.modelSettingsGettingStarted = !!enabled;
+      const intro = $("gettingStartedModelIntro");
+      const title = $("modelSettingsTitle");
+      const subtitle = $("modelSettingsSubtitle");
+      const next = $("btnModelSettingsNext");
+      const noteEl = $("gettingStartedModelNote");
+      if (intro) intro.classList.toggle("hidden", !enabled);
+      if (next) next.classList.toggle("hidden", !enabled);
+      if (title) title.textContent = enabled ? "Getting Started: Model Settings" : "Model Settings";
+      if (subtitle) subtitle.textContent = enabled
+        ? "Choose a key option, confirm model settings, then continue to world setup."
+        : "Set your OpenRouter key, model preferences, and image generation options.";
+      if (noteEl) noteEl.textContent = note || "";
+    }
+
+    function openModelSettingsDialog(options = {}) {
+      const note = options.note || "";
+      setModelSettingsGettingStartedMode(!!options.gettingStarted, note);
+      openDialog("modelSettingsDialog", "apiKey");
+    }
+
+    function closeModelSettingsDialog() {
+      syncFormToState();
+      setModelSettingsGettingStartedMode(false);
+      closeDialog("modelSettingsDialog");
+    }
+
+    function openWorldSetupDialog() {
+      setModelSettingsGettingStartedMode(false);
+      closeWorldSetupSubsections();
+      openDialog("worldSetupDialog", "worldTitle");
+      closeWorldSetupSubsections();
+    }
+
+    function closeWorldSetupDialog() {
+      syncFormToState();
+      syncInlineWorldEditorState();
       saveState();
-      applyPanelCollapse();
+      renderAll();
+      closeDialog("worldSetupDialog");
+    }
+
+    function openEditStateDialog() {
+      syncStateToForm();
+      renderAll();
+      openDialog("editStateDialog", "scratchpad");
+    }
+
+    function closeEditStateDialog() {
+      state.scratchpad = $("scratchpad")?.value || state.scratchpad || "";
+      saveState();
+      closeDialog("editStateDialog");
+    }
+
+    function closeMenu() {
+      const menu = $("menuDropdown");
+      const button = $("btnMenu");
+      if (menu) menu.classList.add("hidden");
+      if (button) button.setAttribute("aria-expanded", "false");
+    }
+
+    function toggleMenu() {
+      const menu = $("menuDropdown");
+      const button = $("btnMenu");
+      if (!menu || !button) return;
+      const willOpen = menu.classList.contains("hidden");
+      menu.classList.toggle("hidden", !willOpen);
+      button.setAttribute("aria-expanded", String(willOpen));
+    }
+
+    function applyCommunityApiKeySettings() {
+      const key = communityApiKey();
+      state.settings.apiKey = key;
+      state.settings.rememberKey = true;
+      state.settings.filterFreeOptions = true;
+      state.settings.llmModel = DEFAULT_FREE_LLM_MODEL;
+      state.settings.imageModel = POLLINATIONS_IMAGE_MODEL;
+      state.settings.generateImages = true;
+      if ($("apiKey")) $("apiKey").value = key;
+      if ($("rememberKey")) $("rememberKey").checked = true;
+      if ($("filterFreeOptions")) $("filterFreeOptions").checked = true;
+      if ($("generateImages")) $("generateImages").checked = true;
+      if ($("llmModelCustom")) $("llmModelCustom").value = "";
+      if ($("imageModelCustom")) $("imageModelCustom").value = "";
+      coerceFreeModelSettings(true);
+      populateModelSelects();
+      applyFreeModelUiState();
+      syncStateToForm();
+      saveState();
+      maybeApplySpecialApiKeyPreset();
+    }
+
+    function openGettingStartedDialog(options = {}) {
+      const dialog = $("gettingStartedDialog");
+      const skip = $("btnSkipGettingStartedToStory");
+      const allowSkip = !!options.allowSkip || !!(state.turns && state.turns.length);
+      if (skip) {
+        skip.classList.toggle("hidden", !allowSkip);
+        skip.textContent = state.turns?.length
+          ? "Take Me to My Story (Skip Key Set Up For Now)"
+          : "Close Getting Started";
+      }
+      if (!dialog) return;
+      try {
+        if (dialog.open) dialog.close();
+        if (typeof dialog.showModal === "function") dialog.showModal();
+      } catch (err) {
+        console.warn("Could not open Getting Started dialog.", err);
+        openModelSettingsDialog({ gettingStarted: true, note: "Choose a key option, confirm model settings, then continue to world setup." });
+      }
+    }
+
+    function maybeOpenGettingStarted() {
+      const hasKey = !!($("apiKey")?.value.trim() || state.settings?.apiKey);
+      if (!hasKey) setTimeout(() => openGettingStartedDialog(), 120);
+    }
+
+    function restartGettingStartedDialogue() {
+      closeMenu();
+      setModelSettingsGettingStartedMode(false);
+      openGettingStartedDialog({ allowSkip: true });
     }
 
     function getPersistableState() {
@@ -1775,28 +2579,30 @@
     function syncFormToState() {
       state.settings.apiKey = $("apiKey").value.trim();
       state.settings.rememberKey = $("rememberKey").checked;
-      const freeOnly = !!$("freeModelsOnly")?.checked;
-      const freePollinations = !!$("freeModelsPollinations")?.checked;
-      const freeTextMode = freeOnly || freePollinations;
+      let filterFreeOptions = !!$("filterFreeOptions")?.checked;
+      const apiKeyValue = $("apiKey").value.trim();
+      if (isCommunityApiKey(apiKeyValue)) {
+        filterFreeOptions = true;
+        if ($("filterFreeOptions")) $("filterFreeOptions").checked = true;
+      }
       const customLlmEl = $("llmModelCustom");
       let customLlm = customLlmEl.value.trim();
-      const customImage = $("imageModelCustom").value.trim();
+      let customImage = normalizeImageModelId($("imageModelCustom").value.trim());
+      if (filterFreeOptions && !isFreeModelId(customLlm)) customLlm = "";
+      if (filterFreeOptions && !isPollinationsImageModel(customImage)) customImage = "";
+
       let selectedLlm = customLlm || $("llmModel").value.trim() || DEFAULT_LLM_MODEL;
-      state.settings.freeModelsOnly = freeOnly;
-      state.settings.freeModelsWithPollinations = freePollinations;
-      if (freeTextMode) {
-        if (customLlm && !isFreeModelId(customLlm)) {
-          customLlm = "";
-          customLlmEl.value = "";
-          selectedLlm = $("llmModel").value.trim() || DEFAULT_FREE_LLM_MODEL;
-        }
-        if (!isFreeModelId(selectedLlm)) selectedLlm = DEFAULT_FREE_LLM_MODEL;
-      }
+      if (filterFreeOptions && !isFreeModelId(selectedLlm)) selectedLlm = DEFAULT_FREE_LLM_MODEL;
+
+      let selectedImage = customImage || normalizeImageModelId($("imageModel").value.trim()) || DEFAULT_IMAGE_MODEL;
+      if (filterFreeOptions) selectedImage = POLLINATIONS_IMAGE_MODEL;
+
       state.settings.llmModel = selectedLlm;
-      state.settings.imageModel = customImage || $("imageModel").value.trim() || DEFAULT_IMAGE_MODEL;
+      state.settings.imageModel = selectedImage;
       state.settings.imageAspectRatio = $("imageAspectRatio").value;
       state.settings.imageSize = $("imageSize").value;
-      state.settings.generateImages = freeOnly ? false : freePollinations ? true : $("generateImages").checked;
+      state.settings.generateImages = $("generateImages").checked;
+      state.settings.filterFreeOptions = filterFreeOptions;
       state.settings.useRpgStats = $("useRpgStats").checked;
       state.settings.temperature = Number($("temperature").value || 0.85);
       state.world.title = $("worldTitle").value.trim();
@@ -1815,18 +2621,18 @@
       state.rpgStats = normalizeRpgStats(state.rpgStats?.length ? state.rpgStats : DEFAULT_RPG_STATS);
       normalizeDefaultTriggerState();
       coerceFreeModelSettings();
+      if (isCommunityApiKey(state.settings.apiKey)) state.settings.filterFreeOptions = true;
       populateModelSelects();
       $("apiKey").value = state.settings.apiKey || "";
       $("rememberKey").checked = !!state.settings.rememberKey;
-      $("freeModelsOnly").checked = !!state.settings.freeModelsOnly;
-      $("freeModelsPollinations").checked = !!state.settings.freeModelsWithPollinations;
       selectModelValue("llmModel", state.settings.llmModel || DEFAULT_LLM_MODEL);
       selectModelValue("imageModel", state.settings.imageModel || DEFAULT_IMAGE_MODEL);
       $("llmModelCustom").value = modelInList("llms", state.settings.llmModel) ? "" : (state.settings.llmModel || "");
       $("imageModelCustom").value = modelInList("images", state.settings.imageModel) ? "" : (state.settings.imageModel || "");
       $("imageAspectRatio").value = state.settings.imageAspectRatio || "3:2";
       $("imageSize").value = state.settings.imageSize || "1K";
-      $("generateImages").checked = state.settings.freeModelsOnly ? false : state.settings.freeModelsWithPollinations ? true : state.settings.generateImages !== false;
+      $("generateImages").checked = state.settings.generateImages !== false;
+      if ($("filterFreeOptions")) $("filterFreeOptions").checked = !!state.settings.filterFreeOptions;
       $("useRpgStats").checked = !!state.settings.useRpgStats;
       $("temperature").value = state.settings.temperature ?? 0.85;
       $("worldTitle").value = state.world.title || "";
@@ -1837,7 +2643,6 @@
       $("rules").value = state.world.rules || "";
       $("scratchpad").value = state.scratchpad || "";
       applyFreeModelUiState();
-      applyPanelCollapse();
     }
 
     function renderAll() {
@@ -1848,7 +2653,6 @@
       renderHistory();
       renderRpgStats();
       renderNavButtons();
-      applyPanelCollapse();
       $("turnPill").textContent = `Turn ${state.turns.length}`;
       $("storyTitle").textContent = state.world.title || "Untitled adventure";
       $("scratchpad").value = state.scratchpad || "";
@@ -1918,12 +2722,12 @@
       }
       const turn = state.turns[state.viewIndex];
       const imageWrapClass = isPollinationsImageMode() ? "image-wrap pollinations-square" : "image-wrap";
-      const imageHtml = turn.imageUrl
+      const imageHtml = isSafeDisplayImageUrl(turn.imageUrl)
         ? `<img src="${escapeHtml(turn.imageUrl)}" alt="Scene illustration">`
-        : `<div class="image-placeholder">${turn.imageGenerating ? `<span class="spinner"></span><br><br>Generating next scene...` : turn.imageError ? "Image generation failed: " + escapeHtml(turn.imageError) : "No image for this turn yet."}<br><br><span class="mini">Prompt: ${escapeHtml(turn.imagePrompt || "")}</span></div>`;
+        : `<div class="image-placeholder">${turn.imageGenerating ? `<span class="spinner"></span><br><br>Generating next scene...` : turn.imageUrl ? escapeHtml(invalidImageUrlMessage(turn.imageUrl)) : turn.imageError ? "Image generation failed: " + escapeHtml(turn.imageError) : "No image for this turn yet."}<br><br><span class="mini">Prompt: ${escapeHtml(turn.imagePrompt || "")}</span></div>`;
       const rollHtml = renderRollCard(turn.roll);
       const statsHtml = rpgStatsSummaryHtml();
-      const imageActionsHtml = state.settings.freeModelsOnly ? "" : `
+      const imageActionsHtml = `
             <div class="image-actions">
               <button id="btnRegenImage" type="button" class="small accent">🖼️ ${turn.imageUrl ? "Regenerate image" : "Generate image"}</button>
             </div>`;
@@ -2008,7 +2812,6 @@
     }
 
     function openImagePromptDialog(turn = state.turns[state.viewIndex]) {
-      if (state.settings.freeModelsOnly) return toast("Image generation is disabled while filtering to free models.");
       if (!turn) return;
       transientUi.editingImageTurnId = turn.id;
       const dialog = $("imagePromptDialog");
@@ -2030,11 +2833,12 @@
     }
 
     async function regenerateImageForTurn(turnId, promptText) {
-      if (state.settings.freeModelsOnly) return toast("Image generation is disabled while filtering to free models.");
       const turn = state.turns.find(t => t.id === turnId) || state.turns[state.viewIndex];
       const finalPrompt = String(promptText || "").trim();
       if (!turn) return toast("Could not find that turn.");
       if (!finalPrompt) return toast("Image prompt cannot be empty.");
+      const previousImageUrl = turn.imageUrl || "";
+      showLlmWaitIndicator();
       turn.imagePrompt = finalPrompt;
       turn.imageUrl = "";
       turn.imageError = "";
@@ -2044,7 +2848,7 @@
       saveState();
       setBusy(true, "Regenerating image");
       try {
-        const result = await callOpenRouterImageWithPg13Retry(finalPrompt);
+        const result = await callOpenRouterImageWithPg13Retry(finalPrompt, { previousImageUrl });
         turn.imageUrl = result.imageUrl;
         turn.imagePrompt = result.prompt;
         turn.imageError = "";
@@ -2058,19 +2862,22 @@
         turn.imageGenerating = false;
         renderAll();
         saveState();
+        await waitForTurnImageDisplayed(turn);
         setBusy(false);
+        hideLlmWaitIndicator();
       }
     }
 
     async function generateImageForTurnInBackground(turn, promptText = turn?.imagePrompt) {
-      if (state.settings.freeModelsOnly) return;
+      if (state.settings.generateImages === false) return;
       if (!turn || !promptText) return;
+      showLlmWaitIndicator();
       turn.imageGenerating = true;
       turn.imageError = "";
       renderAll();
       saveState();
       try {
-        const result = await callOpenRouterImageWithPg13Retry(promptText);
+        const result = await callOpenRouterImageWithPg13Retry(promptText, { previousImageUrl: turn.imageUrl || "" });
         if (!state.turns.some(t => t.id === turn.id)) return;
         turn.imageUrl = result.imageUrl;
         turn.imagePrompt = result.prompt;
@@ -2087,7 +2894,9 @@
           turn.imageGenerating = false;
           renderAll();
           saveState();
+          await waitForTurnImageDisplayed(turn);
         }
+        hideLlmWaitIndicator();
       }
     }
 
@@ -2244,9 +3053,15 @@
     }
 
     function modelJsonError(cause = null) {
-      const err = new Error("The model did not return valid JSON. Try a model with JSON/structured output support, or retry.");
+      const err = new Error("The model did not return valid JSON. The app quietly retried, but the final response was still malformed. Try again, or choose a model with stronger JSON/structured output support.");
       err.isModelJsonError = true;
       if (cause) err.cause = cause;
+      return err;
+    }
+
+    function modelNoContentError(label = "response") {
+      const err = new Error(`OpenRouter returned no ${label} content. This can happen when the selected model returns an empty message or the provider interrupts the completion.`);
+      err.isModelNoContentError = true;
       return err;
     }
 
@@ -2261,6 +3076,23 @@
       throw modelJsonError(firstError);
     }
 
+    function explainWorldGenerationError(err) {
+      const message = err?.message || String(err || "Unknown error");
+      if (err?.isModelJsonError) {
+        return "The model answered with malformed JSON instead of a usable world setup. The app silently tried three additional generations before showing this message.\n\nWhat to try:\n• Press Generate and fill setup again.\n• Use a model with better JSON/structured-output support.\n• Shorten very long prompt details if the response seems to be getting cut off.";
+      }
+      if (err?.isModelNoContentError || /returned no .*content/i.test(message)) {
+        return "OpenRouter returned an empty world setup response. The app could not find any text to turn into the setup fields.\n\nWhat to try:\n• Press Generate and fill setup again.\n• Pick a different story model in Model Settings.\n• If you are using free/community models, the provider may be temporarily unavailable or rate-limited.";
+      }
+      if (/OpenRouter .*request failed/i.test(message)) {
+        return `${message}\n\nCheck that your API key is valid, the selected model is available, and your account has access to that provider.`;
+      }
+      if (/api key/i.test(message)) {
+        return `${message}\n\nOpen Model Settings from the Menu and enter your own OpenRouter key, or choose the Community API Key option.`;
+      }
+      return `${message}\n\nTry again, or choose a different model in Model Settings if this keeps happening.`;
+    }
+
     async function fetchOpenRouterJsonOnce(label, messages, options = {}) {
       const key = state.settings.apiKey.trim();
       if (!key) throw new Error("Enter your OpenRouter API key first.");
@@ -2271,7 +3103,7 @@
         max_tokens: options.max_tokens ?? 1200,
         response_format: { type: "json_object" }
       };
-      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      const res = await withLlmResponseWait(() => fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${key}`,
@@ -2280,29 +3112,34 @@
           "X-OpenRouter-Title": "Infinite Quest CYOA Engine"
         },
         body: JSON.stringify(payload)
-      });
+      }));
       if (!res.ok) {
         const errText = await res.text();
         throw new Error(`OpenRouter ${label} request failed (${res.status}): ${errText.slice(0, 900)}`);
       }
       const data = await res.json();
       const content = data?.choices?.[0]?.message?.content;
-      if (!content) throw new Error(`OpenRouter returned no ${label} content.`);
+      if (!content) throw modelNoContentError(label);
       return extractJson(content);
     }
 
     async function callOpenRouterJson(label, messages, options = {}) {
-      const jsonRetries = isFreeTextModelMode() ? 3 : 0;
-      let lastJsonError = null;
-      for (let attempt = 0; attempt <= jsonRetries; attempt += 1) {
+      const jsonRetries = Number.isInteger(options.json_retries) ? Math.max(0, options.json_retries) : 0;
+      const noContentRetries = Number.isInteger(options.no_content_retries) ? Math.max(0, options.no_content_retries) : 0;
+      const maxRetries = Math.max(jsonRetries, noContentRetries);
+      let lastRetryableError = null;
+      for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
         try {
           return await fetchOpenRouterJsonOnce(label, messages, options);
         } catch (err) {
-          if (!err?.isModelJsonError || attempt >= jsonRetries) throw err;
-          lastJsonError = err;
+          const canRetryJson = !!err?.isModelJsonError && attempt < jsonRetries;
+          const canRetryNoContent = !!err?.isModelNoContentError && attempt < noContentRetries;
+          if (!canRetryJson && !canRetryNoContent) throw err;
+          lastRetryableError = err;
+          await sleep(350 + attempt * 250);
         }
       }
-      throw lastJsonError || modelJsonError();
+      throw lastRetryableError || modelJsonError();
     }
 
 
@@ -2429,6 +3266,7 @@ Make the setup immediately playable and specific enough for a first turn.`;
     async function generateWorldSetup() {
       if (busy) return;
       syncFormToState();
+      syncInlineWorldEditorState();
       const seedPrompt = $("worldGenPrompt")?.value.trim();
       const autoGenerateTrackers = $("worldGenGenerateTrackers")?.checked === true;
       const useRpgPercentileStats = $("worldGenUseRpgStats")?.checked === true;
@@ -2438,12 +3276,15 @@ Make the setup immediately playable and specific enough for a first turn.`;
       }
       if (state.turns.length && !confirm("This will replace the setup fields, RPG stats, and trackers according to the popup options, but it will not delete your existing turns. Continue?")) return;
 
+      closeDialog("worldGenDialog");
+      showLlmWaitIndicator();
+      await waitForNextPaint(1);
       setBusy(true, "Generating world setup");
       try {
         const raw = await callOpenRouterJson("world setup", [
           { role: "system", content: worldSetupSystemPrompt() },
           { role: "user", content: buildWorldSetupPrompt(seedPrompt, useRpgPercentileStats, autoGenerateTrackers) }
-        ], { temperature: Math.max(0.45, Number(state.settings.temperature ?? 0.85)), max_tokens: 2200 });
+        ], { temperature: Math.max(0.45, Number(state.settings.temperature ?? 0.85)), max_tokens: 3200, json_retries: 3, no_content_retries: 3 });
 
         const title = raw.title || raw.world_title || raw.name;
         const genre = raw.genre || raw.genres;
@@ -2476,13 +3317,15 @@ Make the setup immediately playable and specific enough for a first turn.`;
         syncStateToForm();
         saveState();
         renderAll();
+        await waitForNextPaint(2);
         $("worldGenDialog")?.close();
         toast("World setup generated and filled in.");
       } catch (err) {
         console.error(err);
-        toast(err.message || String(err), 9000);
+        showMessagePopup("World setup generation failed", explainWorldGenerationError(err), 12000);
       } finally {
         setBusy(false);
+        hideLlmWaitIndicator();
       }
     }
 
@@ -2667,9 +3510,9 @@ Rewrite rules:
       return rewritten;
     }
 
-    async function callOpenRouterImageWithPg13Retry(prompt) {
+    async function callOpenRouterImageWithPg13Retry(prompt, options = {}) {
       if (isPollinationsImageMode()) {
-        return { imageUrl: await callPollinationsImage(prompt), prompt, usedPg13Rewrite: false, usedPollinations: true };
+        return { imageUrl: await callPollinationsImage(prompt, options), prompt, usedPg13Rewrite: false, usedPollinations: true };
       }
       try {
         return { imageUrl: await callOpenRouterImage(prompt), prompt, usedPg13Rewrite: false, usedPollinations: false };
@@ -2707,14 +3550,33 @@ Rewrite rules:
       });
     }
 
-    async function callPollinationsImage(prompt) {
+    function pollinationsSeedFromUrl(url = "") {
+      try {
+        return new URL(String(url || "")).searchParams.get("seed") || "";
+      } catch (_) {
+        return "";
+      }
+    }
+
+    function randomPollinationsSeed(excludedSeed = "") {
+      const avoid = String(excludedSeed || "");
+      let seed = "";
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        seed = String(Math.floor(Math.random() * 2147483647) + 1);
+        if (seed !== avoid) return seed;
+      }
+      return String((Number(seed) % 2147483647) + 1);
+    }
+
+    async function callPollinationsImage(prompt, options = {}) {
       const finalPrompt = String(prompt || "").trim();
       if (!finalPrompt) throw new Error("Pollinations.ai image prompt cannot be empty.");
       const encodedPrompt = encodeURIComponent(finalPrompt);
-      const seed = Math.floor(Math.random() * 1000000);
+      const previousSeed = options.previousSeed || pollinationsSeedFromUrl(options.previousImageUrl);
+      const seed = randomPollinationsSeed(previousSeed);
       const { width, height } = pollinationsImageDimensions();
       const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?seed=${seed}&width=${width}&height=${height}&nologo=true`;
-      await preloadImageUrl(url, "Pollinations.ai image generation failed. The server might be busy.");
+      await withLlmResponseWait(() => preloadImageUrl(url, "Pollinations.ai image generation failed. The server might be busy."));
       return url;
     }
 
@@ -2730,7 +3592,7 @@ Rewrite rules:
           image_size: state.settings.imageSize || "1K"
         }
       };
-      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      const res = await withLlmResponseWait(() => fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${key}`,
@@ -2739,13 +3601,17 @@ Rewrite rules:
           "X-OpenRouter-Title": "Infinite Quest CYOA Engine"
         },
         body: JSON.stringify(payload)
-      });
+      }));
       if (!res.ok) {
         const errText = await res.text();
         throw new Error(`OpenRouter image request failed (${res.status}): ${errText.slice(0, 900)}`);
       }
       const data = await res.json();
-      return extractImageUrl(data);
+      const imageUrl = extractImageUrl(data);
+      if (isSafeDisplayImageUrl(imageUrl)) {
+        await preloadImageUrl(imageUrl, "Image generation returned an image URL, but it could not be displayed.");
+      }
+      return imageUrl;
     }
 
     function extractImageUrl(data) {
@@ -2827,6 +3693,7 @@ Rewrite rules:
     async function generateTurn(action) {
       syncFormToState();
       if (!branchIfNeeded()) return;
+      showLlmWaitIndicator();
       showGenerationTransition(action);
       setBusy(true, state.settings.useRpgStats && state.turns.length ? "Choosing RPG roll" : "Writing scene");
       try {
@@ -2848,9 +3715,11 @@ Rewrite rules:
 
         renderAll();
         saveState();
+        await waitForTurnNarrationDisplayed(turn);
         $("freeAction").value = "";
         setBusy(false);
         renderAll();
+        await waitForTurnNarrationDisplayed(turn);
 
         if (state.settings.generateImages && turn.imagePrompt) {
           generateImageForTurnInBackground(turn, turn.imagePrompt);
@@ -2861,16 +3730,88 @@ Rewrite rules:
         console.error(err);
         toast(err.message || String(err), 9000);
         setBusy(false);
+      } finally {
+        hideLlmWaitIndicator();
       }
     }
 
-    async function startAdventure() {
-      syncFormToState();
-      if (!state.world.title || !state.world.premise || !state.world.character) {
-        toast("Add at least a title, player character, and premise before starting.");
+    const REQUIRED_WORLD_SETUP_FIELDS = [
+      { key: "title", label: "World title" },
+      { key: "genre", label: "Genre" },
+      { key: "tone", label: "Tone" },
+      { key: "character", label: "Player character" },
+      { key: "premise", label: "Premise and starting situation" },
+      { key: "rules", label: "Story rules / style guide" }
+    ];
+
+    function missingRequiredWorldSetupFields() {
+      return REQUIRED_WORLD_SETUP_FIELDS.filter(field => !String(state.world?.[field.key] || "").trim());
+    }
+
+    function showWorldSetupRequiredError(missingFields) {
+      const missingList = missingFields.map(field => `• ${field.label}`).join("\n");
+      showMessagePopup(
+        "World setup required",
+        `You need to pick a sample adventure or generate your own world before starting.
+
+Missing required fields:
+${missingList}`,
+        11000
+      );
+    }
+
+    function applySampleWorldSetup(key) {
+      const sample = SAMPLE_WORLDS[key];
+      if (!sample) throw new Error("Sample world not found.");
+      const payload = extractWorldImportPayload(sample);
+      state.world.title = String(payload.world.title || "").trim();
+      state.world.genre = Array.isArray(payload.world.genre) ? payload.world.genre.join(", ") : String(payload.world.genre || "").trim();
+      state.world.tone = Array.isArray(payload.world.tone) ? payload.world.tone.join(", ") : String(payload.world.tone || "").trim();
+      state.world.character = String(payload.world.character || "").trim();
+      state.world.premise = String(payload.world.premise || "").trim();
+      state.world.rules = String(payload.world.rules || "").trim();
+      if (payload.rpgStats.length) state.rpgStats = payload.rpgStats;
+      if (payload.useRpgStats !== undefined) state.settings.useRpgStats = !!payload.useRpgStats;
+      else if (payload.rpgStats.length) state.settings.useRpgStats = true;
+      state.defaultTriggers = payload.defaultTriggers;
+      state.baseTrackersAtStart = deepClone(state.defaultTriggers);
+      if (!state.turns.length) state.trackers = cloneDefaultTriggersForCurrentRun();
+      syncStateToForm();
+      saveState();
+      renderAll();
+      return sample;
+    }
+
+    function loadSampleWorldSetup(key) {
+      if (busy) return;
+      const sample = SAMPLE_WORLDS[key];
+      if (!sample) {
+        showMessagePopup("Sample world unavailable", "That sample world could not be found in this build.");
         return;
       }
-      if (state.turns.length && !confirm("Start a new adventure and replace the current turn history?")) return;
+      try {
+        applySampleWorldSetup(key);
+        showMessagePopup(
+          "Sample world loaded",
+          `“${sample.title}” has been loaded into the setup fields. Review or edit it, then click Start New Adventure when you are ready.`
+        );
+      } catch (err) {
+        console.error(err);
+        showMessagePopup("Sample world failed", err?.message || String(err || "Something went wrong."));
+      }
+    }
+
+    async function startAdventure(options = {}) {
+      syncFormToState();
+      syncInlineWorldEditorState();
+      const missingFields = missingRequiredWorldSetupFields();
+      if (missingFields.length) {
+        showWorldSetupRequiredError(missingFields);
+        return;
+      }
+      const skipExistingTurnsConfirm = !!options?.skipExistingTurnsConfirm;
+      if (!skipExistingTurnsConfirm && state.turns.length && !confirm("Start a new adventure and replace the current turn history?")) return;
+      closeDialog("worldSetupDialog");
       syncDefaultTriggerEditorState();
       state.baseTrackersAtStart = deepClone(state.defaultTriggers || []);
       state.trackers = cloneDefaultTriggersForCurrentRun();
@@ -2910,22 +3851,28 @@ Rewrite rules:
       await generateTurn(action);
     }
 
-    async function loadModels() {
+    async function loadModels({ showSuccessToast = true } = {}) {
       syncFormToState();
       setBusy(true, "Loading models");
       try {
         const headers = state.settings.apiKey ? { "Authorization": `Bearer ${state.settings.apiKey}` } : {};
-        const shouldLoadImages = !isFreeTextModelMode();
         const allRes = await fetch("https://openrouter.ai/api/v1/models", { headers });
         if (!allRes.ok) throw new Error(`Model list failed (${allRes.status}).`);
         const all = await allRes.json();
         let imageIds = state.modelLists?.images || DEFAULT_IMAGE_MODELS;
+        let loadedImages = false;
 
-        if (shouldLoadImages) {
+        try {
           const imgRes = await fetch("https://openrouter.ai/api/v1/models?output_modalities=image", { headers });
-          if (!imgRes.ok) throw new Error(`Image model list failed (${imgRes.status}).`);
-          const imgs = await imgRes.json();
-          imageIds = (imgs.data || []).map(m => m.id).sort();
+          if (imgRes.ok) {
+            const imgs = await imgRes.json();
+            imageIds = (imgs.data || []).map(m => m.id).sort();
+            loadedImages = true;
+          } else {
+            console.warn(`Image model list failed (${imgRes.status}). Keeping existing image dropdown.`);
+          }
+        } catch (imageErr) {
+          console.warn("Image model list failed. Keeping existing image dropdown.", imageErr);
         }
 
         state.modelLists = {
@@ -2937,7 +3884,9 @@ Rewrite rules:
         selectModelValue("llmModel", state.settings.llmModel || DEFAULT_LLM_MODEL);
         selectModelValue("imageModel", state.settings.imageModel || DEFAULT_IMAGE_MODEL);
         saveState();
-        toast(shouldLoadImages ? "Loaded OpenRouter model dropdowns." : "Loaded free OpenRouter model dropdown.");
+        if (showSuccessToast) {
+          toast(loadedImages ? "Loaded OpenRouter model dropdowns." : "Loaded text models; kept the existing image dropdown.");
+        }
       } catch (err) {
         console.error(err);
         toast(err.message || String(err), 7000);
@@ -3197,22 +4146,83 @@ Rewrite rules:
       downloadBlob(lines.join("\n"), safeFileName(state.world.title || "adventure") + ".md", "text/markdown");
     }
 
-    function exportHtml() {
+    function blobToDataUrl(blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(reader.error || new Error("Could not read image data."));
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    async function imageUrlToHtmlExportSrc(url = "") {
+      const source = String(url || "").trim();
+      if (!source || !isSafeDisplayImageUrl(source)) return { src: "", embedded: false, reason: "No exportable image URL was found." };
+      if (/^data:image\//i.test(source)) return { src: source, embedded: true };
+
+      try {
+        const response = await fetch(source, { mode: "cors" });
+        if (!response.ok) throw new Error(`Image request failed with HTTP ${response.status}.`);
+        const blob = await response.blob();
+        const mimeType = String(blob.type || "").toLowerCase();
+        if (!mimeType.startsWith("image/")) throw new Error(`The URL returned ${blob.type || "an unknown file type"}, not an image.`);
+        const dataUrl = await blobToDataUrl(blob);
+        if (!/^data:image\//i.test(dataUrl)) throw new Error("The downloaded image could not be converted to a data URL.");
+        return { src: dataUrl, embedded: true };
+      } catch (err) {
+        return { src: source, embedded: false, reason: err?.message || String(err || "Image could not be embedded.") };
+      }
+    }
+
+    async function buildHtmlExportTurns() {
+      const imageFailures = [];
+      const turns = [];
+
+      for (const turn of state.turns) {
+        let imageSrc = "";
+        let imageNote = "";
+
+        if (turn.imageUrl && isSafeDisplayImageUrl(turn.imageUrl)) {
+          const result = await imageUrlToHtmlExportSrc(turn.imageUrl);
+          imageSrc = result.src || "";
+          if (!result.embedded) {
+            imageFailures.push({ turnNumber: turn.turnNumber, reason: result.reason || "The image host blocked browser-side embedding." });
+            imageNote = `<p class="export-warning">Image for this turn could not be embedded for offline viewing, so the original URL was kept. Reason: ${escapeHtml(result.reason || "The image host blocked browser-side embedding.")}</p>`;
+          }
+        }
+
+        turns.push({ ...turn, exportImageSrc: imageSrc, exportImageNote: imageNote });
+      }
+
+      return { turns, imageFailures };
+    }
+
+    async function exportHtml() {
       syncFormToState();
+      const exportableImageCount = state.turns.filter(turn => turn.imageUrl && isSafeDisplayImageUrl(turn.imageUrl)).length;
+      if (exportableImageCount) toast(`Embedding ${exportableImageCount} image${exportableImageCount === 1 ? "" : "s"} into the HTML export...`, 5000);
+
+      const { turns: turnsForExport, imageFailures } = await buildHtmlExportTurns();
       const title = escapeHtml(state.world.title || "Untitled adventure");
-      const turns = state.turns.map(turn => `
+      const warningHtml = imageFailures.length
+        ? `<div class="export-warning"><strong>Offline image warning:</strong> ${imageFailures.length} image${imageFailures.length === 1 ? "" : "s"} could not be embedded and may not appear while offline.</div>`
+        : "";
+      const turns = turnsForExport.map(turn => `
         <section class="turn">
           <h2>Turn ${turn.turnNumber}</h2>
           <p><strong>Player action:</strong> ${escapeHtml(turn.action || "Begin")}</p>
           ${turn.roll ? `<p><strong>RPG roll:</strong> ${escapeHtml(turn.roll.statName)} ${escapeHtml(turn.roll.base)}% ${turn.roll.modifier >= 0 ? "+" : ""}${escapeHtml(turn.roll.modifier)} = target ${escapeHtml(turn.roll.target)}%. Rolled ${escapeHtml(turn.roll.roll)}: <strong>${turn.roll.success ? "SUCCESS" : "FAILURE"}</strong>.</p>` : ""}
-          ${turn.imageUrl ? `<img src="${escapeHtml(turn.imageUrl)}" alt="Turn ${turn.turnNumber} illustration">` : ""}
+          ${turn.exportImageSrc ? `<img src="${escapeHtml(turn.exportImageSrc)}" alt="Turn ${turn.turnNumber} illustration">${turn.exportImageNote || ""}` : ""}
           <div>${renderMarkdown(turn.narration || "")}</div>
           <h3>Choices offered</h3>
           <ul>${(turn.choices || []).map(c => `<li>${escapeHtml(c)}</li>`).join("")}</ul>
         </section>`).join("\n");
-      const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font-family:Georgia,serif;max-width:860px;margin:40px auto;padding:0 20px;line-height:1.6;background:#10131c;color:#f8f1ff}img{max-width:100%;border-radius:18px}.turn{border-top:1px solid #444;padding:24px 0}h1,h2{color:#ffdc66}</style></head><body><h1>${title}</h1><p><strong>Genre:</strong> ${escapeHtml(state.world.genre || "")}</p><p><strong>Tone:</strong> ${escapeHtml(state.world.tone || "")}</p><h2>Character</h2><p>${escapeHtml(state.world.character || "")}</p><h2>Premise</h2><p>${escapeHtml(state.world.premise || "")}</p>${turns}</body></html>`;
+      const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font-family:Georgia,serif;max-width:860px;margin:40px auto;padding:0 20px;line-height:1.6;background:#10131c;color:#f8f1ff}img{max-width:100%;border-radius:18px}.turn{border-top:1px solid #444;padding:24px 0}h1,h2{color:#ffdc66}.export-warning{border:1px solid #8b6b2b;background:#2a2113;color:#ffe7a3;border-radius:12px;padding:10px 12px;margin:12px 0}</style></head><body><h1>${title}</h1>${warningHtml}<p><strong>Genre:</strong> ${escapeHtml(state.world.genre || "")}</p><p><strong>Tone:</strong> ${escapeHtml(state.world.tone || "")}</p><h2>Character</h2><p>${escapeHtml(state.world.character || "")}</p><h2>Premise</h2><p>${escapeHtml(state.world.premise || "")}</p>${turns}</body></html>`;
       downloadBlob(html, safeFileName(state.world.title || "adventure") + ".html", "text/html");
       markFullExportSaved();
+      if (imageFailures.length) {
+        toast(`${imageFailures.length} image${imageFailures.length === 1 ? "" : "s"} could not be embedded. The export kept the original URL for those image${imageFailures.length === 1 ? "" : "s"}.`, 9000);
+      }
     }
 
     function downloadBlob(text, filename, type) {
@@ -3292,50 +4302,77 @@ Rewrite rules:
       toast("Reset complete.");
     }
 
-    function bindEvents() {
-      ["apiKey", "llmModel", "llmModelCustom", "imageModel", "imageModelCustom", "imageAspectRatio", "imageSize", "temperature", "worldTitle", "genre", "tone", "character", "premise", "rules"].forEach(id => {
-        $(id).addEventListener("change", syncFormToState);
-        $(id).addEventListener("input", () => { $("autosaveStatus").textContent = "Editing"; });
-      });
-      $("apiKey").addEventListener("input", scheduleSpecialApiKeyPresetCheck);
-      $("apiKey").addEventListener("change", () => { maybeApplySpecialApiKeyPreset(); });
-      ["rememberKey", "generateImages", "useRpgStats"].forEach(id => $(id).addEventListener("change", () => { syncFormToState(); renderStory(); }));
-      function handleFreeModeCheckboxChange(mode) {
-        const freeBox = $("freeModelsOnly");
-        const pollinationsBox = $("freeModelsPollinations");
-        if (mode === "disable" && freeBox.checked) pollinationsBox.checked = false;
-        if (mode === "pollinations" && pollinationsBox.checked) freeBox.checked = false;
-        state.settings.freeModelsOnly = freeBox.checked;
-        state.settings.freeModelsWithPollinations = pollinationsBox.checked;
-        if (isFreeTextModelMode()) {
-          state.settings.llmModel = DEFAULT_FREE_LLM_MODEL;
-          $("llmModelCustom").value = "";
-        }
-        if (state.settings.freeModelsOnly) {
-          state.settings.generateImages = false;
-          $("generateImages").checked = false;
-        }
-        if (state.settings.freeModelsWithPollinations) {
-          state.settings.generateImages = true;
-          $("generateImages").checked = true;
-        }
-        populateModelSelects();
-        applyFreeModelUiState();
-        syncFormToState();
-        renderAll();
-      }
-      $("freeModelsOnly").addEventListener("change", () => handleFreeModeCheckboxChange("disable"));
-      $("freeModelsPollinations").addEventListener("change", () => handleFreeModeCheckboxChange("pollinations"));
-      $("llmModel").addEventListener("change", () => { $("llmModelCustom").value = ""; syncFormToState(); });
-      $("imageModel").addEventListener("change", () => { $("imageModelCustom").value = ""; syncFormToState(); });
-      $("btnOpenWorldGen").addEventListener("click", openWorldGenDialog);
-      $("btnWorldGenRun").addEventListener("click", generateWorldSetup);
-      $("worldGenPrompt").addEventListener("keydown", (event) => {
+    function addClick(id, handler) {
+      $(id)?.addEventListener("click", handler);
+    }
+
+    function addCtrlEnter(id, handler) {
+      $(id)?.addEventListener("keydown", (event) => {
         if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
           event.preventDefault();
-          generateWorldSetup();
+          handler(event);
         }
       });
+    }
+
+    function bindEvents() {
+      const autosaveInputs = ["apiKey", "llmModel", "llmModelCustom", "imageModel", "imageModelCustom", "imageAspectRatio", "imageSize", "temperature", "worldTitle", "genre", "tone", "character", "premise", "rules"];
+      autosaveInputs.forEach(id => {
+        const el = $(id);
+        if (!el) return;
+        el.addEventListener("change", syncFormToState);
+        el.addEventListener("input", () => { $("autosaveStatus").textContent = "Editing"; });
+      });
+      $("apiKey")?.addEventListener("input", scheduleSpecialApiKeyPresetCheck);
+      $("apiKey")?.addEventListener("change", () => { maybeApplySpecialApiKeyPreset(); });
+      addClick("btnMenu", (event) => { event.stopPropagation(); toggleMenu(); });
+      document.addEventListener("click", (event) => {
+        if (!$("menuDropdown") || $("menuDropdown").classList.contains("hidden")) return;
+        if (!event.target.closest(".menu-wrap")) closeMenu();
+      });
+      addClick("btnOpenWorldSetup", () => { closeMenu(); openWorldSetupDialog(); });
+      addClick("btnOpenModelSettings", () => { closeMenu(); openModelSettingsDialog(); });
+      addClick("btnOpenEditState", () => { closeMenu(); openEditStateDialog(); });
+      addClick("btnRestartGettingStarted", restartGettingStartedDialogue);
+      addClick("btnCloseModelSettings", closeModelSettingsDialog);
+      addClick("btnModelSettingsDone", closeModelSettingsDialog);
+      const continueToWorldSetupFromModelSettings = () => { syncFormToState(); closeDialog("modelSettingsDialog"); openWorldSetupDialog(); };
+      addClick("btnModelSettingsNext", continueToWorldSetupFromModelSettings);
+      addClick("btnModelSettingsNextInline", continueToWorldSetupFromModelSettings);
+      addClick("btnCloseWorldSetup", closeWorldSetupDialog);
+      addClick("btnCloseEditState", closeEditStateDialog);
+      addClick("btnGettingUseOwnKey", () => { closeDialog("gettingStartedDialog"); openModelSettingsDialog({ gettingStarted: true, note: "Paste your own OpenRouter key, choose models, then continue to world setup." }); });
+      addClick("btnGettingUseCommunityKey", () => { applyCommunityApiKeySettings(); closeDialog("gettingStartedDialog"); openModelSettingsDialog({ gettingStarted: true, note: "Community API Key loaded. Free-model filtering has been enabled automatically." }); });
+      addClick("btnSkipGettingStartedToStory", () => {
+        closeDialog("gettingStartedDialog");
+        const hasKey = !!($("apiKey")?.value.trim() || state.settings?.apiKey);
+        toast(hasKey ? "Closed Getting Started." : "Key setup skipped for now. You can open Model Settings from the Menu when you are ready.");
+      });
+      ["rememberKey", "generateImages", "useRpgStats"].forEach(id => $(id).addEventListener("change", () => { syncFormToState(); renderStory(); }));
+      $("filterFreeOptions").addEventListener("change", () => {
+        syncFormToState();
+        populateModelSelects();
+        syncStateToForm();
+        renderAll();
+      });
+      $("llmModel").addEventListener("change", () => {
+        $("llmModelCustom").value = "";
+        syncFormToState();
+        populateModelSelects();
+        applyFreeModelUiState();
+        renderAll();
+      });
+      $("imageModel").addEventListener("change", () => {
+        $("imageModelCustom").value = "";
+        syncFormToState();
+        populateModelSelects();
+        applyFreeModelUiState();
+        renderAll();
+      });
+      $("btnOpenWorldGen").addEventListener("click", openWorldGenDialog);
+      $("btnWorldGenRun").addEventListener("click", generateWorldSetup);
+      addCtrlEnter("worldGenPrompt", generateWorldSetup);
+      $$(".sample-world-button").forEach(btn => btn.addEventListener("click", () => loadSampleWorldSetup(btn.dataset.sampleWorld)));
       $("btnStart").addEventListener("click", startAdventure);
       $("btnClear").addEventListener("click", clearAll);
       $("btnTakeAction").addEventListener("click", () => {
@@ -3343,25 +4380,19 @@ Rewrite rules:
         if (!action) return toast("Type an action or choose one of the options.");
         takeAction(action);
       });
-      $("freeAction").addEventListener("keydown", (event) => {
-        if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-          event.preventDefault();
-          $("btnTakeAction").click();
-        }
-      });
+      addCtrlEnter("freeAction", () => $("btnTakeAction")?.click());
       $("btnPrev").addEventListener("click", () => { if (state.viewIndex > 0) { state.viewIndex--; renderAll(); saveState(); } });
       $("btnNext").addEventListener("click", () => { if (state.viewIndex < state.turns.length - 1) { state.viewIndex++; renderAll(); saveState(); } });
       $("btnUndo").addEventListener("click", undoLatest);
       $("btnRetry").addEventListener("click", retryLatest);
-      $("btnLoadModelsLocal").addEventListener("click", loadModels);
+      bindSetupSummary("btnToggleDefaultTrackers", "defaultTrackersPanel");
+      bindSetupSummary("btnToggleRpgStats", "rpgStatsPanel");
       $("btnAddStat").addEventListener("click", addRpgStat);
       $("btnResetStats").addEventListener("click", resetRpgStats);
       $("btnAddDefaultTrigger").addEventListener("click", addDefaultTrigger);
-      $("btnToggleLeftPanel").addEventListener("click", () => togglePanel("left"));
-      $("btnToggleRightPanel").addEventListener("click", () => togglePanel("right"));
-      $("btnExportJson").addEventListener("click", exportJson);
-      $("btnExportMarkdown").addEventListener("click", exportMarkdown);
-      $("btnExportHtml").addEventListener("click", exportHtml);
+      $("btnExportJson").addEventListener("click", () => { closeMenu(); exportJson(); });
+      $("btnExportMarkdown").addEventListener("click", () => { closeMenu(); exportMarkdown(); });
+      $("btnExportHtml").addEventListener("click", () => { closeMenu(); exportHtml().catch(err => showMessagePopup("HTML export failed", err?.message || String(err || "Something went wrong."))); });
       $("importFile").addEventListener("change", e => { if (e.target.files?.[0]) loadStory(e.target.files[0]); e.target.value = ""; });
       $("btnSaveWorld").addEventListener("click", exportWorld);
       $("btnCopyWorld").addEventListener("click", copyWorldToClipboard);
@@ -3369,22 +4400,12 @@ Rewrite rules:
       $("worldImportFile").addEventListener("change", e => { if (e.target.files?.[0]) importWorld(e.target.files[0]); e.target.value = ""; });
       $("btnWorldTextImportCancel").addEventListener("click", closeWorldTextImportDialog);
       $("btnWorldTextImportConfirm").addEventListener("click", () => importWorldFromText($("worldTextImportEditor").value));
-      $("worldTextImportEditor").addEventListener("keydown", (event) => {
-        if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-          event.preventDefault();
-          $("btnWorldTextImportConfirm").click();
-        }
-      });
+      addCtrlEnter("worldTextImportEditor", () => $("btnWorldTextImportConfirm")?.click());
       $("btnAddTracker").addEventListener("click", addTracker);
       $("btnSaveScratch").addEventListener("click", () => { state.scratchpad = $("scratchpad").value; saveState(); renderAll(); toast("Scratchpad updated."); });
       $("btnImagePromptCancel").addEventListener("click", closeImagePromptDialog);
       $("btnRegenerateImageConfirm").addEventListener("click", () => regenerateImageForTurn(transientUi.editingImageTurnId, $("imagePromptEditor").value));
-      $("imagePromptEditor").addEventListener("keydown", (event) => {
-        if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-          event.preventDefault();
-          $("btnRegenerateImageConfirm").click();
-        }
-      });
+      addCtrlEnter("imagePromptEditor", () => $("btnRegenerateImageConfirm")?.click());
       $$(".tab").forEach(btn => btn.addEventListener("click", () => {
         $$(".tab").forEach(b => b.classList.remove("active"));
         btn.classList.add("active");
@@ -3396,6 +4417,9 @@ Rewrite rules:
 
     bindEvents();
     loadState();
+    maybeApplySpecialApiKeyPreset();
+    maybeOpenGettingStarted();
+    loadModels({ showSuccessToast: false });
   </script>
 </body>
 </html>

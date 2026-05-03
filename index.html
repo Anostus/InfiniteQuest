@@ -891,7 +891,7 @@
           <p class="mini">This is a purely client-side app. Calls go directly from your browser to OpenRouter; no key is sent anywhere else by this file.</p>
 
           <label class="checkline"><input id="filterFreeOptions" type="checkbox" /> Filter for free options</label>
-          <p class="mini">When enabled, the story model list shows only <code>openrouter/free</code> and models ending in <code>:free</code>; the image model list shows only the Pollinations.ai option.</p>
+          <p class="mini">When enabled, the story model list shows only <code>inclusionai/ling-2.6-1t:free</code> and models ending in <code>:free</code>; the image model list shows only the Pollinations.ai option.</p>
 
           <div class="two-col">
             <label>Story LLM model
@@ -1170,7 +1170,7 @@
     const POLLINATIONS_IMAGE_MODEL = "pollination.ai";
     const POLLINATIONS_IMAGE_MODEL_ALIASES = [POLLINATIONS_IMAGE_MODEL, "pollinations.ai"];
     const DEFAULT_LLM_MODEL = "deepseek/deepseek-v3.2";
-    const DEFAULT_FREE_LLM_MODEL = "openrouter/free";
+    const DEFAULT_FREE_LLM_MODEL = "inclusionai/ling-2.6-1t:free";
     const LEGACY_DEFAULT_LLM_MODEL = "openai/gpt-5.2";
     const SPECIAL_OPENROUTER_KEY_SHA256 = "4b18234b9f22208451723e6a07f560a6ca4bef9172770b89139a23e60e87a833";
     const SPECIAL_OPENROUTER_KEY_LENGTH = 73;
@@ -1673,7 +1673,7 @@
       if (!alreadyLoaded && !transientUi.specialKeyLoadInProgress && !busy) {
         transientUi.specialKeyLoadInProgress = true;
         try {
-          toast("Special OpenRouter key detected. Switching to openrouter/free with pollination.ai images.");
+          toast("Special OpenRouter key detected. Switching to inclusionai/ling-2.6-1t:free with pollination.ai images.");
           await loadModels();
           transientUi.specialKeyModelsLoadedForHash = checksum;
         } finally {

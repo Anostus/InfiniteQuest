@@ -134,6 +134,31 @@
     .mini { font-size: .82rem; color: var(--dim); }
     .dim { color: var(--dim); }
 
+    .field-label-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .field-label-row > span {
+      color: var(--muted);
+      font-weight: 650;
+    }
+
+    .field-label-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+    }
+
+    .field-label-actions .spinner {
+      width: 14px;
+      height: 14px;
+    }
+
     label {
       display: grid;
       gap: 6px;
@@ -522,6 +547,40 @@
       display: inline-block;
     }
 
+    .import-progress {
+      flex: 1 1 220px;
+      min-width: min(260px, 100%);
+      max-width: 420px;
+      display: grid;
+      gap: 5px;
+      align-items: center;
+    }
+
+    .import-progress-bar {
+      width: 100%;
+      height: 10px;
+      overflow: hidden;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(0,0,0,.32);
+      box-shadow: inset 0 1px 4px rgba(0,0,0,.28);
+    }
+
+    .import-progress-fill {
+      width: 0%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, rgba(241,194,50,.75), rgba(116,228,255,.72));
+      transition: width .25s ease;
+    }
+
+    .import-progress-label {
+      color: var(--dim);
+      font-size: .78rem;
+      line-height: 1.2;
+      min-height: 1em;
+    }
+
     @keyframes spin { to { transform: rotate(360deg); } }
 
     .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -638,6 +697,41 @@
 
     .sample-world-button strong { color: #fff; font-size: 1rem; }
     .sample-world-button span { color: var(--muted); font-size: .86rem; line-height: 1.4; font-weight: 500; }
+
+    .character-select-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    @media (max-width: 640px) { .character-select-grid { grid-template-columns: 1fr; } }
+
+    .character-select-card {
+      display: grid;
+      align-content: start;
+      justify-content: stretch;
+      gap: 8px;
+      min-height: 210px;
+      padding: 14px;
+      text-align: left;
+    }
+
+    .character-select-card strong { color: #fff; font-size: 1rem; }
+
+    .character-select-meta {
+      color: var(--gold2);
+      font-size: .82rem;
+      font-weight: 750;
+      line-height: 1.35;
+    }
+
+    .character-select-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: .86rem;
+      line-height: 1.45;
+      font-weight: 500;
+    }
 
 
     .image-actions {
@@ -786,6 +880,7 @@
           <button id="btnOpenModelSettings" type="button" role="menuitem">Model Settings</button>
           <button id="btnOpenEditState" type="button" role="menuitem">Edit State</button>
           <button id="btnRestartGettingStarted" type="button" role="menuitem">Restart Getting Started Dialogue</button>
+          <button id="btnOpenInfiniteWorldsImport" type="button" role="menuitem">Import from Infinite Worlds (Experimental)</button>
         </div>
       </div>
     </header>
@@ -992,7 +1087,14 @@
               <input id="tone" placeholder="wonder, danger, cozy, grim..." />
             </label>
           </div>
-          <label>Player character
+          <label>
+            <span class="field-label-row">
+              <span>Player character</span>
+              <span class="field-label-actions">
+                <span id="characterSelectSpinner" class="spinner hidden" aria-hidden="true" title="Generating character options"></span>
+                <button id="btnGenerateCharacterSelect" class="small accent" type="button">Generate Character Select</button>
+              </span>
+            </span>
             <textarea id="character" placeholder="Who is the player? Include name, role, wants, flaws, and visual details."></textarea>
           </label>
           <label>Premise and starting situation
@@ -1131,6 +1233,22 @@
     </form>
   </dialog>
 
+  <dialog id="characterSelectDialog" class="world-gen-dialog app-dialog wide-dialog">
+    <div class="world-gen-card">
+      <div class="dialog-header">
+        <div>
+          <h3>Choose a player character</h3>
+          <p class="mini">Pick one of the generated characters. The selected description will fill the Player character textbox in World Set Up.</p>
+        </div>
+        <button id="btnCloseCharacterSelect" class="small ghost" type="button" aria-label="Close character select">✕</button>
+      </div>
+      <div id="characterSelectList" class="character-select-grid"></div>
+      <div class="row wrap dialog-actions">
+        <button id="btnCharacterSelectCancel" type="button">Cancel</button>
+      </div>
+    </div>
+  </dialog>
+
   <dialog id="imagePromptDialog" class="world-gen-dialog">
     <form method="dialog" class="world-gen-card">
       <div>
@@ -1161,6 +1279,50 @@
         <button id="btnWorldTextImportConfirm" class="primary" type="button">📥 Load pasted world</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="infiniteWorldsImportDialog" class="world-gen-dialog app-dialog wide-dialog">
+    <div class="world-gen-card">
+      <div class="dialog-header">
+        <div>
+          <h3>Import from Infinite Worlds (Experimental)</h3>
+          <p class="mini">Convert Infinite Worlds exports into Infinite Quest using your current Story LLM and image settings.</p>
+          <p class="mini"><strong>Heads up:</strong> this process can take several minutes, especially for large worlds, long stories, or image generation.</p>
+        </div>
+        <button id="btnCloseInfiniteWorldsImport" class="small ghost" type="button" aria-label="Close Infinite Worlds import">✕</button>
+      </div>
+      <div class="dialog-scroll stack">
+        <div class="world-gen-box stack">
+          <h4 style="margin:0;color:#fff;">Import World</h4>
+          <p>In Infinite Worlds, open the world editor, uncollapse every part of the entire page, select all, and copy all the text. Save that copied text into a <code>.txt</code> file.</p>
+          <p class="mini">Click Import World and choose that text file. The app will ask the current Story LLM to convert the world into Infinite Quest fields, use the first Infinite Worlds player character, convert 1–5 stats to d% values, and carry over tracked items as default trackers.</p>
+          <div class="row wrap">
+            <button id="btnInfiniteWorldImportWorld" class="primary" type="button">📥 Import World</button>
+            <span id="infiniteWorldImportWorldSpinner" class="spinner hidden" aria-hidden="true" title="Importing world"></span>
+            <div id="infiniteWorldImportWorldProgress" class="import-progress hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="World import progress">
+              <div class="import-progress-bar"><div id="infiniteWorldImportWorldProgressFill" class="import-progress-fill"></div></div>
+              <span id="infiniteWorldImportWorldProgressLabel" class="import-progress-label">0%</span>
+            </div>
+            <input id="infiniteWorldImportWorldFile" type="file" accept=".txt,text/plain" class="hidden" />
+          </div>
+        </div>
+
+        <div class="world-gen-box stack">
+          <h4 style="margin:0;color:#fff;">Import Story</h4>
+          <p>First import the world for this story. Then export the story from Infinite Worlds in <code>.txt</code> format and upload the resulting file.</p>
+          <p class="mini">For each imported turn, the app will ask the Story LLM to generate Infinite Quest-style choices, an image prompt, scratchpad continuity, and tracker updates. If image generation is enabled, it will also generate each turn’s image using your current image settings.</p>
+          <div class="row wrap">
+            <button id="btnInfiniteWorldImportStory" class="accent" type="button">📜 Import Story</button>
+            <span id="infiniteWorldImportStorySpinner" class="spinner hidden" aria-hidden="true" title="Importing story"></span>
+            <div id="infiniteWorldImportStoryProgress" class="import-progress hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Story import progress">
+              <div class="import-progress-bar"><div id="infiniteWorldImportStoryProgressFill" class="import-progress-fill"></div></div>
+              <span id="infiniteWorldImportStoryProgressLabel" class="import-progress-label">0%</span>
+            </div>
+            <input id="infiniteWorldImportStoryFile" type="file" accept=".txt,text/plain" class="hidden" />
+          </div>
+        </div>
+      </div>
+    </div>
   </dialog>
 
 
@@ -1532,7 +1694,8 @@
       specialKeyPresetAppliedForHash: "",
       specialKeyModelsLoadedForHash: "",
       specialKeyLoadInProgress: false,
-      modelSettingsGettingStarted: false
+      modelSettingsGettingStarted: false,
+      characterSelectOptions: []
     };
 
     let specialKeyCheckTimer = null;
@@ -1817,7 +1980,7 @@
       busy = isBusy;
       const pill = $("busyPill");
       pill.innerHTML = isBusy ? `<span class="spinner"></span> ${escapeHtml(label)}` : "Ready";
-      ["btnStart", "btnTakeAction", "btnRetry", "btnOpenWorldGen", "btnWorldGenRun", "btnRegenerateImageConfirm", "btnSaveWorld", "btnCopyWorld", "btnLoadWorldText", "btnWorldTextImportConfirm"].forEach(id => { const el = $(id); if (el) el.disabled = isBusy; });
+      ["btnStart", "btnTakeAction", "btnRetry", "btnOpenWorldGen", "btnWorldGenRun", "btnGenerateCharacterSelect", "btnRegenerateImageConfirm", "btnSaveWorld", "btnCopyWorld", "btnLoadWorldText", "btnWorldTextImportConfirm", "btnInfiniteWorldImportWorld", "btnInfiniteWorldImportStory"].forEach(id => { const el = $(id); if (el) el.disabled = isBusy; });
       $$(".sample-world-button").forEach(button => { button.disabled = isBusy; });
       const freeAction = $("freeAction");
       if (freeAction) freeAction.disabled = isBusy;
@@ -3245,6 +3408,225 @@
       }
     }
 
+    function closeCharacterSelectDialog() {
+      closeDialog("characterSelectDialog");
+    }
+
+    function setCharacterSelectLoading(isLoading) {
+      const spinner = $("characterSelectSpinner");
+      if (spinner) {
+        spinner.classList.toggle("hidden", !isLoading);
+        spinner.setAttribute("aria-hidden", isLoading ? "false" : "true");
+      }
+      const button = $("btnGenerateCharacterSelect");
+      if (button) button.setAttribute("aria-busy", isLoading ? "true" : "false");
+    }
+
+    function characterSelectSystemPrompt() {
+      return `You are a character creator for a browser-based choose-your-own-adventure engine.
+Return ONLY valid JSON. Do not wrap it in markdown. Do not include comments.
+
+Generate exactly four possible player characters for the provided story setup: exactly 2 men and exactly 2 women. They must all fit the same world, premise, tone, and story rules, but they should have clearly different personalities, motives, skills, flaws, and backgrounds.
+
+Required JSON shape:
+{
+  "characters": [
+    {
+      "name": "Character name",
+      "gender": "man or woman",
+      "role": "short story role/archetype",
+      "personality": "distinct personality in one concise sentence",
+      "background": "distinct background in one concise sentence",
+      "fit": "why this character belongs in this story in one concise sentence",
+      "player_character_text": "one polished paragraph suitable to paste into the Player character textbox; use second-person-compatible wording and include name, role, wants, flaws, skills, and visual details"
+    }
+  ]
+}
+
+Character option requirements:
+- Return exactly 4 characters in the characters array.
+- Include exactly 2 characters whose gender is "man" and exactly 2 whose gender is "woman".
+- Do not make the four characters minor variations of each other.
+- Make each option immediately playable as the protagonist.
+- Keep the player_character_text self-contained and ready to paste into the setup field.
+- Do not change or rewrite the world setup fields; only generate character options.`;
+    }
+
+    function buildCharacterSelectPrompt() {
+      const defaultTriggers = (state.defaultTriggers || []).map(t => ({
+        name: t.name || "",
+        rules: t.rules || "",
+        starting_value: t.value || ""
+      }));
+      const rpgStats = normalizeRpgStats(state.rpgStats || []).map(s => ({
+        name: s.name || "",
+        value_percent: s.value,
+        covers: s.note || ""
+      }));
+      return JSON.stringify({
+        request: "Generate four player-character options for this choose-your-own-adventure world, then return only the required JSON object.",
+        world_details_to_use: {
+          title: state.world.title || "",
+          genre: state.world.genre || "",
+          tone: state.world.tone || "",
+          premise_and_starting_situation: state.world.premise || "",
+          story_rules_and_style_guide: state.world.rules || "",
+          default_world_state_trackers: defaultTriggers,
+          rpg_percentile_stats_enabled: !!state.settings.useRpgStats,
+          rpg_percentile_stats: state.settings.useRpgStats ? rpgStats : []
+        },
+        current_player_character_text_to_replace_or_use_as_optional_inspiration: state.world.character || "",
+        output_note: "Return exactly four characters: 2 men and 2 women. Each must include player_character_text ready to paste into the Player character textbox."
+      }, null, 2);
+    }
+
+    function normalizeGeneratedCharacterOptions(raw) {
+      const source = Array.isArray(raw)
+        ? raw
+        : (raw?.characters || raw?.character_options || raw?.options || raw?.player_characters || []);
+      return (Array.isArray(source) ? source : []).map((item, idx) => {
+        const name = String(item?.name || item?.character_name || `Character ${idx + 1}`).trim();
+        const gender = String(item?.gender || item?.sex || "").trim();
+        const role = String(item?.role || item?.archetype || item?.occupation || "").trim();
+        const personality = String(item?.personality || item?.traits || item?.temperament || "").trim();
+        const background = String(item?.background || item?.backstory || item?.history || "").trim();
+        const fit = String(item?.fit || item?.story_fit || item?.why_they_fit || item?.connection || "").trim();
+        const playerText = String(item?.player_character_text || item?.playerCharacterText || item?.description || item?.character || "").trim();
+        return { name, gender, role, personality, background, fit, playerText };
+      }).filter(character => character.playerText || character.name).slice(0, 4);
+    }
+
+    function characterGenderBucket(gender = "") {
+      const text = String(gender || "").trim().toLowerCase();
+      if (/\b(woman|female|girl)\b/.test(text) || text === "f") return "woman";
+      if (/\b(man|male|boy)\b/.test(text) || text === "m") return "man";
+      return "";
+    }
+
+    function hasRequiredCharacterSelectMix(characters) {
+      const counts = characters.reduce((acc, character) => {
+        const bucket = characterGenderBucket(character.gender);
+        if (bucket) acc[bucket] += 1;
+        return acc;
+      }, { man: 0, woman: 0 });
+      return characters.length === 4 && counts.man === 2 && counts.woman === 2;
+    }
+
+    function renderCharacterSelectOptions() {
+      const list = $("characterSelectList");
+      if (!list) return;
+      const options = Array.isArray(transientUi.characterSelectOptions) ? transientUi.characterSelectOptions : [];
+      list.innerHTML = "";
+      if (!options.length) {
+        list.innerHTML = `<p class="mini">No character options are available yet.</p>`;
+        return;
+      }
+      options.forEach((character, idx) => {
+        const button = document.createElement("button");
+        button.className = "character-select-card accent";
+        button.type = "button";
+        button.dataset.characterSelectIndex = String(idx);
+        const metaParts = [character.gender, character.role].filter(Boolean).join(" • ");
+        button.innerHTML = `
+          <strong>${escapeHtml(character.name || `Character ${idx + 1}`)}</strong>
+          ${metaParts ? `<div class="character-select-meta">${escapeHtml(metaParts)}</div>` : ""}
+          ${character.personality ? `<p><strong>Personality:</strong> ${escapeHtml(character.personality)}</p>` : ""}
+          ${character.background ? `<p><strong>Background:</strong> ${escapeHtml(character.background)}</p>` : ""}
+          ${character.fit ? `<p><strong>Story fit:</strong> ${escapeHtml(character.fit)}</p>` : ""}
+        `;
+        button.addEventListener("click", () => chooseGeneratedCharacter(idx));
+        list.appendChild(button);
+      });
+    }
+
+    function openCharacterSelectDialog() {
+      renderCharacterSelectOptions();
+      const dialog = $("characterSelectDialog");
+      if (!dialog) return;
+      if (typeof dialog.showModal === "function") {
+        try {
+          if (!dialog.open) dialog.showModal();
+          return;
+        } catch (err) {
+          console.warn("Could not open character select dialog modally.", err);
+        }
+      }
+      dialog.removeAttribute("hidden");
+    }
+
+    function chooseGeneratedCharacter(index) {
+      const character = transientUi.characterSelectOptions?.[index];
+      if (!character) return;
+      const text = String(character.playerText || character.name || "").trim();
+      if (!text) return;
+      const characterBox = $("character");
+      if (characterBox) characterBox.value = text;
+      state.world.character = text;
+      syncFormToState();
+      saveState();
+      closeCharacterSelectDialog();
+      toast(`Player character set to ${character.name || "the selected option"}.`);
+    }
+
+    function explainCharacterGenerationError(err) {
+      const message = err?.message || String(err || "Unknown error");
+      if (err?.isModelJsonError) {
+        return "The model answered with malformed JSON instead of usable character options. The app silently retried before showing this message. Try Generate Character Select again, or choose a model with stronger JSON support.";
+      }
+      if (err?.isModelNoContentError || /returned no .*content/i.test(message)) {
+        return "OpenRouter returned an empty character-selection response. Try again, or pick a different story model in Model Settings.";
+      }
+      if (/OpenRouter .*request failed/i.test(message)) {
+        return `${message}\n\nCheck that your API key is valid, the selected model is available, and your account has access to that provider.`;
+      }
+      if (/api key/i.test(message)) {
+        return `${message}\n\nOpen Model Settings from the Menu and enter your own OpenRouter key, or choose the Community API Key option.`;
+      }
+      return `${message}\n\nTry again, or choose a different story model in Model Settings if this keeps happening.`;
+    }
+
+    async function generateCharacterSelect() {
+      if (busy) return;
+      syncFormToState();
+      syncInlineWorldEditorState();
+      setCharacterSelectLoading(true);
+      showLlmWaitIndicator();
+      await waitForNextPaint(1);
+      setBusy(true, "Generating characters");
+      try {
+        let characters = [];
+        let validationError = null;
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const raw = await callOpenRouterJson("character select", buildOpenRouterInstructionMessages(
+            characterSelectSystemPrompt(),
+            buildCharacterSelectPrompt()
+          ), { temperature: Math.max(0.55, Number(state.settings.temperature ?? 0.85)), max_tokens: 3000, json_retries: 3, no_content_retries: 3 });
+          characters = normalizeGeneratedCharacterOptions(raw);
+          if (characters.length < 4) {
+            validationError = new Error(`The model returned only ${characters.length} usable character option${characters.length === 1 ? "" : "s"}. Try again or choose a stronger JSON model.`);
+          } else if (!hasRequiredCharacterSelectMix(characters)) {
+            validationError = new Error("The model did not return exactly 2 men and 2 women. Try again or choose a stronger JSON model.");
+          } else {
+            validationError = null;
+            break;
+          }
+          await sleep(350 + attempt * 250);
+        }
+        if (validationError) throw validationError;
+        transientUi.characterSelectOptions = characters;
+        renderCharacterSelectOptions();
+        await waitForNextPaint(1);
+        openCharacterSelectDialog();
+      } catch (err) {
+        console.error(err);
+        showMessagePopup("Character selection generation failed", explainCharacterGenerationError(err), 12000);
+      } finally {
+        setCharacterSelectLoading(false);
+        setBusy(false);
+        hideLlmWaitIndicator();
+      }
+    }
+
     function worldSetupSystemPrompt() {
       return `You are a creative director for a browser-based choose-your-own-adventure engine.
 Return ONLY valid JSON. Do not wrap it in markdown. Do not include comments.
@@ -4183,6 +4565,755 @@ ${missingList}`,
       if (dialog && dialog.open) dialog.close();
     }
 
+    function readFileAsText(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(reader.error || new Error("Could not read that file."));
+        reader.readAsText(file);
+      });
+    }
+
+    function openInfiniteWorldsImportDialog() {
+      const dialog = $("infiniteWorldsImportDialog");
+      if (!dialog || typeof dialog.showModal !== "function") {
+        showMessagePopup("Import from Infinite Worlds", "This browser does not support the import popup. Try a current desktop browser.");
+        return;
+      }
+      dialog.showModal();
+    }
+
+    function closeInfiniteWorldsImportDialog() {
+      const dialog = $("infiniteWorldsImportDialog");
+      if (dialog && dialog.open) dialog.close();
+    }
+
+    function setInfiniteWorldsImportSpinner(kind, isLoading) {
+      const prefix = kind === "story" ? "infiniteWorldImportStory" : "infiniteWorldImportWorld";
+      const spinner = $(`${prefix}Spinner`);
+      if (spinner) {
+        spinner.classList.toggle("hidden", !isLoading);
+        spinner.setAttribute("aria-hidden", isLoading ? "false" : "true");
+      }
+      const progress = $(`${prefix}Progress`);
+      if (progress) {
+        progress.classList.toggle("hidden", !isLoading);
+        if (!isLoading) setInfiniteWorldsImportProgress(kind, 0, "0%");
+      }
+    }
+
+    function setInfiniteWorldsImportProgress(kind, percent, label = "") {
+      const prefix = kind === "story" ? "infiniteWorldImportStory" : "infiniteWorldImportWorld";
+      const progress = $(`${prefix}Progress`);
+      const fill = $(`${prefix}ProgressFill`);
+      const labelEl = $(`${prefix}ProgressLabel`);
+      const safePercent = Number.isFinite(Number(percent)) ? Math.max(0, Math.min(100, Math.round(Number(percent)))) : 0;
+      if (progress) {
+        progress.setAttribute("aria-valuenow", String(safePercent));
+        progress.setAttribute("aria-valuetext", label || `${safePercent}%`);
+      }
+      if (fill) fill.style.width = `${safePercent}%`;
+      if (labelEl) labelEl.textContent = label || `${safePercent}%`;
+    }
+
+    function infiniteWorldsWorldImportSystemPrompt() {
+      return `You convert Infinite Worlds world-editor copy/paste text into an Infinite Quest world setup.
+Return ONLY valid JSON. Do not wrap it in markdown. Do not include comments.
+
+Required JSON shape:
+{
+  "title": "world title",
+  "genre": "concise genre blend",
+  "tone": "concise tone and content style",
+  "player_character": "description of the FIRST listed player character only, including name, role/background, motivations, appearance, and capabilities",
+  "premise": "background story, objective, first action, and immediate starting situation combined into playable Infinite Quest context",
+  "story_rules": "main instructions and style guidance adapted for Infinite Quest. Preserve important world rules, objective, author style, illustration guidance, and operational constraints.",
+  "default_triggers": [
+    {"name":"tracker name", "rules":"when and how Infinite Quest should update this tracker", "value":"starting value"}
+  ],
+  "rpg_statistics": [
+    {"name":"stat name", "value":60, "covers":"what this percentile stat covers"}
+  ],
+  "settings": {"useRpgStats": true}
+}
+
+Conversion rules:
+- Infinite Worlds may define multiple player characters. Infinite Quest supports one player character, so use only the first character from the Characters section.
+- Infinite Worlds skills use 1-5. Infinite Quest uses d% target numbers. Convert exactly: 1 => 20, 2 => 40, 3 => 60, 4 => 80, 5 => 99. If a skill value is unknown, choose a plausible d% from the text.
+- Carry over tracked items / items to track as default_triggers. Their description becomes tracker context, update instructions become rules, and initial value becomes value. If no initial value is listed, infer a concise starting value.
+- Preserve the world background, objective, first action, detail/instructions, extra instruction blocks, author style, content warnings, and image guidance in the Infinite Quest fields where they fit.
+- Keep field text concise enough for repeated story prompts, but do not omit core mechanics or tracker rules.
+- Do not invent additional player characters. Non-selected player characters may be mentioned as possible NPCs only if the source text clearly implies they exist in the world.`;
+    }
+
+    function emptyInfiniteWorldsWorldDraft() {
+      return {
+        title: "",
+        genre: "",
+        tone: "",
+        player_character: "",
+        premise: "",
+        story_rules: "",
+        default_triggers: [],
+        rpg_statistics: [],
+        settings: { useRpgStats: false }
+      };
+    }
+
+    function normalizeWorldImportDraft(draft = {}) {
+      const payload = extractWorldImportPayload(draft || {});
+      return {
+        title: String(payload.world.title || draft.title || draft.world_title || "").trim(),
+        genre: Array.isArray(payload.world.genre) ? payload.world.genre.join(", ") : String(payload.world.genre || draft.genre || "").trim(),
+        tone: Array.isArray(payload.world.tone) ? payload.world.tone.join(", ") : String(payload.world.tone || draft.tone || "").trim(),
+        player_character: String(payload.world.character || draft.player_character || draft.playerCharacter || draft.character || "").trim(),
+        premise: String(payload.world.premise || draft.premise || "").trim(),
+        story_rules: String(payload.world.rules || draft.story_rules || draft.storyRules || draft.rules || "").trim(),
+        default_triggers: normalizeImportedTrackers(payload.defaultTriggers || draft.default_triggers || draft.defaultTriggers || draft.trackers || []),
+        rpg_statistics: Array.isArray(payload.rpgStats) ? payload.rpgStats : [],
+        settings: { useRpgStats: !!(payload.useRpgStats ?? draft?.settings?.useRpgStats ?? draft?.settings?.use_rpg_stats) }
+      };
+    }
+
+    function preferWorldImportText(previous = "", next = "") {
+      const oldText = String(previous || "").trim();
+      const newText = String(next || "").trim();
+      if (!newText) return oldText;
+      if (!oldText) return newText;
+      if (newText.includes(oldText) || newText.length >= oldText.length * 0.92) return newText;
+      if (oldText.includes(newText)) return oldText;
+      return `${oldText}\n\n${newText}`.trim();
+    }
+
+    function mergeWorldImportTrackers(previous = [], next = []) {
+      const byName = new Map();
+      [...(previous || []), ...(next || [])].forEach(raw => {
+        const tracker = normalizeImportedTrackers([raw])[0];
+        if (!tracker || !tracker.name) return;
+        const key = tracker.name.trim().toLowerCase();
+        const existing = byName.get(key);
+        if (!existing) byName.set(key, tracker);
+        else byName.set(key, {
+          ...existing,
+          rules: preferWorldImportText(existing.rules, tracker.rules),
+          value: String(tracker.value || existing.value || "").trim()
+        });
+      });
+      return [...byName.values()];
+    }
+
+    function mergeWorldImportStats(previous = [], next = []) {
+      const byName = new Map();
+      const normalize = list => Array.isArray(list) && list.length ? normalizeGeneratedRpgStats(list) : [];
+      [...normalize(previous), ...normalize(next)].forEach(stat => {
+        if (!stat?.name) return;
+        const key = stat.name.trim().toLowerCase();
+        byName.set(key, { ...byName.get(key), ...stat, value: clampNumber(stat.value, 1, 99, 50) });
+      });
+      return [...byName.values()];
+    }
+
+    function mergeWorldImportDrafts(previous = {}, next = {}) {
+      const oldDraft = normalizeWorldImportDraft(previous);
+      const newDraft = normalizeWorldImportDraft(next);
+      const merged = {
+        title: preferWorldImportText(oldDraft.title, newDraft.title).split(/\n+/)[0].trim(),
+        genre: preferWorldImportText(oldDraft.genre, newDraft.genre),
+        tone: preferWorldImportText(oldDraft.tone, newDraft.tone),
+        player_character: preferWorldImportText(oldDraft.player_character, newDraft.player_character),
+        premise: preferWorldImportText(oldDraft.premise, newDraft.premise),
+        story_rules: preferWorldImportText(oldDraft.story_rules, newDraft.story_rules),
+        default_triggers: mergeWorldImportTrackers(oldDraft.default_triggers, newDraft.default_triggers),
+        rpg_statistics: mergeWorldImportStats(oldDraft.rpg_statistics, newDraft.rpg_statistics),
+        settings: { useRpgStats: !!(oldDraft.settings?.useRpgStats || newDraft.settings?.useRpgStats || oldDraft.rpg_statistics?.length || newDraft.rpg_statistics?.length) }
+      };
+      return merged;
+    }
+
+    function wordCount(text = "") {
+      return String(text || "").trim().split(/\s+/).filter(Boolean).length;
+    }
+
+    const INFINITE_WORLDS_IMPORT_BATCH_MIN_WORDS = 1000;
+    const INFINITE_WORLDS_IMPORT_BATCH_MAX_WORDS = 2000;
+    const INFINITE_WORLDS_IMPORT_BATCH_TARGET_WORDS = 1500;
+
+    function splitTextIntoWordChunks(text = "", targetWords = INFINITE_WORLDS_IMPORT_BATCH_TARGET_WORDS) {
+      const words = String(text || "").split(/\s+/).filter(Boolean);
+      if (!words.length) return [];
+      const chunks = [];
+      for (let i = 0; i < words.length; i += targetWords) {
+        chunks.push(words.slice(i, i + targetWords).join(" "));
+      }
+      return chunks;
+    }
+
+    function chunkLargeLogicalSection(section, targetWords = INFINITE_WORLDS_IMPORT_BATCH_TARGET_WORDS) {
+      const maxWords = INFINITE_WORLDS_IMPORT_BATCH_MAX_WORDS;
+      if (wordCount(section.text) <= maxWords) return [section];
+      return splitTextIntoWordChunks(section.text, targetWords).map((text, index, parts) => ({
+        label: `${section.label} (${index + 1}/${parts.length})`,
+        text
+      }));
+    }
+
+    function formatInfiniteWorldsImportPart(part, index = 0) {
+      const label = String(part?.label || `Section ${index + 1}`).trim() || `Section ${index + 1}`;
+      const body = String(part?.text || "").trim();
+      return `### ${label}
+${body}`.trim();
+    }
+
+    function makeInfiniteWorldsImportBatch(parts, batchNumber = 1) {
+      const formattedParts = (parts || []).map((part, index) => formatInfiniteWorldsImportPart(part, index)).filter(Boolean);
+      const firstLabel = String(parts?.[0]?.label || `section ${batchNumber}`).trim();
+      const lastLabel = String(parts?.[parts.length - 1]?.label || firstLabel).trim();
+      const labelRange = firstLabel === lastLabel ? firstLabel : `${firstLabel} → ${lastLabel}`;
+      return {
+        label: `Batch ${batchNumber}: ${labelRange}`,
+        part_count: formattedParts.length,
+        word_count: wordCount(formattedParts.join("\n\n")),
+        text: formattedParts.join("\n\n")
+      };
+    }
+
+    function combineInfiniteWorldsImportPartsIntoBatches(parts = {}, options = {}) {
+      const minWords = Number(options.minWords || INFINITE_WORLDS_IMPORT_BATCH_MIN_WORDS);
+      const maxWords = Number(options.maxWords || INFINITE_WORLDS_IMPORT_BATCH_MAX_WORDS);
+      const safeParts = Array.isArray(parts) ? parts.filter(part => String(part?.text || "").trim()) : [];
+      const batches = [];
+      let current = [];
+      let currentWords = 0;
+
+      const flush = () => {
+        if (!current.length) return;
+        batches.push(makeInfiniteWorldsImportBatch(current, batches.length + 1));
+        current = [];
+        currentWords = 0;
+      };
+
+      safeParts.forEach((part, index) => {
+        const formatted = formatInfiniteWorldsImportPart(part, index);
+        const partWords = wordCount(formatted);
+        if (!partWords) return;
+
+        if (current.length && currentWords + partWords > maxWords && currentWords >= minWords) {
+          flush();
+        } else if (current.length && currentWords + partWords > maxWords && partWords >= minWords) {
+          flush();
+        }
+
+        current.push(part);
+        currentWords += partWords;
+
+        if (currentWords >= maxWords) flush();
+      });
+      flush();
+
+      if (batches.length > 1) {
+        const last = batches[batches.length - 1];
+        const previous = batches[batches.length - 2];
+        const lastParts = safePartsForBatch(last);
+        const previousParts = safePartsForBatch(previous);
+        const countParts = list => wordCount(list.map((part, index) => formatInfiniteWorldsImportPart(part, index)).join("\n\n"));
+
+        if (last.word_count < minWords && previous.word_count + last.word_count <= maxWords) {
+          batches.splice(batches.length - 2, 2, makeInfiniteWorldsImportBatch([
+            ...previousParts,
+            ...lastParts
+          ], batches.length - 1));
+        } else if (last.word_count < minWords && previousParts.length > 1) {
+          while (countParts(lastParts) < minWords && previousParts.length > 1) {
+            const candidate = previousParts[previousParts.length - 1];
+            const nextPrevious = previousParts.slice(0, -1);
+            const nextLast = [candidate, ...lastParts];
+            const nextPreviousWords = countParts(nextPrevious);
+            const nextLastWords = countParts(nextLast);
+            if (nextPreviousWords < minWords || nextLastWords > maxWords) break;
+            previousParts.pop();
+            lastParts.unshift(candidate);
+          }
+          if (countParts(lastParts) >= minWords && countParts(previousParts) >= minWords) {
+            batches.splice(
+              batches.length - 2,
+              2,
+              makeInfiniteWorldsImportBatch(previousParts, batches.length - 1),
+              makeInfiniteWorldsImportBatch(lastParts, batches.length)
+            );
+          }
+        }
+      }
+
+      return batches;
+    }
+
+    function safePartsForBatch(batch = {}) {
+      const text = String(batch.text || "").trim();
+      if (!text) return [];
+      const pieces = text.split(/\n\n(?=###\s+)/g).filter(Boolean);
+      return pieces.map((piece, index) => {
+        const match = /^###\s*([^\n]+)\n([\s\S]*)$/m.exec(piece.trim());
+        return {
+          label: match ? match[1].trim() : `Merged section ${index + 1}`,
+          text: match ? match[2].trim() : piece.trim()
+        };
+      });
+    }
+
+    function annotateInfiniteWorldsCharacterChunks(chunks = []) {
+      const result = [];
+      let insideCharacters = false;
+      let firstCharacterDetailsMerged = false;
+      for (let i = 0; i < chunks.length; i += 1) {
+        const chunk = chunks[i];
+        const label = String(chunk.label || "");
+        if (/^characters$/i.test(label.trim())) {
+          const next = chunks[i + 1];
+          if (next && /^description:?$/i.test(String(next.label || "").trim())) {
+            result.push({
+              label: "First player character",
+              text: `${chunk.text || ""}
+
+${next.text || ""}`.trim()
+            });
+            i += 1;
+            insideCharacters = true;
+            firstCharacterDetailsMerged = true;
+            continue;
+          }
+          result.push({ ...chunk, label: "Characters overview" });
+          insideCharacters = true;
+          continue;
+        }
+        if (insideCharacters && /^description:?$/i.test(label.trim())) {
+          result.push({
+            ...chunk,
+            label: firstCharacterDetailsMerged ? "Additional selectable character (ignore as player character)" : "First player character"
+          });
+          firstCharacterDetailsMerged = true;
+          continue;
+        }
+        if (insideCharacters && /^(victory|defeat|items to track|tracked items|trackers|trigger events|import from lore book|using variables|enable ai|allow others)/i.test(label.trim())) {
+          insideCharacters = false;
+        }
+        result.push(chunk);
+      }
+      return result;
+    }
+
+    function splitInfiniteWorldsWorldTextIntoLogicalChunks(rawText = "") {
+      const source = String(rawText || "").replace(/\r\n/g, "\n").trim();
+      if (!source) return [];
+      const logicalHeadings = [
+        "Title", "Track version number", "Version", "Automatically increase version number each edit",
+        "Description", "Show some additional text on the character selection screen", "Preview image",
+        "Background story", "First action", "Objective", "Detail and instructions", "Extra instruction blocks",
+        "Author style", "Design notes", "Mature content", "Content warnings", "Image model",
+        "Illustration guidance for characters", "Illustration guidance for objects and scenery",
+        "Prompt beginning", "Prompt ending", "Players choose a character", "Settings for whether players can customize characters after choosing them",
+        "The skills that characters are rated on in this adventure", "Characters", "Items to track", "Tracked Items",
+        "Trackers", "Trigger events", "Starting values", "Advanced options"
+      ];
+      const headingSet = new Set(logicalHeadings.map(h => h.toLowerCase()));
+      const lines = source.split("\n");
+      const sections = [];
+      let current = { label: "Opening text", lines: [] };
+      const flush = () => {
+        const text = current.lines.join("\n").trim();
+        if (text) sections.push({ label: current.label, text });
+      };
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        const normalized = trimmed.replace(/:$/, "").toLowerCase();
+        const isKnownHeading = headingSet.has(normalized);
+        const isIwExportHeading = /^--\s*[^-]{2,80}\s*--$/.test(trimmed);
+        const isShortLabel = /^[A-Z][A-Za-z0-9 /&()'’.,-]{1,70}:?$/.test(trimmed) && !/[.!?]$/.test(trimmed);
+        if ((isKnownHeading || isIwExportHeading || (isShortLabel && current.lines.length > 8)) && current.lines.length) {
+          flush();
+          current = { label: trimmed.replace(/^--\s*|\s*--$/g, "") || "Section", lines: [] };
+          continue;
+        }
+        if ((isKnownHeading || isIwExportHeading) && !current.lines.length) {
+          current.label = trimmed.replace(/^--\s*|\s*--$/g, "") || current.label;
+          continue;
+        }
+        current.lines.push(line);
+      }
+      flush();
+
+      const meaningful = sections.filter(section => wordCount(section.text) >= 4 || /title|version|objective|first action/i.test(section.label));
+      if (meaningful.length < 4) return [];
+      return annotateInfiniteWorldsCharacterChunks(meaningful.flatMap(section => chunkLargeLogicalSection(section, INFINITE_WORLDS_IMPORT_BATCH_TARGET_WORDS)));
+    }
+
+    function buildInfiniteWorldsWorldImportChunks(rawText = "", forceWordChunks = false) {
+      const text = String(rawText || "").trim();
+      let strategy = "labeled section batches";
+      let parts = forceWordChunks ? [] : splitInfiniteWorldsWorldTextIntoLogicalChunks(text);
+      if (!parts.length) {
+        strategy = "word-count fallback batches";
+        parts = splitTextIntoWordChunks(text, INFINITE_WORLDS_IMPORT_BATCH_TARGET_WORDS).map((chunk, index, all) => ({
+          label: `Word chunk ${index + 1}/${all.length}`,
+          text: chunk
+        }));
+      }
+      const chunks = combineInfiniteWorldsImportPartsIntoBatches(parts, {
+        minWords: INFINITE_WORLDS_IMPORT_BATCH_MIN_WORDS,
+        maxWords: INFINITE_WORLDS_IMPORT_BATCH_MAX_WORDS
+      });
+      return { strategy, chunks, parts };
+    }
+
+    function infiniteWorldsWorldIncrementalSystemPrompt() {
+      return `${infiniteWorldsWorldImportSystemPrompt()}
+
+Incremental import mode:
+- You will receive an existing partial draft and one source batch made from several labeled Infinite Worlds editor parts when possible.
+- Update the draft with facts found in every labeled part in this batch.
+- Return the full accumulated draft so far in the same required JSON shape.
+- Preserve previously imported facts unless the current section clearly corrects them.
+- If this batch contains Characters, identify the FIRST player character only and ignore later selectable characters as player options.
+- If this batch contains skills, convert 1-5 skill values to d% exactly: 1=>20, 2=>40, 3=>60, 4=>80, 5=>99.
+- If this batch contains tracked items or tracker-like state, add them to default_triggers.
+- Do not summarize away important rules; append concise details to premise or story_rules as appropriate.`;
+    }
+
+    function buildInfiniteWorldsIncrementalWorldPrompt({ draft, chunk, index, total, sourceName, strategy }) {
+      return JSON.stringify({
+        task: "Incrementally build an Infinite Quest world setup from an Infinite Worlds world-editor export.",
+        source_file_name: sourceName || "Infinite Worlds world text file",
+        import_strategy: strategy,
+        chunk_number: index + 1,
+        total_chunks: total,
+        current_batch_label: chunk.label,
+        current_batch_word_count: chunk.word_count || wordCount(chunk.text || ""),
+        current_batch_part_count: chunk.part_count || 1,
+        existing_partial_draft: draft,
+        current_source_batch: truncateText(chunk.text || "", 14000),
+        output_note: "Return only the full accumulated JSON draft in the required shape. Do not include markdown. Read all labeled parts in current_source_batch."
+      }, null, 2);
+    }
+
+    function infiniteWorldsWorldFinalPolishSystemPrompt() {
+      return `${infiniteWorldsWorldImportSystemPrompt()}
+
+Final cleanup mode:
+- You will receive a draft accumulated from many chunks.
+- Clean duplicated text, remove contradictions, and format it as one final Infinite Quest import JSON object.
+- Keep the first player character only.
+- Keep all trackers and all valid RPG percentile stats.
+- Do not remove important mechanics, image guidance, objective, first action, or content warnings.`;
+    }
+
+    function buildInfiniteWorldsWorldFinalPolishPrompt(draft, sourceName = "", plan = {}) {
+      return JSON.stringify({
+        task: "Clean and finalize the accumulated Infinite Worlds-to-Infinite Quest world import draft.",
+        source_file_name: sourceName || "Infinite Worlds world text file",
+        import_strategy: plan.strategy || "incremental",
+        batch_labels_seen: (plan.chunks || []).map(chunk => `${chunk.label} (${chunk.word_count || wordCount(chunk.text || "")} words)`).slice(0, 80),
+        section_labels_seen: (plan.parts || []).map(part => part.label).slice(0, 140),
+        accumulated_draft: draft,
+        output_note: "Return only the final JSON object in the required shape."
+      }, null, 2);
+    }
+
+    async function importInfiniteWorldsWorldIncrementally(rawText, sourceName = "", options = {}) {
+      const plan = buildInfiniteWorldsWorldImportChunks(rawText, !!options.forceWordChunks);
+      if (!plan.chunks.length) throw new Error("The selected file did not contain enough text to import.");
+      let draft = emptyInfiniteWorldsWorldDraft();
+
+      const progressDenominator = Math.max(1, plan.chunks.length + 1);
+      setInfiniteWorldsImportProgress("world", 0, `0% — preparing ${plan.strategy} import`);
+      for (let i = 0; i < plan.chunks.length; i += 1) {
+        const chunk = plan.chunks[i];
+        const startPercent = (i / progressDenominator) * 100;
+        setInfiniteWorldsImportProgress("world", startPercent, `${Math.round(startPercent)}% — ${chunk.label}`);
+        setBusy(true, `Importing world ${i + 1}/${plan.chunks.length}: ${chunk.label}`);
+        await waitForNextPaint(1);
+        const partial = await callOpenRouterJson("Infinite Worlds world incremental import", buildOpenRouterInstructionMessages(
+          infiniteWorldsWorldIncrementalSystemPrompt(),
+          buildInfiniteWorldsIncrementalWorldPrompt({ draft, chunk, index: i, total: plan.chunks.length, sourceName, strategy: plan.strategy })
+        ), { temperature: 0.12, max_tokens: 5200, json_retries: 3, no_content_retries: 2 });
+        draft = mergeWorldImportDrafts(draft, partial);
+        const donePercent = ((i + 1) / progressDenominator) * 100;
+        setInfiniteWorldsImportProgress("world", donePercent, `${Math.round(donePercent)}% — imported ${i + 1}/${plan.chunks.length}`);
+      }
+
+      const finalPercent = (plan.chunks.length / progressDenominator) * 100;
+      setInfiniteWorldsImportProgress("world", finalPercent, `${Math.round(finalPercent)}% — final cleanup`);
+      setBusy(true, "Finalizing imported world");
+      await waitForNextPaint(1);
+      try {
+        const polished = await callOpenRouterJson("Infinite Worlds world final import cleanup", buildOpenRouterInstructionMessages(
+          infiniteWorldsWorldFinalPolishSystemPrompt(),
+          buildInfiniteWorldsWorldFinalPolishPrompt(draft, sourceName, plan)
+        ), { temperature: 0.08, max_tokens: 5200, json_retries: 2, no_content_retries: 1 });
+        const result = mergeWorldImportDrafts(draft, polished);
+        setInfiniteWorldsImportProgress("world", 100, "100% — world import complete");
+        return result;
+      } catch (err) {
+        console.warn("World import final cleanup failed; using accumulated draft.", err);
+        setInfiniteWorldsImportProgress("world", 100, "100% — using accumulated import");
+        return draft;
+      }
+    }
+
+    async function importInfiniteWorldsWorldFromText(rawText, sourceName = "") {
+      if (busy) return;
+      const text = String(rawText || "").trim();
+      if (!text) return toast("Choose an Infinite Worlds world text file first.");
+      syncFormToState();
+      setInfiniteWorldsImportSpinner("world", true);
+      setInfiniteWorldsImportProgress("world", 0, "0% — reading world file");
+      setBusy(true, "Importing Infinite Worlds world");
+      try {
+        let converted;
+        try {
+          converted = await importInfiniteWorldsWorldIncrementally(text, sourceName, { forceWordChunks: false });
+        } catch (err) {
+          console.warn("Labeled-batch Infinite Worlds import failed; retrying with word-count fallback batches.", err);
+          toast("Labeled-batch world import had trouble. Retrying with word-count batches...", 7000);
+          setInfiniteWorldsImportProgress("world", 0, "0% — retrying with word-count batches");
+          converted = await importInfiniteWorldsWorldIncrementally(text, sourceName, { forceWordChunks: true });
+        }
+        const loaded = applyWorldImport(converted);
+        if (loaded) {
+          syncStateToForm();
+          renderAll();
+          toast("Imported Infinite Worlds world in larger labeled batches. Review it in World Set Up, then import the matching story if you have one.", 7500);
+        }
+      } catch (err) {
+        console.error(err);
+        showMessagePopup("Infinite Worlds world import failed", explainWorldGenerationError(err), 12000);
+      } finally {
+        setInfiniteWorldsImportSpinner("world", false);
+        setBusy(false);
+      }
+    }
+
+    async function importInfiniteWorldsWorldFile(file) {
+      if (!file) return;
+      try {
+        const text = await readFileAsText(file);
+        await importInfiniteWorldsWorldFromText(text, file.name || "");
+      } catch (err) {
+        setInfiniteWorldsImportSpinner("world", false);
+        showMessagePopup("World file read failed", err?.message || String(err || "Something went wrong."));
+      }
+    }
+
+    function extractTopLevelIwSection(text, heading, fallbackEndHeading = "") {
+      const source = String(text || "").replace(/\r\n/g, "\n");
+      const startRe = new RegExp(`--\\s*${escapeRegExp(heading)}\\s*--`, "i");
+      const start = source.search(startRe);
+      if (start < 0) return "";
+      const afterStart = source.slice(start).match(startRe)?.[0]?.length || 0;
+      const bodyStart = start + afterStart;
+      const rest = source.slice(bodyStart);
+      let end = rest.search(/\n\s*--\s*(?:Character|Turn\s+\d+|Story Background)\s*--/i);
+      if (fallbackEndHeading) {
+        const customEnd = rest.search(new RegExp(`\\n\\s*--\\s*${escapeRegExp(fallbackEndHeading)}\\s*--`, "i"));
+        if (customEnd >= 0) end = end >= 0 ? Math.min(end, customEnd) : customEnd;
+      }
+      return (end >= 0 ? rest.slice(0, end) : rest).trim();
+    }
+
+    function extractIwLabeledSubsection(block, heading) {
+      const source = String(block || "").replace(/\r\n/g, "\n");
+      const marker = new RegExp(`(^|\\n)\\s*${escapeRegExp(heading)}\\s*\\n\\s*-{2,}\\s*\\n`, "i");
+      const match = marker.exec(source);
+      if (!match) return "";
+      const start = match.index + match[0].length;
+      const rest = source.slice(start);
+      const next = rest.search(/\n\s*(?:Action|Outcome)\s*\n\s*-{2,}\s*\n/i);
+      return (next >= 0 ? rest.slice(0, next) : rest).trim();
+    }
+
+    function parseInfiniteWorldsStoryText(rawText) {
+      const text = String(rawText || "").replace(/\r\n/g, "\n");
+      const storyBackground = extractTopLevelIwSection(text, "Story Background");
+      const characterText = extractTopLevelIwSection(text, "Character");
+      const turns = [];
+      const turnRe = /--\s*Turn\s+(\d+)\s*--([\s\S]*?)(?=\n\s*--\s*Turn\s+\d+\s*--|$)/gi;
+      let match;
+      while ((match = turnRe.exec(text))) {
+        const turnNumber = Number(match[1]) || (turns.length + 1);
+        const block = match[2] || "";
+        const action = extractIwLabeledSubsection(block, "Action");
+        const outcome = extractIwLabeledSubsection(block, "Outcome") || block.trim();
+        if (outcome || action) turns.push({ turnNumber, action, outcome, rawBlock: block.trim() });
+      }
+      return { storyBackground, characterText, turns };
+    }
+
+    function importedStoryTurnSystemPrompt() {
+      return `You convert one imported Infinite Worlds story turn into Infinite Quest turn metadata.
+Return ONLY valid JSON. Do not wrap it in markdown. Do not include comments.
+
+Required JSON shape:
+{
+  "image_prompt": "A vivid prompt for one safe scene illustration of the imported turn. No text, logos, UI, captions, or watermarks.",
+  "choices": ["exactly four distinct next actions"],
+  "scratchpad": "Private continuity notes after this imported turn. Include NPC descriptions, secrets, unresolved hooks, inventory, relationships, and consequences. Never reveal scratchpad-only secrets directly.",
+  "tracker_updates": [{"id":"tracker id from prompt", "name":"tracker name", "value":"new complete current value", "rationale":"brief private reason"}]
+}
+
+Rules:
+- Treat the imported outcome as already canon. Do not contradict it or rewrite it.
+- Generate choices that continue from the END of the imported outcome, as if Infinite Quest had generated that turn natively.
+- Generate an image_prompt for the most visually important moment in the imported outcome. Keep it suitable for normal image providers; if mature source material is present, imply rather than explicitly depict restricted sexual or graphic content.
+- Update only the trackers provided in the prompt unless a tracker name matches clearly. Each tracker update value should be the complete current state, not a diff.
+- If no tracker needs an update, return an empty tracker_updates array.
+- Keep the scratchpad concise but useful for later turns.`;
+    }
+
+    function buildImportedStoryTurnPrompt(parsedStory, sourceTurn, importIndex) {
+      return JSON.stringify({
+        task: "Create Infinite Quest metadata for this imported Infinite Worlds turn.",
+        import_position: importIndex + 1,
+        source_turn_number: sourceTurn.turnNumber,
+        world: compactWorldForPrompt(),
+        source_story_background: truncateText(parsedStory.storyBackground || "", 5000),
+        source_character: truncateText(parsedStory.characterText || "", 2500),
+        existing_scratchpad: truncateText(state.scratchpad || "", PROMPT_LIMITS.scratchpad),
+        custom_trackers: state.trackers.map(compactTrackerForPrompt),
+        recent_imported_history: state.turns.slice(-8).map(t => compactTurnForPrompt(t, PROMPT_LIMITS.narration)),
+        imported_turn: {
+          action: truncateText(sourceTurn.action || (importIndex === 0 ? "Begin the adventure." : "Continue."), PROMPT_LIMITS.action),
+          outcome: truncateText(sourceTurn.outcome || "", 7000)
+        },
+        output_note: "Return only the required JSON object. choices must contain exactly four useful next actions."
+      }, null, 2);
+    }
+
+    async function generateImportedTurnMetadata(parsedStory, sourceTurn, importIndex) {
+      return callOpenRouterJson("Infinite Worlds story turn import", buildOpenRouterInstructionMessages(
+        importedStoryTurnSystemPrompt(),
+        buildImportedStoryTurnPrompt(parsedStory, sourceTurn, importIndex)
+      ), { temperature: Math.max(0.25, Number(state.settings.temperature ?? 0.85)), max_tokens: 2600, json_retries: 2, no_content_retries: 2 });
+    }
+
+    async function generateImageForImportedTurn(turn) {
+      if (state.settings.generateImages === false || !turn?.imagePrompt) return;
+      turn.imageGenerating = true;
+      turn.imageError = "";
+      renderAll();
+      saveState();
+      try {
+        const result = await callOpenRouterImageWithPg13Retry(turn.imagePrompt, { previousImageUrl: turn.imageUrl || "" });
+        turn.imageUrl = result.imageUrl;
+        turn.imagePrompt = result.prompt;
+        turn.imageError = "";
+        markUnsavedForFullExport();
+      } catch (err) {
+        console.error(err);
+        turn.imageError = err?.message || String(err || "Image generation failed.");
+      } finally {
+        turn.imageGenerating = false;
+        renderAll();
+        saveState();
+      }
+    }
+
+    async function importInfiniteWorldsStoryFromText(rawText, sourceName = "") {
+      if (busy) return;
+      syncFormToState();
+      const missingFields = missingRequiredWorldSetupFields();
+      if (missingFields.length) {
+        showWorldSetupRequiredError(missingFields);
+        return;
+      }
+      const parsed = parseInfiniteWorldsStoryText(rawText);
+      if (!parsed.turns.length) {
+        showMessagePopup("Infinite Worlds story import failed", "I could not find any '-- Turn N --' sections in that file. Export the Infinite Worlds story as a text file, then try again.");
+        return;
+      }
+      if (state.turns.length && !confirm(`Import ${parsed.turns.length} Infinite Worlds turns and replace the current story history?`)) return;
+
+      setInfiniteWorldsImportSpinner("story", true);
+      setInfiniteWorldsImportProgress("story", 0, "0% — preparing story import");
+      closeInfiniteWorldsImportDialog();
+      state.turns = [];
+      state.scratchpad = "";
+      state.viewIndex = -1;
+      state.baseTrackersAtStart = deepClone(state.defaultTriggers || []);
+      state.trackers = cloneDefaultTriggersForCurrentRun();
+      markUnsavedForFullExport();
+      renderAll();
+      saveState();
+
+      try {
+        for (let i = 0; i < parsed.turns.length; i += 1) {
+          const sourceTurn = parsed.turns[i];
+          const basePercent = (i / parsed.turns.length) * 100;
+          setInfiniteWorldsImportProgress("story", basePercent, `${Math.round(basePercent)}% — turn ${i + 1}/${parsed.turns.length}`);
+          setBusy(true, `Importing turn ${i + 1}/${parsed.turns.length}`);
+          const metadata = await generateImportedTurnMetadata(parsed, sourceTurn, i);
+          const metadataPercent = ((i + 0.45) / parsed.turns.length) * 100;
+          setInfiniteWorldsImportProgress("story", metadataPercent, `${Math.round(metadataPercent)}% — generated turn ${i + 1} metadata`);
+          metadata.tracker_updates = metadata.tracker_updates || metadata.trackerUpdates || [];
+          metadata.image_prompt = metadata.image_prompt || metadata.imagePrompt || "";
+          applyTurnState(metadata);
+          const action = String(sourceTurn.action || (i === 0 ? "Begin the adventure." : "Continue.")).trim();
+          const turn = normalizeTurnResult({
+            narration: sourceTurn.outcome || sourceTurn.rawBlock || "",
+            image_prompt: metadata.image_prompt || metadata.imagePrompt || "A cinematic adventure scene, no text.",
+            choices: metadata.choices || [],
+            scratchpad: metadata.scratchpad || state.scratchpad || "",
+            tracker_updates: metadata.tracker_updates || metadata.trackerUpdates || []
+          }, action, null);
+          turn.importedFrom = {
+            source: "Infinite Worlds",
+            sourceFileName: sourceName || "",
+            sourceTurnNumber: sourceTurn.turnNumber,
+            importedAt: nowIso()
+          };
+          turn.scratchpadSnapshot = state.scratchpad;
+          turn.trackersSnapshot = deepClone(state.trackers);
+          state.turns.push(turn);
+          state.viewIndex = state.turns.length - 1;
+          renderAll();
+          saveState();
+          const savedPercent = ((i + 0.7) / parsed.turns.length) * 100;
+          setInfiniteWorldsImportProgress("story", savedPercent, `${Math.round(savedPercent)}% — saved turn ${i + 1}`);
+          await waitForTurnNarrationDisplayed(turn);
+          const imagePercent = ((i + 0.85) / parsed.turns.length) * 100;
+          setInfiniteWorldsImportProgress("story", imagePercent, `${Math.round(imagePercent)}% — ${state.settings.generateImages === false ? "skipping image" : "generating image"} for turn ${i + 1}`);
+          await generateImageForImportedTurn(turn);
+          const donePercent = ((i + 1) / parsed.turns.length) * 100;
+          setInfiniteWorldsImportProgress("story", donePercent, `${Math.round(donePercent)}% — imported ${i + 1}/${parsed.turns.length}`);
+        }
+        setInfiniteWorldsImportProgress("story", 100, "100% — story import complete");
+        markUnsavedForFullExport();
+        state.viewIndex = state.turns.length - 1;
+        renderAll();
+        saveState();
+        toast(`Imported ${parsed.turns.length} Infinite Worlds turns${state.settings.generateImages === false ? " with image prompts" : " with image prompts and images"}.`, 8000);
+      } catch (err) {
+        console.error(err);
+        showMessagePopup("Infinite Worlds story import stopped", explainWorldGenerationError(err), 12000);
+      } finally {
+        setInfiniteWorldsImportSpinner("story", false);
+        setBusy(false);
+      }
+    }
+
+    async function importInfiniteWorldsStoryFile(file) {
+      if (!file) return;
+      try {
+        const text = await readFileAsText(file);
+        await importInfiniteWorldsStoryFromText(text, file.name || "");
+      } catch (err) {
+        setInfiniteWorldsImportSpinner("story", false);
+        showMessagePopup("Story file read failed", err?.message || String(err || "Something went wrong."));
+      }
+    }
+
+    function escapeRegExp(value = "") {
+      return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+
     function exportJson() {
       syncFormToState();
       const clone = deepClone(state);
@@ -4407,6 +5538,10 @@ ${missingList}`,
       addClick("btnOpenModelSettings", () => { closeMenu(); openModelSettingsDialog(); });
       addClick("btnOpenEditState", () => { closeMenu(); openEditStateDialog(); });
       addClick("btnRestartGettingStarted", restartGettingStartedDialogue);
+      addClick("btnOpenInfiniteWorldsImport", () => { closeMenu(); openInfiniteWorldsImportDialog(); });
+      addClick("btnCloseInfiniteWorldsImport", closeInfiniteWorldsImportDialog);
+      addClick("btnInfiniteWorldImportWorld", () => $("infiniteWorldImportWorldFile")?.click());
+      addClick("btnInfiniteWorldImportStory", () => $("infiniteWorldImportStoryFile")?.click());
       addClick("btnCloseModelSettings", closeModelSettingsDialog);
       addClick("btnModelSettingsDone", closeModelSettingsDialog);
       const continueToWorldSetupFromModelSettings = () => { syncFormToState(); closeDialog("modelSettingsDialog"); openWorldSetupDialog(); };
@@ -4444,6 +5579,9 @@ ${missingList}`,
       });
       $("btnOpenWorldGen").addEventListener("click", openWorldGenDialog);
       $("btnWorldGenRun").addEventListener("click", generateWorldSetup);
+      $("btnGenerateCharacterSelect").addEventListener("click", generateCharacterSelect);
+      $("btnCloseCharacterSelect").addEventListener("click", closeCharacterSelectDialog);
+      $("btnCharacterSelectCancel").addEventListener("click", closeCharacterSelectDialog);
       addCtrlEnter("worldGenPrompt", generateWorldSetup);
       $$(".sample-world-button").forEach(btn => btn.addEventListener("click", () => loadSampleWorldSetup(btn.dataset.sampleWorld)));
       $("btnStart").addEventListener("click", startAdventure);
@@ -4471,6 +5609,8 @@ ${missingList}`,
       $("btnCopyWorld").addEventListener("click", copyWorldToClipboard);
       $("btnLoadWorldText").addEventListener("click", () => openWorldTextImportDialog());
       $("worldImportFile").addEventListener("change", e => { if (e.target.files?.[0]) importWorld(e.target.files[0]); e.target.value = ""; });
+      $("infiniteWorldImportWorldFile")?.addEventListener("change", e => { if (e.target.files?.[0]) importInfiniteWorldsWorldFile(e.target.files[0]); e.target.value = ""; });
+      $("infiniteWorldImportStoryFile")?.addEventListener("change", e => { if (e.target.files?.[0]) importInfiniteWorldsStoryFile(e.target.files[0]); e.target.value = ""; });
       $("btnWorldTextImportCancel").addEventListener("click", closeWorldTextImportDialog);
       $("btnWorldTextImportConfirm").addEventListener("click", () => importWorldFromText($("worldTextImportEditor").value));
       addCtrlEnter("worldTextImportEditor", () => $("btnWorldTextImportConfirm")?.click());

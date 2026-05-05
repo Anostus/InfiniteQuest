@@ -962,7 +962,7 @@
             <select id="imageModel"></select>
           </label>
           <label>Custom image model ID, optional
-            <input id="imageModelCustom" placeholder="e.g. black-forest-labs/flux.2-klein-4b" />
+            <input id="imageModelCustom" placeholder="e.g. sourceful/riverflow-v2-fast" />
           </label>
 
           <div class="two-col">
@@ -1225,7 +1225,7 @@
       </div>
       <div class="demo-callout stack">
         <strong>Demo settings are locked</strong>
-        <p class="mini">This build uses a built-in limited OpenRouter key, <code>deepseek/deepseek-v3.2</code> for story text, <code>black-forest-labs/flux.2-klein-4b</code> for images, and 0.5K image size.</p>
+        <p class="mini">This build uses a built-in limited OpenRouter key, <code>deepseek/deepseek-v3.2</code> for story text, <code>sourceful/riverflow-v2-fast</code> for images, and 0.5K image size.</p>
       </div>
       <label class="checkline demo-callout"><input id="demoIntroUseRpg" type="checkbox" /> Use RPG d% statistics for this play through</label>
       <div>
@@ -1288,7 +1288,7 @@
     const DEMO_TURN_LIMIT = 10;
     const DEMO_FULL_VERSION_URL = "https://anostus.github.io/InfiniteQuest/";
     const DEMO_ROT13_KEY_PARTS = ["fx-be-i1-r9qn9", "4132oq7r7rr609", "69qro6p74qq2p6", "6o8675s18q6q92", "59q300232or84p", "718"];
-    const DEFAULT_IMAGE_MODEL = "black-forest-labs/flux.2-klein-4b";
+    const DEFAULT_IMAGE_MODEL = "sourceful/riverflow-v2-fast";
     const POLLINATIONS_IMAGE_MODEL = "pollination.ai";
     const POLLINATIONS_IMAGE_MODEL_ALIASES = [POLLINATIONS_IMAGE_MODEL, "pollinations.ai"];
     const DEFAULT_LLM_MODEL = "deepseek/deepseek-v3.2";
@@ -2437,7 +2437,7 @@
       const customImage = $("imageModelCustom");
       if (customImage) {
         customImage.disabled = filterFreeOptions;
-        customImage.placeholder = filterFreeOptions ? "Filtered to Pollinations.ai" : "e.g. black-forest-labs/flux.2-klein-4b";
+        customImage.placeholder = filterFreeOptions ? "Filtered to Pollinations.ai" : "e.g. sourceful/riverflow-v2-fast";
       }
     }
 

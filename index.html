@@ -3810,7 +3810,7 @@
       if (!disableJsonResponseFormat) {
         payload.response_format = { type: "json_object" };
       }
-      const res = await withLlmResponseWait(() => fetch("https://openrouter.ai/api/v1/chat/completions", {
+      const fetchOptions = {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${key}`,
@@ -3819,7 +3819,9 @@
           "X-OpenRouter-Title": "Infinite Quest CYOA Engine"
         },
         body: JSON.stringify(payload)
-      }));
+      };
+      if (options.signal) fetchOptions.signal = options.signal;
+      const res = await withLlmResponseWait(() => fetch("https://openrouter.ai/api/v1/chat/completions", fetchOptions));
       if (!res.ok) {
         const errText = await res.text();
         throw new Error(`OpenRouter ${label} request failed (${res.status}): ${errText.slice(0, 900)}`);
@@ -4599,11 +4601,37 @@ ${beforeOnlyRule}
     async function runCombinedEventTriggerChecks(phase, action, options = {}) {
       const triggers = eventTriggersForPhase(phase);
       if (!triggers.length) return [];
-      const simpleResults = await checkEventTriggers(phase, action, { ...options, simple: true, record: false });
-      const fullResults = await checkEventTriggers(phase, action, { ...options, simple: false, record: false });
+      const [simpleResults, fullResults] = await Promise.all([
+        checkEventTriggers(phase, action, { ...options, simple: true, record: false }),
+        checkEventTriggers(phase, action, { ...options, simple: false, record: false })
+      ]);
       const merged = mergeActivatedEventTriggerResults(simpleResults, fullResults);
       recordActivatedEventTriggerHits(merged);
       return merged;
+    }
+
+    function startSpeculativeStoryGeneration(action, rollResult = null, eventTriggerResults = []) {
+      const controller = typeof AbortController === "function" ? new AbortController() : null;
+      let settled = false;
+      const promise = callOpenRouterChat(action, rollResult, eventTriggerResults, controller ? { signal: controller.signal } : {})
+        .then(raw => {
+          settled = true;
+          return { ok: true, raw };
+        })
+        .catch(error => {
+          settled = true;
+          return { ok: false, error };
+        });
+      return {
+        abort() {
+          if (!settled && controller) controller.abort();
+        },
+        async unwrap() {
+          const result = await promise;
+          if (!result.ok) throw result.error;
+          return result.raw;
+        }
+      };
     }
 
     function eventTriggerExtensionSystemPrompt() {
@@ -4697,11 +4725,11 @@ ${addition}`.trim();
       return JSON.stringify(promptPayload, null, 2);
     }
 
-    async function callOpenRouterChat(action, rollResult = null, eventTriggerResults = []) {
+    async function callOpenRouterChat(action, rollResult = null, eventTriggerResults = [], options = {}) {
       return callOpenRouterJson("story", buildOpenRouterInstructionMessages(
         storySystemPrompt(),
         buildUserPrompt(action, rollResult, eventTriggerResults)
-      ), { temperature: Number(state.settings.temperature ?? 0.85), max_tokens: 2600 });
+      ), { temperature: Number(state.settings.temperature ?? 0.85), max_tokens: 2600, ...options });
     }
 
     function imageModerationSignal(error) {
@@ -4952,13 +4980,25 @@ Rewrite rules:
         const pendingFromPreviousAfterChecks = normalizePendingEventTriggers(state.pendingEventTriggers || []);
         state.pendingEventTriggers = [];
         let activatedForMainStory = [...pendingFromPreviousAfterChecks];
+        let raw;
         if (eventTriggersForPhase("before").length) {
-          setBusy(true, "Checking event triggers");
-          const beforeTriggerResults = await runCombinedEventTriggerChecks("before", action, { currentTurn: state.turns.length + 1 });
-          activatedForMainStory.push(...beforeTriggerResults);
+          setBusy(true, "Checking triggers + drafting scene");
+          const currentTurn = state.turns.length + 1;
+          const speculativeStory = startSpeculativeStoryGeneration(action, roll, activatedForMainStory);
+          const beforeTriggerResults = await runCombinedEventTriggerChecks("before", action, { currentTurn });
+          if (beforeTriggerResults.length) {
+            speculativeStory.abort();
+            activatedForMainStory.push(...beforeTriggerResults);
+            setBusy(true, "Rewriting scene with triggers");
+            raw = await callOpenRouterChat(action, roll, activatedForMainStory);
+          } else {
+            setBusy(true, "Finishing scene");
+            raw = await speculativeStory.unwrap();
+          }
+        } else {
+          setBusy(true, "Writing scene");
+          raw = await callOpenRouterChat(action, roll, activatedForMainStory);
         }
-        setBusy(true, "Writing scene");
-        const raw = await callOpenRouterChat(action, roll, activatedForMainStory);
         applyTurnState(raw);
         const turn = normalizeTurnResult(raw, action, roll);
         if (activatedForMainStory.length) turn.eventTriggersApplied = activatedForMainStory.map(compactActivatedEventForPrompt);

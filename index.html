@@ -1400,7 +1400,7 @@
       </div>
       <div class="dialog-scroll stack">
         <p>Are you sure you would like to load this world and replace the current world setup?</p>
-        <p class="mini">This will replace the title, genre, tone, player character, premise, story rules, RPG stats, default trackers, and event triggers. Existing story turns will remain, but they may no longer match the loaded world.</p>
+        <p class="mini">This will replace the title, genre, tone, player character, premise, story rules, RPG stats, default trackers, and event triggers. If you start a new adventure, existing story turns will be deleted; otherwise they will remain, but they may no longer match the loaded world.</p>
         <div class="world-gen-box world-hash-preview" aria-label="Shared world preview">
           <div class="world-hash-preview-field">
             <strong>Title</strong>
@@ -1432,7 +1432,28 @@
       </div>
       <div class="row wrap dialog-actions">
         <button id="btnWorldHashImportCancel" type="button">Cancel</button>
-        <button id="btnWorldHashImportConfirm" class="primary" type="button">📥 Load shared world</button>
+        <button id="btnWorldHashImportConfirm" class="accent" type="button">Load World Without Starting New Adventure</button>
+        <button id="btnWorldHashImportStart" class="primary" type="button">Load World and Start a New Adventure</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="worldHashStartConfirmDialog" class="world-gen-dialog app-dialog getting-started-dialog">
+    <div class="world-gen-card">
+      <div class="dialog-header">
+        <div>
+          <h3>Start a new adventure?</h3>
+          <p class="mini">Loading this shared world and starting a new adventure will delete your current adventure.</p>
+        </div>
+        <button id="btnWorldHashStartConfirmClose" class="small ghost" type="button" aria-label="Close new adventure confirmation">✕</button>
+      </div>
+      <div class="world-gen-box stack">
+        <p>Starting a new adventure will delete the current adventure/story turns and replace them with a new adventure based on this shared world.</p>
+        <p>Are you sure you want to proceed?</p>
+      </div>
+      <div class="row wrap dialog-actions">
+        <button id="btnWorldHashStartConfirmCancel" type="button">Cancel</button>
+        <button id="btnWorldHashStartConfirmProceed" class="primary" type="button">Yes, Load World and Start a New Adventure</button>
       </div>
     </div>
   </dialog>
@@ -1864,7 +1885,8 @@
       lastImportedWorldHash: "",
       worldHashImportInProgress: false,
       pendingWorldHashImport: null,
-      pendingWorldHashImportResolver: null
+      pendingWorldHashImportResolver: null,
+      pendingWorldHashStartConfirmResolver: null
     };
 
     let specialKeyCheckTimer = null;
@@ -2149,7 +2171,7 @@
       busy = isBusy;
       const pill = $("busyPill");
       pill.innerHTML = isBusy ? `<span class="spinner"></span> ${escapeHtml(label)}` : "Ready";
-      ["btnStart", "btnTakeAction", "btnRetry", "btnEditResponse", "btnOpenWorldGen", "btnWorldGenRun", "btnGenerateCharacterSelect", "btnWorldHashGenerateCharacterSelect", "btnRegenerateImageConfirm", "btnSaveWorld", "btnCopyWorld", "btnGenerateWorldUrl", "btnLoadWorldText", "btnWorldTextImportConfirm", "btnInfiniteWorldImportWorld", "btnInfiniteWorldImportStory"].forEach(id => { const el = $(id); if (el) el.disabled = isBusy; });
+      ["btnStart", "btnTakeAction", "btnRetry", "btnEditResponse", "btnOpenWorldGen", "btnWorldGenRun", "btnGenerateCharacterSelect", "btnWorldHashGenerateCharacterSelect", "btnWorldHashImportConfirm", "btnWorldHashImportStart", "btnRegenerateImageConfirm", "btnSaveWorld", "btnCopyWorld", "btnGenerateWorldUrl", "btnLoadWorldText", "btnWorldTextImportConfirm", "btnInfiniteWorldImportWorld", "btnInfiniteWorldImportStory"].forEach(id => { const el = $(id); if (el) el.disabled = isBusy; });
       $$(".sample-world-button").forEach(button => { button.disabled = isBusy; });
       const freeAction = $("freeAction");
       if (freeAction) freeAction.disabled = isBusy;
@@ -5665,22 +5687,68 @@ ${missingList}`,
       });
     }
 
-    function confirmWorldHashImport() {
+    const WORLD_HASH_START_CONFIRM_MESSAGE = "Starting a new adventure will delete the current adventure/story turns and replace them with a new adventure based on this shared world. Are you sure you want to proceed?";
+
+    function closeWorldHashStartConfirmDialog(result = false) {
+      const dialog = $("worldHashStartConfirmDialog");
+      if (dialog && dialog.open) dialog.close();
+      const resolver = transientUi.pendingWorldHashStartConfirmResolver;
+      transientUi.pendingWorldHashStartConfirmResolver = null;
+      if (resolver) resolver(!!result);
+    }
+
+    function openWorldHashStartConfirmDialog() {
+      return new Promise(resolve => {
+        transientUi.pendingWorldHashStartConfirmResolver = resolve;
+        const dialog = $("worldHashStartConfirmDialog");
+        if (!dialog || typeof dialog.showModal !== "function") {
+          closeWorldHashStartConfirmDialog(window.confirm(WORLD_HASH_START_CONFIRM_MESSAGE));
+          return;
+        }
+
+        try {
+          if (dialog.open) dialog.close();
+          dialog.showModal();
+          setTimeout(() => $("btnWorldHashStartConfirmCancel")?.focus(), 50);
+        } catch (err) {
+          closeWorldHashStartConfirmDialog(window.confirm(WORLD_HASH_START_CONFIRM_MESSAGE));
+        }
+      });
+    }
+
+    async function confirmWorldHashImport(options = {}) {
       const pending = transientUi.pendingWorldHashImport;
+      const shouldStartNewAdventure = !!options?.startNewAdventure;
       if (!pending) return closeWorldHashImportDialog(false);
       try {
         const loaded = applyWorldImport(pending.imported, { skipConfirm: true });
         if (loaded) {
           transientUi.lastImportedWorldHash = pending.encoded;
-          transientUi.sharedWorldStartAfterGettingStarted = true;
+          transientUi.sharedWorldStartAfterGettingStarted = false;
           closeWorldHashImportDialog(true);
           syncStateToForm();
           renderAll();
+
+          if (shouldStartNewAdventure) {
+            const hasKey = !!String(state.settings.apiKey || $("apiKey")?.value || "").trim();
+            if (!hasKey) {
+              transientUi.sharedWorldStartAfterGettingStarted = true;
+              toast("Loaded shared world. Choose an API key option, then start the new adventure.", 7500);
+              openGettingStartedDialog();
+              return;
+            }
+            toast("Loaded shared world. Starting a new adventure...", 6500);
+            await startAdventure({ skipExistingTurnsConfirm: true });
+            if (state.turns.length) transientUi.sharedWorldStartAfterGettingStarted = false;
+            return;
+          }
+
           toast("Loaded world setup from #world URL.", 6500);
           return;
         }
       } catch (err) {
         closeWorldHashImportDialog(false);
+        transientUi.sharedWorldStartAfterGettingStarted = false;
         showMessagePopup("#world import failed", err?.message || String(err || "Something went wrong."));
         return;
       }
@@ -6846,7 +6914,7 @@ Rules:
         syncFormToState();
         closeDialog("modelSettingsDialog");
         if (transientUi.sharedWorldStartAfterGettingStarted) {
-          await startAdventure();
+          await startAdventure({ skipExistingTurnsConfirm: true });
           if (state.turns.length) transientUi.sharedWorldStartAfterGettingStarted = false;
           return;
         }
@@ -6951,7 +7019,15 @@ Rules:
       $("btnWorldHashImportClose")?.addEventListener("click", () => closeWorldHashImportDialog(false));
       $("btnWorldHashImportCancel")?.addEventListener("click", () => closeWorldHashImportDialog(false));
       $("btnWorldHashGenerateCharacterSelect")?.addEventListener("click", () => generateCharacterSelect("worldHashImport"));
-      $("btnWorldHashImportConfirm")?.addEventListener("click", confirmWorldHashImport);
+      $("btnWorldHashImportConfirm")?.addEventListener("click", () => confirmWorldHashImport({ startNewAdventure: false }));
+      $("btnWorldHashImportStart")?.addEventListener("click", async () => {
+        const confirmed = await openWorldHashStartConfirmDialog();
+        if (confirmed) confirmWorldHashImport({ startNewAdventure: true });
+      });
+      $("btnWorldHashStartConfirmClose")?.addEventListener("click", () => closeWorldHashStartConfirmDialog(false));
+      $("btnWorldHashStartConfirmCancel")?.addEventListener("click", () => closeWorldHashStartConfirmDialog(false));
+      $("btnWorldHashStartConfirmProceed")?.addEventListener("click", () => closeWorldHashStartConfirmDialog(true));
+      $("worldHashStartConfirmDialog")?.addEventListener("cancel", event => { event.preventDefault(); closeWorldHashStartConfirmDialog(false); });
       $("worldHashImportDialog")?.addEventListener("cancel", event => { event.preventDefault(); closeWorldHashImportDialog(false); });
       $("btnAddTracker").addEventListener("click", addTracker);
       $("btnSaveScratch").addEventListener("click", () => { setViewedScratchpad($("scratchpad").value); markUnsavedForFullExport(); saveState(); renderAll(); toast("Scratchpad updated for the viewed turn."); });

@@ -5162,14 +5162,6 @@ ${missingList}`,
           value: tracker.value || "",
           createdAt: tracker.createdAt || null,
           updatedAt: null
-        })),
-        trackers: defaultTriggersForExport().map(tracker => ({
-          id: tracker.id || uid("tracker"),
-          name: tracker.name || "",
-          rules: tracker.rules || "",
-          value: tracker.value || "",
-          createdAt: tracker.createdAt || null,
-          updatedAt: null
         }))
       };
       const eventTriggers = normalizeEventTriggers(state.eventTriggers || []).map(trigger => ({

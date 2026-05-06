@@ -2167,8 +2167,7 @@
       const compactEventTrigger = t => ({
         ...t,
         condition: truncateText(t.condition || "", 3000),
-        effect: truncateText(t.effect || "", 5000),
-        lastActivationReason: truncateText(t.lastActivationReason || "", 1500)
+        effect: truncateText(t.effect || "", 5000)
       });
       const compactPendingEventTrigger = t => ({
         ...t,
@@ -2590,7 +2589,6 @@
           triggeredCount: clampNumber(trigger.triggeredCount ?? trigger.triggered_count ?? 0, 0, 999999, 0),
           lastTriggeredTurn: Number.isFinite(Number(trigger.lastTriggeredTurn ?? trigger.last_triggered_turn)) ? Number(trigger.lastTriggeredTurn ?? trigger.last_triggered_turn) : null,
           lastTriggeredAt: trigger.lastTriggeredAt || trigger.last_triggered_at || null,
-          lastActivationReason: String(trigger.lastActivationReason || trigger.last_activation_reason || "").trim(),
           label: String(trigger.label || trigger.name || trigger.title || `Event Trigger ${idx + 1}`).trim()
         };
       }).filter(trigger => trigger.condition || trigger.effect);
@@ -2626,8 +2624,7 @@
         what_happens_when_activated: truncateText(trigger.effect || "", 2200),
         may_add_short_text_after_current_response: trigger.timing === "after" && !!trigger.addTextAfter,
         triggered_count: trigger.triggeredCount || 0,
-        last_triggered_turn: trigger.lastTriggeredTurn || null,
-        last_activation_reason: truncateText(trigger.lastActivationReason || "", 700)
+        last_triggered_turn: trigger.lastTriggeredTurn || null
       };
     }
 
@@ -3651,7 +3648,6 @@
         triggeredCount: 0,
         lastTriggeredTurn: null,
         lastTriggeredAt: null,
-        lastActivationReason: "",
         label: `Event Trigger ${state.eventTriggers.length + 1}`
       });
       if ($("eventTriggerCondition")) $("eventTriggerCondition").value = "";
@@ -4442,7 +4438,6 @@ Rules:
 - Only activate a trigger when its activation_condition is clearly met by the provided current turn, latest player action, recent history, scratchpad, trackers, or just-generated response.
 - If the condition is ambiguous, do not activate it.
 - Use the trigger's what_happens_when_activated as the instructions field, adapted only as needed for the immediate story context.
-- Avoid duplicate one-time outcomes by considering triggered_count, last_triggered_turn, and last_activation_reason. Recurring triggers may activate again only if the condition is newly/currently met.
 - For after-response triggers, preserve add_short_text_after_response from the trigger when it is provided.
 - Do not write story narration here. Return activation decisions and instructions only.`;
     }
@@ -4505,7 +4500,6 @@ Rules:
             trigger.triggeredCount = (Number(trigger.triggeredCount) || 0) + 1;
             trigger.lastTriggeredTurn = item.sourceTurn;
             trigger.lastTriggeredAt = now;
-            trigger.lastActivationReason = item.reason || "Activated by LLM trigger check.";
             trigger.updatedAt = now;
           }
         });
@@ -5174,8 +5168,7 @@ ${missingList}`,
         updatedAt: trigger.updatedAt || null,
         triggeredCount: trigger.triggeredCount || 0,
         lastTriggeredTurn: trigger.lastTriggeredTurn || null,
-        lastTriggeredAt: trigger.lastTriggeredAt || null,
-        lastActivationReason: trigger.lastActivationReason || ""
+        lastTriggeredAt: trigger.lastTriggeredAt || null
       }));
       if (eventTriggers.length) worldOnly.eventTriggers = eventTriggers;
       return worldOnly;

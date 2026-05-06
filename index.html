@@ -4442,6 +4442,36 @@ Rules:
 - Do not write story narration here. Return activation decisions and instructions only.`;
     }
 
+    function simpleEventTriggerCheckSystemPrompt(phase) {
+      const beforeOnlyRule = phase === "before"
+        ? "- This is a first-pass before-response check. Use ONLY latest_player_action, current_turn, and event_triggers_to_check. Do not assume any world, history, scratchpad, tracker, or generated-response context."
+        : "- This is a first-pass after-response check. Use ONLY current_story_content, current_turn, and event_triggers_to_check. Do not assume any world, history, scratchpad, tracker, or player-action context.";
+      return `You run a simple first-pass custom event trigger check for a choose-your-own-adventure engine.
+Return ONLY valid JSON. Do not wrap it in markdown. Do not include comments.
+
+Required JSON shape:
+{
+  "activated_triggers": [
+    {
+      "id": "trigger id from the prompt",
+      "name": "short trigger name or label",
+      "activation_reason": "brief reason this trigger condition is met now",
+      "instructions": "the concrete instruction/effect that the next story response or after-response extension must reflect",
+      "add_short_text_after_response": false
+    }
+  ]
+}
+
+Rules:
+${beforeOnlyRule}
+- Activate turn-number triggers when current_turn clearly satisfies them.
+- Activate text/action triggers only when the supplied text clearly satisfies the activation_condition.
+- If the condition is ambiguous from this limited payload, do not activate it.
+- Use the trigger's what_happens_when_activated as the instructions field.
+- For after-response triggers, preserve add_short_text_after_response from the trigger when it is provided.
+- Do not write story narration here. Return activation decisions and instructions only.`;
+    }
+
     function buildEventTriggerCheckPrompt(phase, action, triggers, options = {}) {
       const nextTurnNumber = options.currentTurn || (state.turns.length + 1);
       const generatedTurn = options.generatedTurn || null;
@@ -4463,16 +4493,28 @@ Rules:
       }, null, 2);
     }
 
-    async function checkEventTriggers(phase, action, options = {}) {
-      const triggers = eventTriggersForPhase(phase);
-      if (!triggers.length) return [];
-      const raw = await callOpenRouterJson("event trigger check", buildOpenRouterInstructionMessages(
-        eventTriggerCheckSystemPrompt(),
-        buildEventTriggerCheckPrompt(phase, action, triggers, options)
-      ), { temperature: 0.15, max_tokens: 1600, json_retries: 2, no_content_retries: 2 });
-      const source = Array.isArray(raw.activated_triggers) ? raw.activated_triggers : (Array.isArray(raw.activatedTriggers) ? raw.activatedTriggers : []);
+    function buildSimpleEventTriggerCheckPrompt(phase, action, triggers, options = {}) {
+      const currentTurn = options.currentTurn || (state.turns.length + 1);
+      const generatedTurn = options.generatedTurn || null;
+      if (phase === "after") {
+        return JSON.stringify({
+          current_turn: currentTurn,
+          current_story_content: truncateText(generatedTurn?.narration || "", PROMPT_LIMITS.currentNarration),
+          event_triggers_to_check: triggers.map(compactEventTriggerForPrompt)
+        }, null, 2);
+      }
+      return JSON.stringify({
+        current_turn: currentTurn,
+        latest_player_action: truncateText(action || "", PROMPT_LIMITS.action),
+        event_triggers_to_check: triggers.map(compactEventTriggerForPrompt)
+      }, null, 2);
+    }
+
+    function parseEventTriggerCheckResult(raw, phase, triggers, options = {}) {
+      const source = Array.isArray(raw?.activated_triggers) ? raw.activated_triggers : (Array.isArray(raw?.activatedTriggers) ? raw.activatedTriggers : []);
       const byId = new Map(triggers.map(t => [t.id, t]));
-      const activated = source.map((item, idx) => {
+      const checkMode = options.simple ? "simple" : "full";
+      return source.map((item, idx) => {
         const sourceTriggerId = String(item.id || item.trigger_id || item.sourceTriggerId || "").trim();
         const trigger = byId.get(sourceTriggerId) || triggers.find(t => t.condition === item.activation_condition) || null;
         if (!trigger) return null;
@@ -4489,23 +4531,79 @@ Rules:
           reason: String(item.activation_reason || item.reason || item.rationale || "").trim(),
           addTextAfter: phase === "after" && trigger.addTextAfter && (item.add_short_text_after_response !== false),
           createdAt: nowIso(),
-          sourceTurn: options.currentTurn || (phase === "after" ? state.turns.length : state.turns.length + 1)
+          sourceTurn: options.currentTurn || (phase === "after" ? state.turns.length : state.turns.length + 1),
+          checkMode
         };
       }).filter(Boolean);
-      if (activated.length) {
-        const now = nowIso();
-        activated.forEach(item => {
-          const trigger = state.eventTriggers.find(t => t.id === item.sourceTriggerId);
-          if (trigger) {
-            trigger.triggeredCount = (Number(trigger.triggeredCount) || 0) + 1;
-            trigger.lastTriggeredTurn = item.sourceTurn;
-            trigger.lastTriggeredAt = now;
-            trigger.updatedAt = now;
-          }
-        });
-        saveState();
-      }
+    }
+
+    function recordActivatedEventTriggerHits(activated) {
+      const items = normalizePendingEventTriggers(activated || []);
+      if (!items.length) return;
+      const now = nowIso();
+      const countedSourceIds = new Set();
+      items.forEach(item => {
+        const sourceId = item.sourceTriggerId || item.source_trigger_id || "";
+        if (!sourceId || countedSourceIds.has(sourceId)) return;
+        countedSourceIds.add(sourceId);
+        const trigger = state.eventTriggers.find(t => t.id === sourceId);
+        if (trigger) {
+          trigger.triggeredCount = (Number(trigger.triggeredCount) || 0) + 1;
+          trigger.lastTriggeredTurn = item.sourceTurn;
+          trigger.lastTriggeredAt = now;
+          trigger.updatedAt = now;
+        }
+      });
+      saveState();
+    }
+
+    function mergeActivatedEventTriggerResults(...groups) {
+      const merged = [];
+      const byKey = new Map();
+      const allItems = groups.flat().filter(Boolean);
+      allItems.forEach(item => {
+        const key = item.sourceTriggerId || `${item.timing || "before"}:${item.condition || ""}:${item.instructions || item.effect || ""}`;
+        if (!byKey.has(key)) {
+          const copy = { ...item };
+          copy.checkModes = item.checkMode ? [item.checkMode] : [];
+          merged.push(copy);
+          byKey.set(key, copy);
+          return;
+        }
+        const existing = byKey.get(key);
+        if (item.checkMode && !existing.checkModes.includes(item.checkMode)) existing.checkModes.push(item.checkMode);
+        if (item.addTextAfter) existing.addTextAfter = true;
+        if (item.sourceTurn && !existing.sourceTurn) existing.sourceTurn = item.sourceTurn;
+        if (item.name && (!existing.name || existing.name.startsWith("Event trigger"))) existing.name = item.name;
+        if (item.instructions && (!existing.instructions || item.checkMode === "full" || item.instructions.length > existing.instructions.length)) existing.instructions = item.instructions;
+        if (item.reason && !String(existing.reason || "").includes(item.reason)) {
+          existing.reason = [existing.reason, item.reason].filter(Boolean).join(" | ");
+        }
+      });
+      return merged;
+    }
+
+    async function checkEventTriggers(phase, action, options = {}) {
+      const triggers = eventTriggersForPhase(phase);
+      if (!triggers.length) return [];
+      const isSimple = options.simple === true;
+      const raw = await callOpenRouterJson(isSimple ? "simple event trigger check" : "event trigger check", buildOpenRouterInstructionMessages(
+        isSimple ? simpleEventTriggerCheckSystemPrompt(phase) : eventTriggerCheckSystemPrompt(),
+        isSimple ? buildSimpleEventTriggerCheckPrompt(phase, action, triggers, options) : buildEventTriggerCheckPrompt(phase, action, triggers, options)
+      ), { temperature: 0.15, max_tokens: 1600, json_retries: 2, no_content_retries: 2 });
+      const activated = parseEventTriggerCheckResult(raw, phase, triggers, options);
+      if (options.record !== false) recordActivatedEventTriggerHits(activated);
       return activated;
+    }
+
+    async function runCombinedEventTriggerChecks(phase, action, options = {}) {
+      const triggers = eventTriggersForPhase(phase);
+      if (!triggers.length) return [];
+      const simpleResults = await checkEventTriggers(phase, action, { ...options, simple: true, record: false });
+      const fullResults = await checkEventTriggers(phase, action, { ...options, simple: false, record: false });
+      const merged = mergeActivatedEventTriggerResults(simpleResults, fullResults);
+      recordActivatedEventTriggerHits(merged);
+      return merged;
     }
 
     function eventTriggerExtensionSystemPrompt() {
@@ -4856,7 +4954,7 @@ Rewrite rules:
         let activatedForMainStory = [...pendingFromPreviousAfterChecks];
         if (eventTriggersForPhase("before").length) {
           setBusy(true, "Checking event triggers");
-          const beforeTriggerResults = await checkEventTriggers("before", action, { currentTurn: state.turns.length + 1 });
+          const beforeTriggerResults = await runCombinedEventTriggerChecks("before", action, { currentTurn: state.turns.length + 1 });
           activatedForMainStory.push(...beforeTriggerResults);
         }
         setBusy(true, "Writing scene");
@@ -4870,7 +4968,7 @@ Rewrite rules:
 
         if (eventTriggersForPhase("after").length) {
           setBusy(true, "Checking after-response triggers");
-          const afterTriggerResults = await checkEventTriggers("after", action, { currentTurn: turn.turnNumber, generatedTurn: turn });
+          const afterTriggerResults = await runCombinedEventTriggerChecks("after", action, { currentTurn: turn.turnNumber, generatedTurn: turn });
           if (afterTriggerResults.length) {
             turn.eventTriggersAfterChecked = afterTriggerResults.map(compactActivatedEventForPrompt);
             const immediate = afterTriggerResults.filter(item => item.addTextAfter);

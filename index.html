@@ -790,6 +790,7 @@
     }
 
     .world-gen-card textarea#imagePromptEditor { min-height: 220px; }
+    .world-gen-card textarea#responseEditor { min-height: 360px; }
 
 
     .menu-wrap {
@@ -917,6 +918,7 @@
             <button id="btnNext">Next turn →</button>
             <button id="btnUndo">Undo latest</button>
             <button id="btnRetry">Retry latest generation</button>
+            <button id="btnEditResponse" class="accent hidden" type="button">Edit Response</button>
           </div>
         </div>
       </section>
@@ -1103,6 +1105,8 @@
           <label>Story rules / style guide
             <textarea id="rules" placeholder="E.g. second-person prose, meaningful consequences, no instant success, keep secrets until discovered..."></textarea>
           </label>
+          <label class="checkline"><input id="enableResponseEditing" type="checkbox" /> Enable the editing of responses</label>
+          <label class="checkline"><input id="betterMemoryManagement" type="checkbox" /> Better memory management (compress memories every 10 turns)</label>
           <summary id="btnToggleDefaultTrackers" class="setup-toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="defaultTrackersPanel">
             <span class="setup-toggle-caret" aria-hidden="true">▸</span>
             <span>Default trackers</span>
@@ -1184,13 +1188,13 @@
         </div>
         <div class="panel-body">
           <section id="tab-scratch" class="stack">
-            <p class="mini">The LLM updates this private continuity scratchpad after every turn. It is shown here for editing/debugging, but it should not be directly revealed in narration.</p>
+            <p class="mini">The LLM updates this private continuity scratchpad after every turn. This editor shows the scratchpad for the turn currently being viewed, so past turns can be inspected or edited without changing later turns.</p>
             <textarea id="scratchpad" placeholder="NPC secrets, unresolved hooks, character descriptions..."></textarea>
             <button id="btnSaveScratch" class="accent">Save scratchpad edits</button>
           </section>
 
           <section id="tab-trackers" class="stack hidden">
-            <p class="mini">This is the current world state the model maintains during play. New adventures are initialized from Default trackers in the World Set Up popup. You can still add or edit one-off trackers here for the current run.</p>
+            <p class="mini">These trackers are the world state for the turn currently being viewed. New adventures are initialized from Default trackers in the World Set Up popup. Editing a past turn changes that turn’s tracker snapshot, not later turns.</p>
             <label>Tracker name
               <input id="trackerName" placeholder="Relationship: Nadira" />
             </label>
@@ -1263,6 +1267,25 @@
         <button id="btnRegenerateImageConfirm" class="primary" type="button">🖼️ Regenerate image</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="editResponseDialog" class="world-gen-dialog app-dialog wide-dialog">
+    <div class="world-gen-card">
+      <div class="dialog-header">
+        <div>
+          <h3>Edit Response</h3>
+          <p class="mini">Edit the narration for the turn you are currently viewing. Saving replaces the text for that turn.</p>
+        </div>
+        <button id="btnEditResponseClose" class="small ghost" type="button" aria-label="Close edit response">✕</button>
+      </div>
+      <label>Response text
+        <textarea id="responseEditor" placeholder="Edit the story response for this turn."></textarea>
+      </label>
+      <div class="row wrap dialog-actions">
+        <button id="btnEditResponseCancel" type="button">Cancel</button>
+        <button id="btnEditResponseSave" class="primary" type="button">Save changes</button>
+      </div>
+    </div>
   </dialog>
 
   <dialog id="worldTextImportDialog" class="world-gen-dialog">
@@ -1646,6 +1669,7 @@
       narration: 1400,
       currentNarration: 1800,
       scratchpad: 6000,
+      fullHistory: 9000,
       trackerValue: 1600,
       trackerRules: 800,
       imagePrompt: 700,
@@ -1663,6 +1687,8 @@
         generateImages: true,
         filterFreeOptions: false,
         useRpgStats: false,
+        enableResponseEditing: false,
+        betterMemoryManagement: false,
         temperature: 0.85
       },
       world: {
@@ -1679,6 +1705,7 @@
       baseTrackersAtStart: [],
       trackers: [],
       scratchpad: "",
+      fullHistory: null,
       turns: [],
       viewIndex: -1,
       lastSavedAt: null,
@@ -1691,6 +1718,7 @@
       generatingTurn: false,
       pendingAction: "",
       editingImageTurnId: null,
+      editingResponseTurnId: null,
       specialKeyPresetAppliedForHash: "",
       specialKeyModelsLoadedForHash: "",
       specialKeyLoadInProgress: false,
@@ -1980,7 +2008,7 @@
       busy = isBusy;
       const pill = $("busyPill");
       pill.innerHTML = isBusy ? `<span class="spinner"></span> ${escapeHtml(label)}` : "Ready";
-      ["btnStart", "btnTakeAction", "btnRetry", "btnOpenWorldGen", "btnWorldGenRun", "btnGenerateCharacterSelect", "btnRegenerateImageConfirm", "btnSaveWorld", "btnCopyWorld", "btnLoadWorldText", "btnWorldTextImportConfirm", "btnInfiniteWorldImportWorld", "btnInfiniteWorldImportStory"].forEach(id => { const el = $(id); if (el) el.disabled = isBusy; });
+      ["btnStart", "btnTakeAction", "btnRetry", "btnEditResponse", "btnOpenWorldGen", "btnWorldGenRun", "btnGenerateCharacterSelect", "btnRegenerateImageConfirm", "btnSaveWorld", "btnCopyWorld", "btnLoadWorldText", "btnWorldTextImportConfirm", "btnInfiniteWorldImportWorld", "btnInfiniteWorldImportStory"].forEach(id => { const el = $(id); if (el) el.disabled = isBusy; });
       $$(".sample-world-button").forEach(button => { button.disabled = isBusy; });
       const freeAction = $("freeAction");
       if (freeAction) freeAction.disabled = isBusy;
@@ -2060,11 +2088,15 @@
 
     function pruneTurnForStorage(turn) {
       const source = turn || {};
+      const cleanTrackers = normalizeTrackers(source.trackersSnapshot || source.worldStateSnapshot?.trackers || []).map(t => ({ ...t, value: truncateText(t.value || "", 3000) }));
+      const cleanScratchpad = truncateText(source.scratchpadSnapshot || source.worldStateSnapshot?.scratchpad || "", 30000);
       const clean = {
         ...source,
         choices: (source.choices || []).map(choice => truncateText(choice, 1000)),
         roll: source.roll ? { ...source.roll } : null,
-        trackersSnapshot: (source.trackersSnapshot || []).map(t => ({ ...t, value: truncateText(t.value || "", 3000) }))
+        scratchpadSnapshot: cleanScratchpad,
+        trackersSnapshot: cleanTrackers,
+        worldStateSnapshot: { scratchpad: cleanScratchpad, trackers: deepClone(cleanTrackers) }
       };
       delete clean.raw;
       clean.action = truncateText(clean.action || "", 5000);
@@ -2106,6 +2138,7 @@
         rpgStats: (source.rpgStats || []).map(stat => ({ ...stat })),
         lastSavedAt: nowIso(),
         scratchpad: truncateText(source.scratchpad || "", 30000),
+        fullHistory: normalizeFullHistory(source.fullHistory),
         turns: (source.turns || []).map(pruneTurnForStorage),
         defaultTriggers: (source.defaultTriggers || source.default_triggers || source.baseTrackersAtStart || []).map(compactTracker),
         trackers: (source.trackers || []).map(compactTracker),
@@ -2168,15 +2201,16 @@
         if (raw) {
           const loaded = JSON.parse(raw);
           state = cleanupDeprecatedState(mergeDefaults(deepClone(DEFAULT_STATE), loaded));
-          state.turns = (state.turns || []).map(turn => ({ ...turn, imageGenerating: false, raw: turn.raw && turn.raw.keys ? turn.raw : { legacy: true } }));
           if (!loaded?.settings?.llmModel || (!state.turns.length && state.settings.llmModel === LEGACY_DEFAULT_LLM_MODEL)) state.settings.llmModel = DEFAULT_LLM_MODEL;
           normalizeDefaultTriggerState();
+          normalizePerTurnSnapshots();
         }
       } catch (err) {
         console.warn(err);
         toast("Could not load saved browser state; using defaults.");
       }
       normalizeDefaultTriggerState();
+      normalizePerTurnSnapshots();
       syncStateToForm();
       renderAll();
       dirtySinceFullExport = !!state.unsavedFullExport;
@@ -2493,6 +2527,132 @@
       if (!state.turns?.length) state.trackers = deepClone(state.defaultTriggers);
     }
 
+    function normalizeFullHistory(value) {
+      if (!value) return null;
+      const from = typeof value === "object" ? value : { OtherImportantNotes: String(value || "") };
+      const pick = (...keys) => {
+        for (const key of keys) {
+          if (from[key] != null) return String(from[key] || "").trim();
+        }
+        return "";
+      };
+      const normalized = {
+        characters: pick("characters", "Characters"),
+        settingDetails: pick("settingDetails", "setting_details", "Setting Details", "Setting_Details"),
+        plotDetails: pick("plotDetails", "plot_details", "Plot Details", "Plot_Details"),
+        otherImportantNotes: pick("otherImportantNotes", "other_important_notes", "Other Important Notes", "Other_Important_Notes", "notes")
+      };
+      return Object.values(normalized).some(Boolean) ? normalized : null;
+    }
+
+    function compactFullHistoryForPrompt() {
+      const history = normalizeFullHistory(state.fullHistory) || { characters: "", settingDetails: "", plotDetails: "", otherImportantNotes: "" };
+      return {
+        Characters: truncateText(history.characters || "", PROMPT_LIMITS.fullHistory),
+        "Setting Details": truncateText(history.settingDetails || "", PROMPT_LIMITS.fullHistory),
+        "Plot Details": truncateText(history.plotDetails || "", PROMPT_LIMITS.fullHistory),
+        "Other Important Notes": truncateText(history.otherImportantNotes || "", PROMPT_LIMITS.fullHistory)
+      };
+    }
+
+    function fullHistoryHasContent() {
+      const history = normalizeFullHistory(state.fullHistory);
+      return !!history && Object.values(history).some(value => String(value || "").trim());
+    }
+
+    function setTurnStateSnapshot(turn, scratchpad, trackers) {
+      if (!turn) return;
+      const cleanScratchpad = String(scratchpad || "");
+      const cleanTrackers = normalizeTrackers(trackers || []);
+      turn.scratchpadSnapshot = cleanScratchpad;
+      turn.trackersSnapshot = deepClone(cleanTrackers);
+      turn.worldStateSnapshot = {
+        scratchpad: cleanScratchpad,
+        trackers: deepClone(cleanTrackers)
+      };
+    }
+
+    function getTurnScratchpad(turn) {
+      if (!turn) return "";
+      if (turn.worldStateSnapshot && typeof turn.worldStateSnapshot.scratchpad === "string") return turn.worldStateSnapshot.scratchpad;
+      if (typeof turn.scratchpadSnapshot === "string") return turn.scratchpadSnapshot;
+      return "";
+    }
+
+    function getTurnTrackers(turn) {
+      if (!turn) return [];
+      const source = Array.isArray(turn.worldStateSnapshot?.trackers) ? turn.worldStateSnapshot.trackers : turn.trackersSnapshot;
+      return normalizeTrackers(source || []);
+    }
+
+    function viewedTurn() {
+      return state.turns?.[state.viewIndex] || null;
+    }
+
+    function viewingLatestTurn() {
+      return !!state.turns.length && state.viewIndex === state.turns.length - 1;
+    }
+
+    function getViewedScratchpad() {
+      const turn = viewedTurn();
+      if (turn) return getTurnScratchpad(turn);
+      return state.scratchpad || "";
+    }
+
+    function getViewedTrackers() {
+      const turn = viewedTurn();
+      if (turn) return getTurnTrackers(turn);
+      return normalizeTrackers(state.trackers || []);
+    }
+
+    function setViewedScratchpad(value) {
+      const scratchpad = String(value || "");
+      const turn = viewedTurn();
+      if (turn) {
+        setTurnStateSnapshot(turn, scratchpad, getTurnTrackers(turn));
+        if (viewingLatestTurn()) state.scratchpad = scratchpad;
+      } else {
+        state.scratchpad = scratchpad;
+      }
+    }
+
+    function setViewedTrackers(trackers) {
+      const cleanTrackers = normalizeTrackers(trackers || []);
+      const turn = viewedTurn();
+      if (turn) {
+        setTurnStateSnapshot(turn, getTurnScratchpad(turn), cleanTrackers);
+        if (viewingLatestTurn()) state.trackers = deepClone(cleanTrackers);
+      } else {
+        state.trackers = deepClone(cleanTrackers);
+      }
+    }
+
+    function normalizePerTurnSnapshots() {
+      state.turns = (state.turns || []).map((turn, idx) => {
+        const cleanTurn = { ...turn, imageGenerating: false };
+        const worldSnapshot = cleanTurn.worldStateSnapshot && typeof cleanTurn.worldStateSnapshot === "object" ? cleanTurn.worldStateSnapshot : null;
+        const scratchpad = typeof cleanTurn.scratchpadSnapshot === "string"
+          ? cleanTurn.scratchpadSnapshot
+          : (typeof worldSnapshot?.scratchpad === "string" ? worldSnapshot.scratchpad : (idx === state.turns.length - 1 ? state.scratchpad || "" : ""));
+        const trackerSource = Array.isArray(cleanTurn.trackersSnapshot)
+          ? cleanTurn.trackersSnapshot
+          : (Array.isArray(worldSnapshot?.trackers) ? worldSnapshot.trackers : (idx === state.turns.length - 1 ? state.trackers || [] : []));
+        setTurnStateSnapshot(cleanTurn, scratchpad, trackerSource);
+        cleanTurn.raw = cleanTurn.raw && cleanTurn.raw.keys ? cleanTurn.raw : (cleanTurn.raw || { legacy: true });
+        return cleanTurn;
+      });
+      if (state.turns.length) {
+        if (state.viewIndex == null || state.viewIndex < 0 || state.viewIndex >= state.turns.length) state.viewIndex = state.turns.length - 1;
+        const latest = state.turns[state.turns.length - 1];
+        state.scratchpad = getTurnScratchpad(latest) || state.scratchpad || "";
+        state.trackers = getTurnTrackers(latest).length ? getTurnTrackers(latest) : normalizeTrackers(state.trackers || []);
+        setTurnStateSnapshot(latest, state.scratchpad, state.trackers);
+      } else {
+        state.viewIndex = -1;
+      }
+      state.fullHistory = normalizeFullHistory(state.fullHistory);
+    }
+
     function defaultTriggersForExport() {
       syncDefaultTriggerEditorState();
       normalizeDefaultTriggerState();
@@ -2686,9 +2846,17 @@
     }
 
     function closeEditStateDialog() {
-      state.scratchpad = $("scratchpad")?.value || state.scratchpad || "";
+      setViewedScratchpad($("scratchpad")?.value || getViewedScratchpad());
+      const trackersForViewedTurn = getViewedTrackers();
+      document.querySelectorAll("textarea[data-tracker-value]").forEach(area => {
+        const tracker = trackersForViewedTurn.find(t => t.id === area.dataset.trackerValue);
+        if (tracker) tracker.value = area.value;
+      });
+      setViewedTrackers(trackersForViewedTurn);
+      markUnsavedForFullExport();
       saveState();
       closeDialog("editStateDialog");
+      renderAll();
     }
 
     function closeMenu() {
@@ -2779,7 +2947,11 @@
             ...turn,
             narration: truncateText(turn.narration || "", 6000),
             scratchpadSnapshot: truncateText(turn.scratchpadSnapshot || "", 6000),
-            trackersSnapshot: (turn.trackersSnapshot || []).map(t => ({ ...t, value: truncateText(t.value || "", 1200) }))
+            trackersSnapshot: (turn.trackersSnapshot || []).map(t => ({ ...t, value: truncateText(t.value || "", 1200) })),
+            worldStateSnapshot: {
+              scratchpad: truncateText(turn.worldStateSnapshot?.scratchpad || turn.scratchpadSnapshot || "", 6000),
+              trackers: (turn.worldStateSnapshot?.trackers || turn.trackersSnapshot || []).map(t => ({ ...t, value: truncateText(t.value || "", 1200) }))
+            }
           }));
           localStorage.setItem(STORAGE_KEY, JSON.stringify(emergency));
           if (status) status.textContent = "Autosaved compact";
@@ -2828,6 +3000,8 @@
       state.settings.generateImages = $("generateImages").checked;
       state.settings.filterFreeOptions = filterFreeOptions;
       state.settings.useRpgStats = $("useRpgStats").checked;
+      state.settings.enableResponseEditing = !!$("enableResponseEditing")?.checked;
+      state.settings.betterMemoryManagement = !!$("betterMemoryManagement")?.checked;
       state.settings.temperature = Number($("temperature").value || 0.85);
       state.world.title = $("worldTitle").value.trim();
       state.world.genre = $("genre").value.trim();
@@ -2858,6 +3032,8 @@
       $("generateImages").checked = state.settings.generateImages !== false;
       if ($("filterFreeOptions")) $("filterFreeOptions").checked = !!state.settings.filterFreeOptions;
       $("useRpgStats").checked = !!state.settings.useRpgStats;
+      if ($("enableResponseEditing")) $("enableResponseEditing").checked = !!state.settings.enableResponseEditing;
+      if ($("betterMemoryManagement")) $("betterMemoryManagement").checked = !!state.settings.betterMemoryManagement;
       $("temperature").value = state.settings.temperature ?? 0.85;
       $("worldTitle").value = state.world.title || "";
       $("genre").value = state.world.genre || "";
@@ -2865,7 +3041,7 @@
       $("character").value = state.world.character || "";
       $("premise").value = state.world.premise || "";
       $("rules").value = state.world.rules || "";
-      $("scratchpad").value = state.scratchpad || "";
+      $("scratchpad").value = getViewedScratchpad();
       applyFreeModelUiState();
     }
 
@@ -2879,7 +3055,7 @@
       renderNavButtons();
       $("turnPill").textContent = `Turn ${state.turns.length}`;
       $("storyTitle").textContent = state.world.title || "Untitled adventure";
-      $("scratchpad").value = state.scratchpad || "";
+      $("scratchpad").value = getViewedScratchpad();
       $("viewPill").textContent = state.turns.length ? `Viewing ${state.viewIndex + 1} / ${state.turns.length}` : "Viewing latest";
     }
 
@@ -3011,6 +3187,12 @@
       $("btnNext").disabled = busy || state.viewIndex >= state.turns.length - 1;
       $("btnUndo").disabled = busy || state.turns.length === 0;
       $("btnRetry").disabled = busy || state.turns.length === 0;
+      const editResponseButton = $("btnEditResponse");
+      if (editResponseButton) {
+        const canEditResponse = !!state.settings.enableResponseEditing && !!viewedTurn();
+        editResponseButton.classList.toggle("hidden", !state.settings.enableResponseEditing);
+        editResponseButton.disabled = busy || !canEditResponse;
+      }
       $("btnTakeAction").disabled = busy || !state.turns.length;
     }
 
@@ -3056,6 +3238,39 @@
       transientUi.editingImageTurnId = null;
     }
 
+    function openEditResponseDialog(turn = viewedTurn()) {
+      if (!state.settings.enableResponseEditing) return toast("Enable response editing in World Set Up first.");
+      if (!turn) return toast("No turn is selected to edit.");
+      transientUi.editingResponseTurnId = turn.id;
+      const dialog = $("editResponseDialog");
+      const editor = $("responseEditor");
+      if (!dialog || !editor || typeof dialog.showModal !== "function") {
+        const updated = prompt("Edit the response text for this turn:", turn.narration || "");
+        if (updated != null) saveEditedResponse(turn.id, updated);
+        return;
+      }
+      editor.value = turn.narration || "";
+      dialog.showModal();
+      setTimeout(() => editor.focus(), 40);
+    }
+
+    function closeEditResponseDialog() {
+      const dialog = $("editResponseDialog");
+      if (dialog && dialog.open) dialog.close();
+      transientUi.editingResponseTurnId = null;
+    }
+
+    function saveEditedResponse(turnId, updatedText) {
+      const turn = state.turns.find(t => t.id === turnId) || viewedTurn();
+      if (!turn) return toast("Could not find that turn.");
+      turn.narration = maybeParagraphizeStoryText(String(updatedText || ""));
+      closeEditResponseDialog();
+      markUnsavedForFullExport();
+      saveState();
+      renderAll();
+      toast(`Updated response for turn ${turn.turnNumber}.`);
+    }
+
     async function regenerateImageForTurn(turnId, promptText) {
       const turn = state.turns.find(t => t.id === turnId) || state.turns[state.viewIndex];
       const finalPrompt = String(promptText || "").trim();
@@ -3072,7 +3287,7 @@
       saveState();
       setBusy(true, "Regenerating image");
       try {
-        const result = await callOpenRouterImageWithPg13Retry(finalPrompt, { previousImageUrl });
+        const result = await callOpenRouterImageWithPg13Retry(finalPrompt, { previousImageUrl, turn });
         turn.imageUrl = result.imageUrl;
         turn.imagePrompt = result.prompt;
         turn.imageError = "";
@@ -3101,7 +3316,7 @@
       renderAll();
       saveState();
       try {
-        const result = await callOpenRouterImageWithPg13Retry(promptText, { previousImageUrl: turn.imageUrl || "" });
+        const result = await callOpenRouterImageWithPg13Retry(promptText, { previousImageUrl: turn.imageUrl || "", turn });
         if (!state.turns.some(t => t.id === turn.id)) return;
         turn.imageUrl = result.imageUrl;
         turn.imagePrompt = result.prompt;
@@ -3213,12 +3428,13 @@
 
     function renderTrackers() {
       const list = $("trackerList");
+      const trackers = getViewedTrackers();
       list.innerHTML = "";
-      if (!state.trackers.length) {
+      if (!trackers.length) {
         list.innerHTML = `<p class="mini">No trackers yet.</p>`;
         return;
       }
-      state.trackers.forEach((tracker) => {
+      trackers.forEach((tracker) => {
         const card = document.createElement("div");
         card.className = "track-card";
         card.innerHTML = `
@@ -3234,13 +3450,17 @@
         list.appendChild(card);
       });
       list.querySelectorAll("button[data-del]").forEach(btn => btn.addEventListener("click", () => {
-        state.trackers = state.trackers.filter(t => t.id !== btn.dataset.del);
+        setViewedTrackers(getViewedTrackers().filter(t => t.id !== btn.dataset.del));
+        markUnsavedForFullExport();
         saveState();
         renderTrackers();
       }));
       list.querySelectorAll("textarea[data-tracker-value]").forEach(area => area.addEventListener("change", () => {
-        const tracker = state.trackers.find(t => t.id === area.dataset.trackerValue);
+        const trackersNow = getViewedTrackers();
+        const tracker = trackersNow.find(t => t.id === area.dataset.trackerValue);
         if (tracker) tracker.value = area.value;
+        setViewedTrackers(trackersNow);
+        markUnsavedForFullExport();
         saveState();
       }));
     }
@@ -3898,17 +4118,71 @@ Design principles:
 - If the player acts from an older turn, treat it as a branch and continue from the provided history only.`;
     }
 
+    function memorySummarySystemPrompt() {
+      return `You maintain a compressed full-history memory for an ongoing choose-your-own-adventure story.
+Return ONLY valid JSON. Do not wrap it in markdown. Do not include comments.
+
+Required JSON shape:
+{
+  "Characters": "List all plot-relevant characters. Include 1-3 paragraphs of detail about them, including identity, relationships, motivations, secrets known to the story engine, and current status.",
+  "Setting Details": "Important locations, factions, rules of the world, timeline facts, resources, dangers, and environmental continuity.",
+  "Plot Details": "Major events, decisions, consequences, mysteries, conflicts, goals, unresolved hooks, and current direction.",
+  "Other Important Notes": "Anything else needed for continuity, including inventory, tone, recurring symbols, promised payoffs, and do-not-forget details."
+}
+
+Memory rules:
+- Preserve important facts from any existing full history unless the latest turns clearly correct them.
+- Merge the last 10 turns into the full history; do not merely summarize those turns in isolation if existing full history is provided.
+- Keep secrets and private continuity notes available to the story engine, but do not write future narration.
+- Be concise enough to remain useful as prompt context, but do not drop plot-relevant characters, setting facts, choices, or consequences.`;
+    }
+
+    function buildFullHistoryUpdatePrompt() {
+      const hasExisting = fullHistoryHasContent();
+      return JSON.stringify({
+        task: hasExisting
+          ? "Update the existing full history with the important information from the last 10 turns."
+          : "Create the first compressed full history summary from the last 10 turns.",
+        world: compactWorldForPrompt(),
+        existing_full_history: hasExisting ? compactFullHistoryForPrompt() : null,
+        last_10_turns: state.turns.slice(-10).map(t => compactTurnForPrompt(t, PROMPT_LIMITS.currentNarration)),
+        current_scratchpad: truncateText(state.scratchpad || "", PROMPT_LIMITS.scratchpad),
+        current_trackers: state.trackers.map(compactTrackerForPrompt),
+        output_requirement: "Return only the JSON object with Characters, Setting Details, Plot Details, and Other Important Notes."
+      }, null, 2);
+    }
+
+    function shouldUpdateFullHistoryBeforeNextTurn() {
+      return !!state.settings.betterMemoryManagement && state.turns.length >= 10 && state.turns.length % 10 === 0;
+    }
+
+    async function updateFullHistoryFromRecentTurns() {
+      const raw = await callOpenRouterJson("full history memory compression", buildOpenRouterInstructionMessages(
+        memorySummarySystemPrompt(),
+        buildFullHistoryUpdatePrompt()
+      ), { temperature: 0.2, max_tokens: 2600, json_retries: 2, no_content_retries: 2 });
+      const normalized = normalizeFullHistory(raw);
+      if (!normalized) throw new Error("The model did not return a usable full-history memory summary.");
+      state.fullHistory = normalized;
+      markUnsavedForFullExport();
+      return normalized;
+    }
+
     function buildUserPrompt(action, rollResult = null) {
       const recentTurns = state.turns.slice(-10).map(t => compactTurnForPrompt(t, PROMPT_LIMITS.narration));
-      return JSON.stringify({
+      const promptPayload = {
         request: state.turns.length ? "Continue the adventure by resolving the player's latest action and presenting the next decision point." : "Begin the adventure with an opening scene and first decision point.",
         latest_player_action: truncateText(action, PROMPT_LIMITS.action),
         world: compactWorldForPrompt(),
         existing_scratchpad: truncateText(state.scratchpad || "", PROMPT_LIMITS.scratchpad),
         custom_trackers: state.trackers.map(compactTrackerForPrompt),
-        rpg_system: { enabled: !!state.settings.useRpgStats, stats: normalizeRpgStats(state.rpgStats).map(s => ({ id: s.id, name: s.name, value_percent: s.value, covers: truncateText(s.note || "", 500) })), roll_result_for_latest_action: compactRollForPrompt(rollResult) },
-        recent_history: recentTurns
-      }, null, 2);
+        rpg_system: { enabled: !!state.settings.useRpgStats, stats: normalizeRpgStats(state.rpgStats).map(s => ({ id: s.id, name: s.name, value_percent: s.value, covers: truncateText(s.note || "", 500) })), roll_result_for_latest_action: compactRollForPrompt(rollResult) }
+      };
+      if (state.settings.betterMemoryManagement) {
+        promptPayload.full_history = compactFullHistoryForPrompt();
+      }
+      promptPayload.recent_history = recentTurns;
+      return JSON.stringify(promptPayload, null, 2);
     }
 
     async function callOpenRouterChat(action, rollResult = null) {
@@ -3939,6 +4213,7 @@ Required JSON shape:
 
 Rewrite rules:
 - Preserve the same story moment, setting, characters, composition, mood, and genre whenever possible.
+- Censor it to the closest version of the scene that could be rendered in a PG-13 version of the story; do not invent a disconnected substitute scene.
 - Remove or soften anything likely to trigger moderation: graphic violence, gore, explicit injury detail, nudity, sexual content, fetish content, exploitation, hate symbols/slurs, self-harm, suicide, abuse, or realistic instructions for harm.
 - Replace explicit violence with implied danger, cinematic tension, aftermath without gore, dramatic lighting, symbolic conflict, silhouettes, distance, or non-graphic fantasy action.
 - Keep it suitable for a PG-13 movie poster or young-adult adventure book cover.
@@ -3946,20 +4221,23 @@ Rewrite rules:
 - Do not add moral commentary or explain the rewrite in the prompt.`;
     }
 
-    function buildPg13ImageRewritePrompt(originalPrompt, errorText = "") {
+    function buildPg13ImageRewritePrompt(originalPrompt, errorText = "", options = {}) {
+      const turn = options.turn || viewedTurn() || state.turns[state.turns.length - 1] || null;
       return JSON.stringify({
-        task: "Rewrite this image prompt so it is PG-13 and less likely to be moderated, while preserving the scene intent.",
+        task: "Rewrite this image prompt so it is PG-13 and less likely to be moderated, while preserving the closest safe version of the actual current story scene.",
         original_image_prompt: truncateText(originalPrompt || "", 2200),
         moderation_error: truncateText(errorText || "", 1200),
-        output_requirement: "Return JSON with only image_prompt. The prompt itself should be concise, vivid, and safe."
+        current_turn: compactTurnForPrompt(turn, PROMPT_LIMITS.currentNarration),
+        world: compactWorldForPrompt(),
+        output_requirement: "Return JSON with only image_prompt. The prompt itself should be concise, vivid, safe, and tied to the current turn."
       }, null, 2);
     }
 
-    async function rewriteImagePromptPg13(originalPrompt, error) {
+    async function rewriteImagePromptPg13(originalPrompt, error, options = {}) {
       const raw = await callOpenRouterJson("PG-13 image prompt rewrite", buildOpenRouterInstructionMessages(
         pg13ImageRewriteSystemPrompt(),
-        buildPg13ImageRewritePrompt(originalPrompt, error?.message || String(error || ""))
-      ), { temperature: 0.2, max_tokens: 700 });
+        buildPg13ImageRewritePrompt(originalPrompt, error?.message || String(error || ""), options)
+      ), { temperature: 0.2, max_tokens: 900 });
       const rewritten = String(raw.image_prompt || raw.imagePrompt || raw.prompt || "").trim();
       if (!rewritten) throw new Error("The LLM did not return a PG-13 image prompt rewrite.");
       return rewritten;
@@ -3973,7 +4251,7 @@ Rewrite rules:
         return { imageUrl: await callOpenRouterImage(prompt), prompt, usedPg13Rewrite: false, usedPollinations: false };
       } catch (firstError) {
         if (!imageModerationSignal(firstError)) throw firstError;
-        const pg13Prompt = await rewriteImagePromptPg13(prompt, firstError);
+        const pg13Prompt = await rewriteImagePromptPg13(prompt, firstError, options);
         try {
           return { imageUrl: await callOpenRouterImage(pg13Prompt), prompt: pg13Prompt, usedPg13Rewrite: true, usedPollinations: false };
         } catch (secondError) {
@@ -4106,6 +4384,7 @@ Rewrite rules:
         roll,
         scratchpadSnapshot: String(raw.scratchpad || state.scratchpad || ""),
         trackersSnapshot: deepClone(state.trackers),
+        worldStateSnapshot: { scratchpad: String(raw.scratchpad || state.scratchpad || ""), trackers: deepClone(state.trackers) },
         raw: { receivedAt: nowIso(), keys: Object.keys(raw || {}) },
         createdAt: nowIso()
       };
@@ -4126,8 +4405,8 @@ Rewrite rules:
 
     function restoreStateAfterTurnIndex(index) {
       if (index >= 0 && state.turns[index]) {
-        state.scratchpad = state.turns[index].scratchpadSnapshot || "";
-        state.trackers = deepClone(state.turns[index].trackersSnapshot || state.trackers);
+        state.scratchpad = getTurnScratchpad(state.turns[index]) || "";
+        state.trackers = getTurnTrackers(state.turns[index]);
       } else {
         state.scratchpad = "";
         const base = state.defaultTriggers?.length ? state.defaultTriggers : (state.baseTrackersAtStart?.length ? state.baseTrackersAtStart : state.trackers);
@@ -4153,12 +4432,16 @@ Rewrite rules:
       setBusy(true, state.settings.useRpgStats && state.turns.length ? "Choosing RPG roll" : "Writing scene");
       try {
         const roll = await createRpgRoll(action);
+        if (shouldUpdateFullHistoryBeforeNextTurn()) {
+          setBusy(true, "Compressing memories");
+          await updateFullHistoryFromRecentTurns();
+          saveState();
+        }
         setBusy(true, "Writing scene");
         const raw = await callOpenRouterChat(action, roll);
         applyTurnState(raw);
         const turn = normalizeTurnResult(raw, action, roll);
-        turn.scratchpadSnapshot = state.scratchpad;
-        turn.trackersSnapshot = deepClone(state.trackers);
+        setTurnStateSnapshot(turn, state.scratchpad, state.trackers);
         state.turns.push(turn);
         markUnsavedForFullExport();
         state.viewIndex = state.turns.length - 1;
@@ -4228,6 +4511,8 @@ ${missingList}`,
       if (payload.rpgStats.length) state.rpgStats = payload.rpgStats;
       if (payload.useRpgStats !== undefined) state.settings.useRpgStats = !!payload.useRpgStats;
       else if (payload.rpgStats.length) state.settings.useRpgStats = true;
+      if (payload.enableResponseEditing !== undefined) state.settings.enableResponseEditing = !!payload.enableResponseEditing;
+      if (payload.betterMemoryManagement !== undefined) state.settings.betterMemoryManagement = !!payload.betterMemoryManagement;
       state.defaultTriggers = payload.defaultTriggers;
       state.baseTrackersAtStart = deepClone(state.defaultTriggers);
       if (!state.turns.length) state.trackers = cloneDefaultTriggersForCurrentRun();
@@ -4272,6 +4557,7 @@ ${missingList}`,
       state.trackers = cloneDefaultTriggersForCurrentRun();
       state.turns = [];
       state.scratchpad = "";
+      state.fullHistory = null;
       state.viewIndex = -1;
       saveState();
       renderAll();
@@ -4358,20 +4644,25 @@ ${missingList}`,
         toast("Tracker needs a name and update rule.");
         return;
       }
-      state.trackers.push({ id: uid("tracker"), name, rules, value, createdAt: nowIso() });
+      const trackers = getViewedTrackers();
+      trackers.push({ id: uid("tracker"), name, rules, value, createdAt: nowIso(), updatedAt: null, lastRationale: "" });
+      setViewedTrackers(trackers);
       $("trackerName").value = "";
       $("trackerRules").value = "";
       $("trackerValue").value = "";
+      markUnsavedForFullExport();
       saveState();
       renderTrackers();
     }
 
     function syncInlineWorldEditorState() {
       syncDefaultTriggerEditorState();
+      const trackersForViewedTurn = getViewedTrackers();
       document.querySelectorAll("textarea[data-tracker-value]").forEach(area => {
-        const tracker = state.trackers.find(t => t.id === area.dataset.trackerValue);
+        const tracker = trackersForViewedTurn.find(t => t.id === area.dataset.trackerValue);
         if (tracker) tracker.value = area.value;
       });
+      setViewedTrackers(trackersForViewedTurn);
       document.querySelectorAll("input[data-stat-name]").forEach(input => {
         const stat = state.rpgStats.find(s => s.id === input.dataset.statName);
         if (stat) stat.name = input.value.trim();
@@ -4403,7 +4694,9 @@ ${missingList}`,
           rules: state.world.rules || ""
         },
         settings: {
-          useRpgStats: !!state.settings.useRpgStats
+          useRpgStats: !!state.settings.useRpgStats,
+          enableResponseEditing: !!state.settings.enableResponseEditing,
+          betterMemoryManagement: !!state.settings.betterMemoryManagement
         },
         rpgStats: normalizeRpgStats(state.rpgStats).map(stat => ({
           id: stat.id,
@@ -4457,6 +4750,8 @@ ${missingList}`,
           rules: world.rules || world.story_rules || world.storyRules || world.style_guide || world.styleGuide || ""
         },
         useRpgStats: settings.useRpgStats ?? settings.use_rpg_stats ?? imported.useRpgStats ?? imported.use_rpg_stats,
+        enableResponseEditing: settings.enableResponseEditing ?? settings.enable_response_editing ?? imported.enableResponseEditing ?? imported.enable_response_editing,
+        betterMemoryManagement: settings.betterMemoryManagement ?? settings.better_memory_management ?? imported.betterMemoryManagement ?? imported.better_memory_management,
         rpgStats: normalizedStats,
         defaultTriggers: normalizeImportedTrackers(defaultTriggers)
       };
@@ -4478,6 +4773,8 @@ ${missingList}`,
       if (payload.rpgStats.length) state.rpgStats = payload.rpgStats;
       if (payload.useRpgStats !== undefined) state.settings.useRpgStats = !!payload.useRpgStats;
       else if (payload.rpgStats.length) state.settings.useRpgStats = true;
+      if (payload.enableResponseEditing !== undefined) state.settings.enableResponseEditing = !!payload.enableResponseEditing;
+      if (payload.betterMemoryManagement !== undefined) state.settings.betterMemoryManagement = !!payload.betterMemoryManagement;
       state.defaultTriggers = payload.defaultTriggers;
       state.baseTrackersAtStart = deepClone(state.defaultTriggers);
       if (!state.turns.length) state.trackers = cloneDefaultTriggersForCurrentRun();
@@ -5201,7 +5498,7 @@ Rules:
       renderAll();
       saveState();
       try {
-        const result = await callOpenRouterImageWithPg13Retry(turn.imagePrompt, { previousImageUrl: turn.imageUrl || "" });
+        const result = await callOpenRouterImageWithPg13Retry(turn.imagePrompt, { previousImageUrl: turn.imageUrl || "", turn });
         turn.imageUrl = result.imageUrl;
         turn.imagePrompt = result.prompt;
         turn.imageError = "";
@@ -5236,6 +5533,7 @@ Rules:
       closeInfiniteWorldsImportDialog();
       state.turns = [];
       state.scratchpad = "";
+      state.fullHistory = null;
       state.viewIndex = -1;
       state.baseTrackersAtStart = deepClone(state.defaultTriggers || []);
       state.trackers = cloneDefaultTriggersForCurrentRun();
@@ -5269,8 +5567,7 @@ Rules:
             sourceTurnNumber: sourceTurn.turnNumber,
             importedAt: nowIso()
           };
-          turn.scratchpadSnapshot = state.scratchpad;
-          turn.trackersSnapshot = deepClone(state.trackers);
+          setTurnStateSnapshot(turn, state.scratchpad, state.trackers);
           state.turns.push(turn);
           state.viewIndex = state.turns.length - 1;
           renderAll();
@@ -5316,6 +5613,9 @@ Rules:
 
     function exportJson() {
       syncFormToState();
+      if ($("scratchpad")) setViewedScratchpad($("scratchpad").value);
+      syncInlineWorldEditorState();
+      normalizePerTurnSnapshots();
       const clone = deepClone(state);
       clone.settings.apiKey = "";
       clone.unsavedFullExport = false;
@@ -5325,6 +5625,9 @@ Rules:
 
     function exportMarkdown() {
       syncFormToState();
+      if ($("scratchpad")) setViewedScratchpad($("scratchpad").value);
+      syncInlineWorldEditorState();
+      normalizePerTurnSnapshots();
       const lines = [];
       lines.push(`# ${state.world.title || "Untitled adventure"}`);
       lines.push("");
@@ -5403,6 +5706,9 @@ Rules:
 
     async function exportHtml() {
       syncFormToState();
+      if ($("scratchpad")) setViewedScratchpad($("scratchpad").value);
+      syncInlineWorldEditorState();
+      normalizePerTurnSnapshots();
       const exportableImageCount = state.turns.filter(turn => turn.imageUrl && isSafeDisplayImageUrl(turn.imageUrl)).length;
       if (exportableImageCount) toast(`Embedding ${exportableImageCount} image${exportableImageCount === 1 ? "" : "s"} into the HTML export...`, 5000);
 
@@ -5449,7 +5755,7 @@ Rules:
     let dirtySinceFullExport = false;
 
     function hasAdventureContentToSave() {
-      return state.turns.some(turn => turn.imageUrl || turn.imageGenerating || turn.imagePrompt || turn.narration) || !!state.scratchpad || !!state.trackers.length;
+      return state.turns.some(turn => turn.imageUrl || turn.imageGenerating || turn.imagePrompt || turn.narration) || !!state.scratchpad || !!state.trackers.length || fullHistoryHasContent();
     }
 
     function markUnsavedForFullExport() {
@@ -5477,8 +5783,8 @@ Rules:
         try {
           const imported = JSON.parse(reader.result);
           state = mergeDefaults(deepClone(DEFAULT_STATE), imported);
-          state.turns = (state.turns || []).map(turn => ({ ...turn, raw: turn.raw && turn.raw.keys ? turn.raw : { imported: true } }));
           normalizeDefaultTriggerState();
+          normalizePerTurnSnapshots();
           state.settings.apiKey = $("apiKey").value.trim() || state.settings.apiKey || "";
           state.unsavedFullExport = false;
           dirtySinceFullExport = false;
@@ -5520,7 +5826,7 @@ Rules:
     }
 
     function bindEvents() {
-      const autosaveInputs = ["apiKey", "llmModel", "llmModelCustom", "imageModel", "imageModelCustom", "imageAspectRatio", "imageSize", "temperature", "worldTitle", "genre", "tone", "character", "premise", "rules"];
+      const autosaveInputs = ["apiKey", "llmModel", "llmModelCustom", "imageModel", "imageModelCustom", "imageAspectRatio", "imageSize", "temperature", "worldTitle", "genre", "tone", "character", "premise", "rules", "enableResponseEditing", "betterMemoryManagement"];
       autosaveInputs.forEach(id => {
         const el = $(id);
         if (!el) return;
@@ -5556,7 +5862,7 @@ Rules:
         const hasKey = !!($("apiKey")?.value.trim() || state.settings?.apiKey);
         toast(hasKey ? "Closed Getting Started." : "Key setup skipped for now. You can open Model Settings from the Menu when you are ready.");
       });
-      ["rememberKey", "generateImages", "useRpgStats"].forEach(id => $(id).addEventListener("change", () => { syncFormToState(); renderStory(); }));
+      ["rememberKey", "generateImages", "useRpgStats", "enableResponseEditing", "betterMemoryManagement"].forEach(id => $(id)?.addEventListener("change", () => { syncFormToState(); renderAll(); }));
       $("filterFreeOptions").addEventListener("change", () => {
         syncFormToState();
         populateModelSelects();
@@ -5596,6 +5902,11 @@ Rules:
       $("btnNext").addEventListener("click", () => { if (state.viewIndex < state.turns.length - 1) { state.viewIndex++; renderAll(); saveState(); } });
       $("btnUndo").addEventListener("click", undoLatest);
       $("btnRetry").addEventListener("click", retryLatest);
+      $("btnEditResponse")?.addEventListener("click", () => openEditResponseDialog(viewedTurn()));
+      $("btnEditResponseClose")?.addEventListener("click", closeEditResponseDialog);
+      $("btnEditResponseCancel")?.addEventListener("click", closeEditResponseDialog);
+      $("btnEditResponseSave")?.addEventListener("click", () => saveEditedResponse(transientUi.editingResponseTurnId, $("responseEditor")?.value || ""));
+      addCtrlEnter("responseEditor", () => $("btnEditResponseSave")?.click());
       bindSetupSummary("btnToggleDefaultTrackers", "defaultTrackersPanel");
       bindSetupSummary("btnToggleRpgStats", "rpgStatsPanel");
       $("btnAddStat").addEventListener("click", addRpgStat);
@@ -5615,7 +5926,7 @@ Rules:
       $("btnWorldTextImportConfirm").addEventListener("click", () => importWorldFromText($("worldTextImportEditor").value));
       addCtrlEnter("worldTextImportEditor", () => $("btnWorldTextImportConfirm")?.click());
       $("btnAddTracker").addEventListener("click", addTracker);
-      $("btnSaveScratch").addEventListener("click", () => { state.scratchpad = $("scratchpad").value; saveState(); renderAll(); toast("Scratchpad updated."); });
+      $("btnSaveScratch").addEventListener("click", () => { setViewedScratchpad($("scratchpad").value); markUnsavedForFullExport(); saveState(); renderAll(); toast("Scratchpad updated for the viewed turn."); });
       $("btnImagePromptCancel").addEventListener("click", closeImagePromptDialog);
       $("btnRegenerateImageConfirm").addEventListener("click", () => regenerateImageForTurn(transientUi.editingImageTurnId, $("imagePromptEditor").value));
       addCtrlEnter("imagePromptEditor", () => $("btnRegenerateImageConfirm")?.click());

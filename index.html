@@ -633,6 +633,22 @@
     .roll-card strong.success-text { color: var(--ok); }
     .roll-card strong.failure-text { color: var(--danger); }
 
+    .event-trigger-card .event-trigger-mode-row {
+      align-items: flex-start;
+    }
+
+    .event-trigger-card .event-trigger-mode-row .checkline {
+      font-size: .84rem;
+    }
+
+    .event-trigger-append-row.disabled {
+      opacity: .48;
+    }
+
+    .event-trigger-append-row.disabled input {
+      cursor: not-allowed;
+    }
+
 
     dialog.world-gen-dialog {
       border: 1px solid var(--border);
@@ -1124,6 +1140,26 @@
               </label>
               <button id="btnAddDefaultTrigger" class="accent" type="button">＋ Add default tracker</button>
               <div id="defaultTriggerList" class="stack"></div>
+            </div>
+          <summary id="btnToggleEventTriggers" class="setup-toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="eventTriggersPanel">
+            <span class="setup-toggle-caret" aria-hidden="true">▸</span>
+            <span>Event triggers</span>
+          </summary>
+            <div id="eventTriggersPanel" class="setup-section-body stack hidden">
+              <p class="mini">Define special event triggers that the app checks with a separate LLM prompt before or after the main story response. Activated trigger instructions can influence the next story response, or optionally add a brief after-response passage.</p>
+              <div class="row wrap event-trigger-mode-row" role="radiogroup" aria-label="When to check this event trigger">
+                <label class="checkline"><input id="eventTriggerTimingBefore" type="radio" name="eventTriggerTiming" value="before" checked /> Check before the LLM's main story response</label>
+                <label class="checkline"><input id="eventTriggerTimingAfter" type="radio" name="eventTriggerTiming" value="after" /> Check after the LLM's main story response</label>
+              </div>
+              <label>When should the event trigger go off?
+                <textarea id="eventTriggerCondition" placeholder="Examples: on turn 10; whenever the word 'crown' appears in the last response; when the player dies; when the player achieves the escape objective."></textarea>
+              </label>
+              <label>What will happen when this trigger occurs?
+                <textarea id="eventTriggerEffect" placeholder="Describe the story event, instruction, consequence, win/loss handling, or prompt directive that should happen when this trigger activates."></textarea>
+              </label>
+              <label id="eventTriggerAppendLabel" class="checkline event-trigger-append-row disabled"><input id="eventTriggerAppendAfter" type="checkbox" disabled /> Add short additional text after the current main story response when this after-response trigger activates</label>
+              <button id="btnAddEventTrigger" class="accent" type="button">＋ Add event trigger</button>
+              <div id="eventTriggerList" class="stack"></div>
             </div>
           <summary id="btnToggleRpgStats" class="setup-toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="rpgStatsPanel">
             <span class="setup-toggle-caret" aria-hidden="true">▸</span>
@@ -1702,6 +1738,8 @@
       modelLists: { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS },
       rpgStats: deepClone(DEFAULT_RPG_STATS),
       defaultTriggers: [],
+      eventTriggers: [],
+      pendingEventTriggers: [],
       baseTrackersAtStart: [],
       trackers: [],
       scratchpad: "",
@@ -2126,6 +2164,19 @@
         value: truncateText(t.value || "", 6000),
         lastRationale: truncateText(t.lastRationale || "", 1500)
       });
+      const compactEventTrigger = t => ({
+        ...t,
+        condition: truncateText(t.condition || "", 3000),
+        effect: truncateText(t.effect || "", 5000),
+        lastActivationReason: truncateText(t.lastActivationReason || "", 1500)
+      });
+      const compactPendingEventTrigger = t => ({
+        ...t,
+        condition: truncateText(t.condition || "", 1500),
+        effect: truncateText(t.effect || "", 2500),
+        instructions: truncateText(t.instructions || "", 3500),
+        reason: truncateText(t.reason || "", 1500)
+      });
       return {
         ...source,
         _storageWarningShown: undefined,
@@ -2141,6 +2192,8 @@
         fullHistory: normalizeFullHistory(source.fullHistory),
         turns: (source.turns || []).map(pruneTurnForStorage),
         defaultTriggers: (source.defaultTriggers || source.default_triggers || source.baseTrackersAtStart || []).map(compactTracker),
+        eventTriggers: normalizeEventTriggers(source.eventTriggers || source.event_triggers || source.evenTriggers || source.even_triggers || []).map(compactEventTrigger),
+        pendingEventTriggers: normalizePendingEventTriggers(source.pendingEventTriggers || source.pending_event_triggers || []).map(compactPendingEventTrigger),
         trackers: (source.trackers || []).map(compactTracker),
         baseTrackersAtStart: (source.defaultTriggers || source.default_triggers || source.baseTrackersAtStart || []).map(compactTracker)
       };
@@ -2514,6 +2567,83 @@
       })).filter(tracker => tracker.name || tracker.rules || tracker.value);
     }
 
+    function normalizeEventTriggerTiming(value = "") {
+      const text = String(value || "").trim().toLowerCase();
+      if (text.includes("after") || text === "post" || text === "post_response") return "after";
+      return "before";
+    }
+
+    function normalizeEventTriggers(triggers) {
+      return (Array.isArray(triggers) ? triggers : []).map((trigger, idx) => {
+        const timing = normalizeEventTriggerTiming(trigger.timing || trigger.checkTiming || trigger.check_timing || trigger.phase || trigger.whenChecked || trigger.when_checked || trigger.trigger_timing);
+        const condition = String(trigger.condition || trigger.when || trigger.when_should_trigger || trigger.activation_condition || trigger.activationCondition || trigger.triggerCondition || trigger.trigger_condition || "").trim();
+        const effect = String(trigger.effect || trigger.what_happens || trigger.whatHappens || trigger.event_effect || trigger.eventEffect || trigger.instructions || trigger.result || "").trim();
+        const addTextAfter = timing === "after" && !!(trigger.addTextAfter || trigger.add_text_after || trigger.additionalTextAfterResponse || trigger.additional_text_after_response || trigger.appendAfterResponse || trigger.append_after_response || trigger.appendAdditionalText || trigger.append_additional_text);
+        return {
+          id: trigger.id || uid("event_trigger"),
+          timing,
+          condition,
+          effect,
+          addTextAfter,
+          createdAt: trigger.createdAt || trigger.created_at || nowIso(),
+          updatedAt: trigger.updatedAt || trigger.updated_at || null,
+          triggeredCount: clampNumber(trigger.triggeredCount ?? trigger.triggered_count ?? 0, 0, 999999, 0),
+          lastTriggeredTurn: Number.isFinite(Number(trigger.lastTriggeredTurn ?? trigger.last_triggered_turn)) ? Number(trigger.lastTriggeredTurn ?? trigger.last_triggered_turn) : null,
+          lastTriggeredAt: trigger.lastTriggeredAt || trigger.last_triggered_at || null,
+          lastActivationReason: String(trigger.lastActivationReason || trigger.last_activation_reason || "").trim(),
+          label: String(trigger.label || trigger.name || trigger.title || `Event Trigger ${idx + 1}`).trim()
+        };
+      }).filter(trigger => trigger.condition || trigger.effect);
+    }
+
+    function normalizePendingEventTriggers(items) {
+      return (Array.isArray(items) ? items : []).map((item, idx) => ({
+        id: item.id || uid("pending_event_trigger"),
+        sourceTriggerId: item.sourceTriggerId || item.source_trigger_id || item.trigger_id || item.id || "",
+        name: String(item.name || item.label || `Event trigger ${idx + 1}`).trim(),
+        timing: normalizeEventTriggerTiming(item.timing || item.phase || "before"),
+        condition: String(item.condition || item.activation_condition || "").trim(),
+        effect: String(item.effect || item.event_effect || "").trim(),
+        instructions: String(item.instructions || item.what_should_happen || item.what_happens || item.response_instructions || item.result || item.effect || "").trim(),
+        reason: String(item.reason || item.rationale || item.why || "").trim(),
+        createdAt: item.createdAt || item.created_at || nowIso(),
+        sourceTurn: Number.isFinite(Number(item.sourceTurn ?? item.source_turn)) ? Number(item.sourceTurn ?? item.source_turn) : null
+      })).filter(item => item.instructions || item.effect || item.condition);
+    }
+
+    function normalizeEventTriggerState(target = state) {
+      target.eventTriggers = normalizeEventTriggers(target.eventTriggers || target.event_triggers || target.evenTriggers || target.even_triggers || []);
+      target.pendingEventTriggers = normalizePendingEventTriggers(target.pendingEventTriggers || target.pending_event_triggers || []);
+      return target.eventTriggers;
+    }
+
+    function compactEventTriggerForPrompt(trigger) {
+      return {
+        id: trigger.id,
+        label: trigger.label || trigger.name || "",
+        check_timing: trigger.timing === "after" ? "after_main_story_response" : "before_main_story_response",
+        activation_condition: truncateText(trigger.condition || "", 1400),
+        what_happens_when_activated: truncateText(trigger.effect || "", 2200),
+        may_add_short_text_after_current_response: trigger.timing === "after" && !!trigger.addTextAfter,
+        triggered_count: trigger.triggeredCount || 0,
+        last_triggered_turn: trigger.lastTriggeredTurn || null,
+        last_activation_reason: truncateText(trigger.lastActivationReason || "", 700)
+      };
+    }
+
+    function compactActivatedEventForPrompt(item) {
+      return {
+        trigger_id: item.sourceTriggerId || item.id || "",
+        name: item.name || "Event trigger",
+        check_timing: item.timing || "before",
+        activation_condition: truncateText(item.condition || "", 1200),
+        trigger_effect: truncateText(item.effect || "", 2000),
+        activation_reason: truncateText(item.reason || "", 900),
+        instructions_for_story_response: truncateText(item.instructions || item.effect || "", 2400),
+        source_turn: item.sourceTurn || null
+      };
+    }
+
     function normalizeDefaultTriggerState() {
       state.defaultTriggers = normalizeTrackers(state.defaultTriggers || state.default_triggers || []);
       if (!state.defaultTriggers.length && Array.isArray(state.baseTrackersAtStart) && state.baseTrackersAtStart.length) {
@@ -2525,6 +2655,7 @@
       state.baseTrackersAtStart = deepClone(state.defaultTriggers);
       state.trackers = normalizeTrackers(state.trackers || []);
       if (!state.turns?.length) state.trackers = deepClone(state.defaultTriggers);
+      normalizeEventTriggerState(state);
     }
 
     function normalizeFullHistory(value) {
@@ -2775,6 +2906,7 @@
 
     function closeWorldSetupSubsections() {
       setSetupSectionOpen("defaultTrackersPanel", "btnToggleDefaultTrackers", false);
+      setSetupSectionOpen("eventTriggersPanel", "btnToggleEventTriggers", false);
       setSetupSectionOpen("rpgStatsPanel", "btnToggleRpgStats", false);
     }
 
@@ -3018,6 +3150,7 @@
       state.modelLists ||= { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS };
       state.rpgStats = normalizeRpgStats(state.rpgStats?.length ? state.rpgStats : DEFAULT_RPG_STATS);
       normalizeDefaultTriggerState();
+      normalizeEventTriggerState(state);
       coerceFreeModelSettings();
       if (isCommunityApiKey(state.settings.apiKey)) state.settings.filterFreeOptions = true;
       populateModelSelects();
@@ -3042,6 +3175,7 @@
       $("premise").value = state.world.premise || "";
       $("rules").value = state.world.rules || "";
       $("scratchpad").value = getViewedScratchpad();
+      setAddEventTriggerAppendEnabled();
       applyFreeModelUiState();
     }
 
@@ -3049,6 +3183,7 @@
       renderStory();
       renderChoices();
       renderDefaultTriggers();
+      renderEventTriggers();
       renderTrackers();
       renderHistory();
       renderRpgStats();
@@ -3426,6 +3561,134 @@
       populateCurrentTrackersFromDefaultsIfNoTurns();
     }
 
+    function setAddEventTriggerAppendEnabled() {
+      const isAfter = $("eventTriggerTimingAfter")?.checked === true;
+      const checkbox = $("eventTriggerAppendAfter");
+      const label = $("eventTriggerAppendLabel");
+      if (checkbox) {
+        checkbox.disabled = !isAfter;
+        if (!isAfter) checkbox.checked = false;
+      }
+      if (label) label.classList.toggle("disabled", !isAfter);
+    }
+
+    function renderEventTriggers() {
+      const list = $("eventTriggerList");
+      if (!list) return;
+      normalizeEventTriggerState(state);
+      list.innerHTML = "";
+      if (!state.eventTriggers.length) {
+        list.innerHTML = `<p class="mini">No event triggers yet. Add one to have the LLM check custom story conditions before or after each turn.</p>`;
+        setAddEventTriggerAppendEnabled();
+        return;
+      }
+      state.eventTriggers.forEach((trigger, idx) => {
+        const card = document.createElement("div");
+        card.className = "track-card event-trigger-card";
+        const title = trigger.label || truncateText(trigger.condition || `Event Trigger ${idx + 1}`, 60);
+        const timingLabel = trigger.timing === "after" ? "After the LLM response" : "Before the LLM response";
+        card.innerHTML = `
+          <div class="row" style="justify-content:space-between;align-items:flex-start;">
+            <h4>${escapeHtml(title || "Event trigger")}</h4>
+            <button class="small danger" data-event-trigger-del="${escapeHtml(trigger.id)}" type="button">Delete</button>
+          </div>
+          <p><strong>Check timing:</strong> ${escapeHtml(timingLabel)}${trigger.triggeredCount ? ` · Triggered ${escapeHtml(trigger.triggeredCount)} time${trigger.triggeredCount === 1 ? "" : "s"}` : ""}</p>
+          <div class="row wrap event-trigger-mode-row" role="radiogroup" aria-label="Check timing for ${escapeHtml(title || "event trigger")}">
+            <label class="checkline"><input data-event-trigger-timing="${escapeHtml(trigger.id)}" type="radio" name="event-trigger-timing-${escapeHtml(trigger.id)}" value="before" ${trigger.timing === "before" ? "checked" : ""} /> Check before the LLM's main story response</label>
+            <label class="checkline"><input data-event-trigger-timing="${escapeHtml(trigger.id)}" type="radio" name="event-trigger-timing-${escapeHtml(trigger.id)}" value="after" ${trigger.timing === "after" ? "checked" : ""} /> Check after the LLM's main story response</label>
+          </div>
+          <label>When should the event trigger go off?
+            <textarea data-event-trigger-condition="${escapeHtml(trigger.id)}">${escapeHtml(trigger.condition || "")}</textarea>
+          </label>
+          <label>What will happen when this trigger occurs?
+            <textarea data-event-trigger-effect="${escapeHtml(trigger.id)}">${escapeHtml(trigger.effect || "")}</textarea>
+          </label>
+          <label class="checkline event-trigger-append-row ${trigger.timing === "after" ? "" : "disabled"}"><input data-event-trigger-append="${escapeHtml(trigger.id)}" type="checkbox" ${trigger.addTextAfter ? "checked" : ""} ${trigger.timing === "after" ? "" : "disabled"} /> Add short additional text after the current main story response when this after-response trigger activates</label>
+        `;
+        list.appendChild(card);
+      });
+      list.querySelectorAll("button[data-event-trigger-del]").forEach(btn => btn.addEventListener("click", () => {
+        state.eventTriggers = state.eventTriggers.filter(trigger => trigger.id !== btn.dataset.eventTriggerDel);
+        saveState();
+        renderEventTriggers();
+      }));
+      list.querySelectorAll("input[data-event-trigger-timing]").forEach(input => input.addEventListener("change", () => updateEventTrigger(input.dataset.eventTriggerTiming, { timing: input.value })));
+      list.querySelectorAll("textarea[data-event-trigger-condition]").forEach(area => area.addEventListener("change", () => updateEventTrigger(area.dataset.eventTriggerCondition, { condition: area.value.trim() })));
+      list.querySelectorAll("textarea[data-event-trigger-effect]").forEach(area => area.addEventListener("change", () => updateEventTrigger(area.dataset.eventTriggerEffect, { effect: area.value.trim() })));
+      list.querySelectorAll("input[data-event-trigger-append]").forEach(input => input.addEventListener("change", () => updateEventTrigger(input.dataset.eventTriggerAppend, { addTextAfter: input.checked })));
+      setAddEventTriggerAppendEnabled();
+    }
+
+    function updateEventTrigger(id, patch) {
+      const trigger = state.eventTriggers.find(t => t.id === id);
+      if (!trigger) return;
+      Object.assign(trigger, patch);
+      trigger.timing = normalizeEventTriggerTiming(trigger.timing);
+      if (trigger.timing !== "after") trigger.addTextAfter = false;
+      trigger.updatedAt = nowIso();
+      state.eventTriggers = normalizeEventTriggers(state.eventTriggers);
+      saveState();
+      renderEventTriggers();
+    }
+
+    function addEventTrigger() {
+      const timing = $("eventTriggerTimingAfter")?.checked ? "after" : "before";
+      const condition = $("eventTriggerCondition")?.value.trim() || "";
+      const effect = $("eventTriggerEffect")?.value.trim() || "";
+      const addTextAfter = timing === "after" && $("eventTriggerAppendAfter")?.checked === true;
+      if (!condition || !effect) {
+        toast("Event trigger needs both an activation condition and an effect.");
+        return;
+      }
+      state.eventTriggers.push({
+        id: uid("event_trigger"),
+        timing,
+        condition,
+        effect,
+        addTextAfter,
+        createdAt: nowIso(),
+        updatedAt: null,
+        triggeredCount: 0,
+        lastTriggeredTurn: null,
+        lastTriggeredAt: null,
+        lastActivationReason: "",
+        label: `Event Trigger ${state.eventTriggers.length + 1}`
+      });
+      if ($("eventTriggerCondition")) $("eventTriggerCondition").value = "";
+      if ($("eventTriggerEffect")) $("eventTriggerEffect").value = "";
+      if ($("eventTriggerTimingBefore")) $("eventTriggerTimingBefore").checked = true;
+      if ($("eventTriggerTimingAfter")) $("eventTriggerTimingAfter").checked = false;
+      if ($("eventTriggerAppendAfter")) $("eventTriggerAppendAfter").checked = false;
+      setAddEventTriggerAppendEnabled();
+      saveState();
+      renderEventTriggers();
+    }
+
+    function syncEventTriggerEditorState() {
+      document.querySelectorAll("input[data-event-trigger-timing]:checked").forEach(input => {
+        const trigger = state.eventTriggers.find(t => t.id === input.dataset.eventTriggerTiming);
+        if (trigger) trigger.timing = normalizeEventTriggerTiming(input.value);
+      });
+      document.querySelectorAll("textarea[data-event-trigger-condition]").forEach(area => {
+        const trigger = state.eventTriggers.find(t => t.id === area.dataset.eventTriggerCondition);
+        if (trigger) trigger.condition = area.value.trim();
+      });
+      document.querySelectorAll("textarea[data-event-trigger-effect]").forEach(area => {
+        const trigger = state.eventTriggers.find(t => t.id === area.dataset.eventTriggerEffect);
+        if (trigger) trigger.effect = area.value.trim();
+      });
+      document.querySelectorAll("input[data-event-trigger-append]").forEach(input => {
+        const trigger = state.eventTriggers.find(t => t.id === input.dataset.eventTriggerAppend);
+        if (trigger) trigger.addTextAfter = trigger.timing === "after" && input.checked;
+      });
+      state.eventTriggers = normalizeEventTriggers(state.eventTriggers);
+    }
+
+    function eventTriggersForPhase(phase) {
+      normalizeEventTriggerState(state);
+      return state.eventTriggers.filter(trigger => trigger.timing === phase);
+    }
+
     function renderTrackers() {
       const list = $("trackerList");
       const trackers = getViewedTrackers();
@@ -3692,6 +3955,7 @@ Character option requirements:
           premise_and_starting_situation: state.world.premise || "",
           story_rules_and_style_guide: state.world.rules || "",
           default_world_state_trackers: defaultTriggers,
+          event_triggers: normalizeEventTriggers(state.eventTriggers || []).map(compactEventTriggerForPrompt),
           rpg_percentile_stats_enabled: !!state.settings.useRpgStats,
           rpg_percentile_stats: state.settings.useRpgStats ? rpgStats : []
         },
@@ -4112,6 +4376,7 @@ Design principles:
 - Do not let the player dictate hidden facts for free; interpret attempts as actions, not guaranteed outcomes.
 - Keep continuity with the scratchpad and tracked state.
 - If an RPG roll result is provided, treat it as already rolled. Explicitly reflect whether the action succeeds or fails and build consequences from that result. Do not reroll or ignore it.
+- If event_triggers are provided, treat their instructions as activated special events that must be reflected in the narration, scratchpad, tracker updates, and choices as appropriate.
 - End at a meaningful decision point.
 - Choices must be materially different and must include at least one cautious/social option, one investigative option, one bold/risky option, and one character-driven option when plausible.
 - Use the requested tone and genre. Avoid mentioning that you are an AI or a game engine.
@@ -4156,6 +4421,155 @@ Memory rules:
       return !!state.settings.betterMemoryManagement && state.turns.length >= 10 && state.turns.length % 10 === 0;
     }
 
+    function eventTriggerCheckSystemPrompt() {
+      return `You check custom event triggers for a choose-your-own-adventure engine.
+Return ONLY valid JSON. Do not wrap it in markdown. Do not include comments.
+
+Required JSON shape:
+{
+  "activated_triggers": [
+    {
+      "id": "trigger id from the prompt",
+      "name": "short trigger name or label",
+      "activation_reason": "brief reason this trigger condition is met now",
+      "instructions": "the concrete instruction/effect that the next story response or after-response extension must reflect",
+      "add_short_text_after_response": false
+    }
+  ]
+}
+
+Rules:
+- Only activate a trigger when its activation_condition is clearly met by the provided current turn, latest player action, recent history, scratchpad, trackers, or just-generated response.
+- If the condition is ambiguous, do not activate it.
+- Use the trigger's what_happens_when_activated as the instructions field, adapted only as needed for the immediate story context.
+- Avoid duplicate one-time outcomes by considering triggered_count, last_triggered_turn, and last_activation_reason. Recurring triggers may activate again only if the condition is newly/currently met.
+- For after-response triggers, preserve add_short_text_after_response from the trigger when it is provided.
+- Do not write story narration here. Return activation decisions and instructions only.`;
+    }
+
+    function buildEventTriggerCheckPrompt(phase, action, triggers, options = {}) {
+      const nextTurnNumber = options.currentTurn || (state.turns.length + 1);
+      const generatedTurn = options.generatedTurn || null;
+      return JSON.stringify({
+        request: phase === "before"
+          ? "Check whether any before-response event triggers should activate before the main story response is generated."
+          : "Check whether any after-response event triggers should activate after the main story response that was just generated.",
+        check_phase: phase === "before" ? "before_main_story_response" : "after_main_story_response",
+        current_turn: nextTurnNumber,
+        latest_player_action: truncateText(action || "", PROMPT_LIMITS.action),
+        world: compactWorldForPrompt(),
+        existing_scratchpad: truncateText(state.scratchpad || "", PROMPT_LIMITS.scratchpad),
+        custom_trackers: state.trackers.map(compactTrackerForPrompt),
+        recent_history: state.turns.slice(-10).map(t => compactTurnForPrompt(t, PROMPT_LIMITS.narration)),
+        just_generated_turn: generatedTurn ? compactTurnForPrompt(generatedTurn, PROMPT_LIMITS.currentNarration) : null,
+        just_generated_narration_full: generatedTurn ? truncateText(generatedTurn.narration || "", PROMPT_LIMITS.currentNarration) : "",
+        event_triggers_to_check: triggers.map(compactEventTriggerForPrompt),
+        output_requirement: "Return only JSON with activated_triggers. Use an empty array if no trigger condition is clearly met."
+      }, null, 2);
+    }
+
+    async function checkEventTriggers(phase, action, options = {}) {
+      const triggers = eventTriggersForPhase(phase);
+      if (!triggers.length) return [];
+      const raw = await callOpenRouterJson("event trigger check", buildOpenRouterInstructionMessages(
+        eventTriggerCheckSystemPrompt(),
+        buildEventTriggerCheckPrompt(phase, action, triggers, options)
+      ), { temperature: 0.15, max_tokens: 1600, json_retries: 2, no_content_retries: 2 });
+      const source = Array.isArray(raw.activated_triggers) ? raw.activated_triggers : (Array.isArray(raw.activatedTriggers) ? raw.activatedTriggers : []);
+      const byId = new Map(triggers.map(t => [t.id, t]));
+      const activated = source.map((item, idx) => {
+        const sourceTriggerId = String(item.id || item.trigger_id || item.sourceTriggerId || "").trim();
+        const trigger = byId.get(sourceTriggerId) || triggers.find(t => t.condition === item.activation_condition) || null;
+        if (!trigger) return null;
+        const instructions = String(item.instructions || item.what_should_happen || item.response_instructions || item.effect || trigger.effect || "").trim();
+        if (!instructions && !trigger.effect) return null;
+        return {
+          id: uid("activated_event_trigger"),
+          sourceTriggerId: trigger.id,
+          name: String(item.name || trigger.label || `Event trigger ${idx + 1}`).trim(),
+          timing: phase,
+          condition: trigger.condition || "",
+          effect: trigger.effect || "",
+          instructions: instructions || trigger.effect || "",
+          reason: String(item.activation_reason || item.reason || item.rationale || "").trim(),
+          addTextAfter: phase === "after" && trigger.addTextAfter && (item.add_short_text_after_response !== false),
+          createdAt: nowIso(),
+          sourceTurn: options.currentTurn || (phase === "after" ? state.turns.length : state.turns.length + 1)
+        };
+      }).filter(Boolean);
+      if (activated.length) {
+        const now = nowIso();
+        activated.forEach(item => {
+          const trigger = state.eventTriggers.find(t => t.id === item.sourceTriggerId);
+          if (trigger) {
+            trigger.triggeredCount = (Number(trigger.triggeredCount) || 0) + 1;
+            trigger.lastTriggeredTurn = item.sourceTurn;
+            trigger.lastTriggeredAt = now;
+            trigger.lastActivationReason = item.reason || "Activated by LLM trigger check.";
+            trigger.updatedAt = now;
+          }
+        });
+        saveState();
+      }
+      return activated;
+    }
+
+    function eventTriggerExtensionSystemPrompt() {
+      return `You add a brief after-response passage for a choose-your-own-adventure story turn when custom event triggers activate.
+Return ONLY valid JSON. Do not wrap it in markdown. Do not include comments.
+
+Required JSON shape:
+{
+  "additional_text": "1-3 short paragraphs that continue directly after the just-generated narration and reflect the activated event trigger(s).",
+  "scratchpad": "optional updated private continuity scratchpad, if the trigger changes hidden continuity",
+  "tracker_updates": [{"id":"tracker id from prompt", "value":"new complete current value", "rationale":"brief private reason"}]
+}
+
+Rules:
+- Keep the added text short; do not rewrite the whole turn.
+- Reflect the activated trigger instructions clearly, such as a win/loss conclusion, delayed consequence, revelation, or setup beat.
+- Preserve second-person style, tone, and continuity.
+- Do not add a new full choice list unless the trigger explicitly requires ending or redirecting the scene.
+- If no scratchpad or tracker changes are needed, return scratchpad as an empty string and tracker_updates as an empty array.`;
+    }
+
+    function buildEventTriggerExtensionPrompt(action, turn, activatedTriggers) {
+      return JSON.stringify({
+        request: "Extend the current turn slightly after the main story response because one or more after-response event triggers activated.",
+        current_turn: turn?.turnNumber || state.turns.length,
+        latest_player_action: truncateText(action || turn?.action || "", PROMPT_LIMITS.action),
+        world: compactWorldForPrompt(),
+        existing_scratchpad: truncateText(state.scratchpad || "", PROMPT_LIMITS.scratchpad),
+        custom_trackers: state.trackers.map(compactTrackerForPrompt),
+        recent_history: state.turns.slice(-10).map(t => compactTurnForPrompt(t, PROMPT_LIMITS.narration)),
+        just_generated_turn: compactTurnForPrompt(turn, PROMPT_LIMITS.currentNarration),
+        activated_event_triggers: activatedTriggers.map(compactActivatedEventForPrompt),
+        output_requirement: "Return only JSON. The additional_text should be brief and appendable directly after the current narration."
+      }, null, 2);
+    }
+
+    async function appendAfterResponseEventTriggerText(action, turn, activatedTriggers) {
+      const immediateTriggers = (activatedTriggers || []).filter(item => item.addTextAfter);
+      if (!turn || !immediateTriggers.length) return;
+      const raw = await callOpenRouterJson("event trigger after-response text", buildOpenRouterInstructionMessages(
+        eventTriggerExtensionSystemPrompt(),
+        buildEventTriggerExtensionPrompt(action, turn, immediateTriggers)
+      ), { temperature: Number(state.settings.temperature ?? 0.85), max_tokens: 1200, json_retries: 2, no_content_retries: 2 });
+      const addition = maybeParagraphizeStoryText(String(raw.additional_text || raw.additionalText || raw.narration || raw.text || "").trim());
+      if (addition) {
+        turn.narration = `${String(turn.narration || "").trim()}
+
+${addition}`.trim();
+      }
+      if (typeof raw.scratchpad === "string" && raw.scratchpad.trim()) state.scratchpad = raw.scratchpad;
+      const updates = Array.isArray(raw.tracker_updates) ? raw.tracker_updates : [];
+      if (updates.length) applyTurnState({ tracker_updates: updates });
+      setTurnStateSnapshot(turn, state.scratchpad, state.trackers);
+      turn.eventTriggerExtensions ||= [];
+      turn.eventTriggerExtensions.push(...immediateTriggers.map(compactActivatedEventForPrompt));
+      markUnsavedForFullExport();
+    }
+
     async function updateFullHistoryFromRecentTurns() {
       const raw = await callOpenRouterJson("full history memory compression", buildOpenRouterInstructionMessages(
         memorySummarySystemPrompt(),
@@ -4168,14 +4582,20 @@ Memory rules:
       return normalized;
     }
 
-    function buildUserPrompt(action, rollResult = null) {
+    function buildUserPrompt(action, rollResult = null, eventTriggerResults = []) {
       const recentTurns = state.turns.slice(-10).map(t => compactTurnForPrompt(t, PROMPT_LIMITS.narration));
+      const activeEventTriggers = normalizePendingEventTriggers(eventTriggerResults);
+      const hasActivatedEventTriggers = activeEventTriggers.length > 0;
       const promptPayload = {
-        request: state.turns.length ? "Continue the adventure by resolving the player's latest action and presenting the next decision point." : "Begin the adventure with an opening scene and first decision point.",
+        request: hasActivatedEventTriggers
+          ? "Continue the adventure by resolving the player's latest action and presenting the next decision point. Some special event triggers have been activated, so be sure your response reflects them as well."
+          : (state.turns.length ? "Continue the adventure by resolving the player's latest action and presenting the next decision point." : "Begin the adventure with an opening scene and first decision point."),
+        current_turn: state.turns.length + 1,
         latest_player_action: truncateText(action, PROMPT_LIMITS.action),
         world: compactWorldForPrompt(),
         existing_scratchpad: truncateText(state.scratchpad || "", PROMPT_LIMITS.scratchpad),
         custom_trackers: state.trackers.map(compactTrackerForPrompt),
+        event_triggers: hasActivatedEventTriggers ? activeEventTriggers.map(compactActivatedEventForPrompt) : [],
         rpg_system: { enabled: !!state.settings.useRpgStats, stats: normalizeRpgStats(state.rpgStats).map(s => ({ id: s.id, name: s.name, value_percent: s.value, covers: truncateText(s.note || "", 500) })), roll_result_for_latest_action: compactRollForPrompt(rollResult) }
       };
       if (state.settings.betterMemoryManagement) {
@@ -4185,10 +4605,10 @@ Memory rules:
       return JSON.stringify(promptPayload, null, 2);
     }
 
-    async function callOpenRouterChat(action, rollResult = null) {
+    async function callOpenRouterChat(action, rollResult = null, eventTriggerResults = []) {
       return callOpenRouterJson("story", buildOpenRouterInstructionMessages(
         storySystemPrompt(),
-        buildUserPrompt(action, rollResult)
+        buildUserPrompt(action, rollResult, eventTriggerResults)
       ), { temperature: Number(state.settings.temperature ?? 0.85), max_tokens: 2600 });
     }
 
@@ -4437,14 +4857,41 @@ Rewrite rules:
           await updateFullHistoryFromRecentTurns();
           saveState();
         }
+        const pendingFromPreviousAfterChecks = normalizePendingEventTriggers(state.pendingEventTriggers || []);
+        state.pendingEventTriggers = [];
+        let activatedForMainStory = [...pendingFromPreviousAfterChecks];
+        if (eventTriggersForPhase("before").length) {
+          setBusy(true, "Checking event triggers");
+          const beforeTriggerResults = await checkEventTriggers("before", action, { currentTurn: state.turns.length + 1 });
+          activatedForMainStory.push(...beforeTriggerResults);
+        }
         setBusy(true, "Writing scene");
-        const raw = await callOpenRouterChat(action, roll);
+        const raw = await callOpenRouterChat(action, roll, activatedForMainStory);
         applyTurnState(raw);
         const turn = normalizeTurnResult(raw, action, roll);
+        if (activatedForMainStory.length) turn.eventTriggersApplied = activatedForMainStory.map(compactActivatedEventForPrompt);
         setTurnStateSnapshot(turn, state.scratchpad, state.trackers);
         state.turns.push(turn);
-        markUnsavedForFullExport();
         state.viewIndex = state.turns.length - 1;
+
+        if (eventTriggersForPhase("after").length) {
+          setBusy(true, "Checking after-response triggers");
+          const afterTriggerResults = await checkEventTriggers("after", action, { currentTurn: turn.turnNumber, generatedTurn: turn });
+          if (afterTriggerResults.length) {
+            turn.eventTriggersAfterChecked = afterTriggerResults.map(compactActivatedEventForPrompt);
+            const immediate = afterTriggerResults.filter(item => item.addTextAfter);
+            const deferred = afterTriggerResults.filter(item => !item.addTextAfter);
+            if (immediate.length) {
+              setBusy(true, "Adding trigger text");
+              await appendAfterResponseEventTriggerText(action, turn, immediate);
+            }
+            if (deferred.length) {
+              state.pendingEventTriggers = normalizePendingEventTriggers([...(state.pendingEventTriggers || []), ...deferred]);
+            }
+          }
+        }
+
+        markUnsavedForFullExport();
         clearGenerationTransition();
 
         if (state.settings.generateImages && turn.imagePrompt) {
@@ -4514,6 +4961,8 @@ ${missingList}`,
       if (payload.enableResponseEditing !== undefined) state.settings.enableResponseEditing = !!payload.enableResponseEditing;
       if (payload.betterMemoryManagement !== undefined) state.settings.betterMemoryManagement = !!payload.betterMemoryManagement;
       state.defaultTriggers = payload.defaultTriggers;
+      state.eventTriggers = payload.eventTriggers || [];
+      state.pendingEventTriggers = [];
       state.baseTrackersAtStart = deepClone(state.defaultTriggers);
       if (!state.turns.length) state.trackers = cloneDefaultTriggersForCurrentRun();
       syncStateToForm();
@@ -4556,6 +5005,7 @@ ${missingList}`,
       state.baseTrackersAtStart = deepClone(state.defaultTriggers || []);
       state.trackers = cloneDefaultTriggersForCurrentRun();
       state.turns = [];
+      state.pendingEventTriggers = [];
       state.scratchpad = "";
       state.fullHistory = null;
       state.viewIndex = -1;
@@ -4657,6 +5107,7 @@ ${missingList}`,
 
     function syncInlineWorldEditorState() {
       syncDefaultTriggerEditorState();
+      syncEventTriggerEditorState();
       const trackersForViewedTurn = getViewedTrackers();
       document.querySelectorAll("textarea[data-tracker-value]").forEach(area => {
         const tracker = trackersForViewedTurn.find(t => t.id === area.dataset.trackerValue);
@@ -4681,7 +5132,7 @@ ${missingList}`,
     function buildWorldExport() {
       syncFormToState();
       syncInlineWorldEditorState();
-      return {
+      const worldOnly = {
         export_type: "infinite-quest-world",
         version: 1,
         exported_at: nowIso(),
@@ -4721,6 +5172,21 @@ ${missingList}`,
           updatedAt: null
         }))
       };
+      const eventTriggers = normalizeEventTriggers(state.eventTriggers || []).map(trigger => ({
+        id: trigger.id || uid("event_trigger"),
+        timing: trigger.timing || "before",
+        condition: trigger.condition || "",
+        effect: trigger.effect || "",
+        addTextAfter: !!trigger.addTextAfter,
+        createdAt: trigger.createdAt || null,
+        updatedAt: trigger.updatedAt || null,
+        triggeredCount: trigger.triggeredCount || 0,
+        lastTriggeredTurn: trigger.lastTriggeredTurn || null,
+        lastTriggeredAt: trigger.lastTriggeredAt || null,
+        lastActivationReason: trigger.lastActivationReason || ""
+      }));
+      if (eventTriggers.length) worldOnly.eventTriggers = eventTriggers;
+      return worldOnly;
     }
 
     function exportWorld() {
@@ -4753,13 +5219,14 @@ ${missingList}`,
         enableResponseEditing: settings.enableResponseEditing ?? settings.enable_response_editing ?? imported.enableResponseEditing ?? imported.enable_response_editing,
         betterMemoryManagement: settings.betterMemoryManagement ?? settings.better_memory_management ?? imported.betterMemoryManagement ?? imported.better_memory_management,
         rpgStats: normalizedStats,
-        defaultTriggers: normalizeImportedTrackers(defaultTriggers)
+        defaultTriggers: normalizeImportedTrackers(defaultTriggers),
+        eventTriggers: normalizeEventTriggers(imported.eventTriggers || imported.event_triggers || imported.evenTriggers || imported.even_triggers || imported.worldEventTriggers || imported.world_event_triggers || [])
       };
     }
 
     function applyWorldImport(imported) {
       const payload = extractWorldImportPayload(imported);
-      if (!payload.world.title && !payload.world.character && !payload.world.premise && !payload.rpgStats.length && !payload.defaultTriggers.length) {
+      if (!payload.world.title && !payload.world.character && !payload.world.premise && !payload.rpgStats.length && !payload.defaultTriggers.length && !payload.eventTriggers.length) {
         throw new Error("That JSON does not look like a saved world setup.");
       }
       if (state.turns.length && !confirm("Load this world setup? It will replace the setup fields, RPG stats, and default trackers. Existing story turns will remain, but they may no longer match the loaded world.")) return false;
@@ -4776,6 +5243,8 @@ ${missingList}`,
       if (payload.enableResponseEditing !== undefined) state.settings.enableResponseEditing = !!payload.enableResponseEditing;
       if (payload.betterMemoryManagement !== undefined) state.settings.betterMemoryManagement = !!payload.betterMemoryManagement;
       state.defaultTriggers = payload.defaultTriggers;
+      state.eventTriggers = payload.eventTriggers || [];
+      state.pendingEventTriggers = [];
       state.baseTrackersAtStart = deepClone(state.defaultTriggers);
       if (!state.turns.length) state.trackers = cloneDefaultTriggersForCurrentRun();
 
@@ -5784,6 +6253,7 @@ Rules:
           const imported = JSON.parse(reader.result);
           state = mergeDefaults(deepClone(DEFAULT_STATE), imported);
           normalizeDefaultTriggerState();
+          normalizeEventTriggerState(state);
           normalizePerTurnSnapshots();
           state.settings.apiKey = $("apiKey").value.trim() || state.settings.apiKey || "";
           state.unsavedFullExport = false;
@@ -5908,7 +6378,11 @@ Rules:
       $("btnEditResponseSave")?.addEventListener("click", () => saveEditedResponse(transientUi.editingResponseTurnId, $("responseEditor")?.value || ""));
       addCtrlEnter("responseEditor", () => $("btnEditResponseSave")?.click());
       bindSetupSummary("btnToggleDefaultTrackers", "defaultTrackersPanel");
+      bindSetupSummary("btnToggleEventTriggers", "eventTriggersPanel");
       bindSetupSummary("btnToggleRpgStats", "rpgStatsPanel");
+      $("eventTriggerTimingBefore")?.addEventListener("change", setAddEventTriggerAppendEnabled);
+      $("eventTriggerTimingAfter")?.addEventListener("change", setAddEventTriggerAppendEnabled);
+      $("btnAddEventTrigger")?.addEventListener("click", addEventTrigger);
       $("btnAddStat").addEventListener("click", addRpgStat);
       $("btnResetStats").addEventListener("click", resetRpgStats);
       $("btnAddDefaultTrigger").addEventListener("click", addDefaultTrigger);

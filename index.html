@@ -864,11 +864,57 @@
 
     .dialog-actions { justify-content: flex-end; }
 
+
+    .world-hash-preview {
+      display: grid;
+      gap: 12px;
+    }
+
+    .world-hash-preview-field {
+      display: grid;
+      gap: 5px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(255,255,255,.09);
+    }
+
+    .world-hash-preview-field:last-child {
+      padding-bottom: 0;
+      border-bottom: 0;
+    }
+
+    .world-hash-preview-field strong {
+      color: var(--gold2);
+      font-size: .86rem;
+    }
+
+    .world-hash-preview-label-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .world-hash-preview-field p {
+      margin: 0;
+      color: var(--text);
+      white-space: pre-wrap;
+      line-height: 1.45;
+    }
+
     .footer-note {
       margin-top: 18px;
       color: var(--dim);
       font-size: .8rem;
       line-height: 1.45;
+    }
+
+    .world-copy-status {
+      color: var(--gold2);
+      font-weight: 800;
+      padding: 7px 2px;
+      align-self: center;
+      min-width: 120px;
     }
   </style>
 </head>
@@ -1195,11 +1241,13 @@
             <div class="row wrap">
               <button id="btnSaveWorld" class="accent grow" type="button">💾 Save world</button>
               <button id="btnCopyWorld" class="accent" type="button">📋 Copy world to clipboard</button>
+              <button id="btnGenerateWorldUrl" class="accent" type="button">🔗 Generate World Share URL</button>
               <label class="buttonish small" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;">
                 <input id="worldImportFile" type="file" class="hidden" />
                 <span>📂 Load world from file</span>
               </label>
               <button id="btnLoadWorldText" type="button">📝 Load world from text</button>
+              <span id="worldCopyStatus" class="mini world-copy-status" aria-live="polite"></span>
             </div>
             <p class="mini">Save, copy, or share only the world setup: title, genre, tone, player character, premise, style guide, RPG stats, and default trackers. Story turns, current run state, generated pictures, and API keys are not included.</p>
           </div>
@@ -1338,6 +1386,55 @@
         <button id="btnWorldTextImportConfirm" class="primary" type="button">📥 Load pasted world</button>
       </div>
     </form>
+  </dialog>
+
+
+  <dialog id="worldHashImportDialog" class="world-gen-dialog app-dialog wide-dialog">
+    <div class="world-gen-card">
+      <div class="dialog-header">
+        <div>
+          <h3>Load shared world?</h3>
+          <p class="mini">This page URL includes a shared world. Review it below before replacing your current world setup.</p>
+        </div>
+        <button id="btnWorldHashImportClose" class="small ghost" type="button" aria-label="Close shared world import">✕</button>
+      </div>
+      <div class="dialog-scroll stack">
+        <p>Are you sure you would like to load this world and replace the current world setup?</p>
+        <p class="mini">This will replace the title, genre, tone, player character, premise, story rules, RPG stats, default trackers, and event triggers. Existing story turns will remain, but they may no longer match the loaded world.</p>
+        <div class="world-gen-box world-hash-preview" aria-label="Shared world preview">
+          <div class="world-hash-preview-field">
+            <strong>Title</strong>
+            <p id="worldHashPreviewTitle"></p>
+          </div>
+          <div class="world-hash-preview-field">
+            <strong>Genre</strong>
+            <p id="worldHashPreviewGenre"></p>
+          </div>
+          <div class="world-hash-preview-field">
+            <strong>Tone</strong>
+            <p id="worldHashPreviewTone"></p>
+          </div>
+          <div class="world-hash-preview-field">
+            <div class="world-hash-preview-label-row">
+              <strong>Player character</strong>
+              <span class="field-label-actions">
+                <span id="worldHashCharacterSelectSpinner" class="spinner hidden" aria-hidden="true" title="Generating character options"></span>
+                <button id="btnWorldHashGenerateCharacterSelect" class="small accent" type="button">Generate Player Select</button>
+              </span>
+            </div>
+            <p id="worldHashPreviewCharacter"></p>
+          </div>
+          <div class="world-hash-preview-field">
+            <strong>Premise and starting situation</strong>
+            <p id="worldHashPreviewPremise"></p>
+          </div>
+        </div>
+      </div>
+      <div class="row wrap dialog-actions">
+        <button id="btnWorldHashImportCancel" type="button">Cancel</button>
+        <button id="btnWorldHashImportConfirm" class="primary" type="button">📥 Load shared world</button>
+      </div>
+    </div>
   </dialog>
 
   <dialog id="infiniteWorldsImportDialog" class="world-gen-dialog app-dialog wide-dialog">
@@ -1761,7 +1858,13 @@
       specialKeyModelsLoadedForHash: "",
       specialKeyLoadInProgress: false,
       modelSettingsGettingStarted: false,
-      characterSelectOptions: []
+      sharedWorldStartAfterGettingStarted: false,
+      characterSelectOptions: [],
+      characterSelectTarget: "worldSetup",
+      lastImportedWorldHash: "",
+      worldHashImportInProgress: false,
+      pendingWorldHashImport: null,
+      pendingWorldHashImportResolver: null
     };
 
     let specialKeyCheckTimer = null;
@@ -2046,7 +2149,7 @@
       busy = isBusy;
       const pill = $("busyPill");
       pill.innerHTML = isBusy ? `<span class="spinner"></span> ${escapeHtml(label)}` : "Ready";
-      ["btnStart", "btnTakeAction", "btnRetry", "btnEditResponse", "btnOpenWorldGen", "btnWorldGenRun", "btnGenerateCharacterSelect", "btnRegenerateImageConfirm", "btnSaveWorld", "btnCopyWorld", "btnLoadWorldText", "btnWorldTextImportConfirm", "btnInfiniteWorldImportWorld", "btnInfiniteWorldImportStory"].forEach(id => { const el = $(id); if (el) el.disabled = isBusy; });
+      ["btnStart", "btnTakeAction", "btnRetry", "btnEditResponse", "btnOpenWorldGen", "btnWorldGenRun", "btnGenerateCharacterSelect", "btnWorldHashGenerateCharacterSelect", "btnRegenerateImageConfirm", "btnSaveWorld", "btnCopyWorld", "btnGenerateWorldUrl", "btnLoadWorldText", "btnWorldTextImportConfirm", "btnInfiniteWorldImportWorld", "btnInfiniteWorldImportStory"].forEach(id => { const el = $(id); if (el) el.disabled = isBusy; });
       $$(".sample-world-button").forEach(button => { button.disabled = isBusy; });
       const freeAction = $("freeAction");
       if (freeAction) freeAction.disabled = isBusy;
@@ -2927,18 +3030,27 @@
 
     function setModelSettingsGettingStartedMode(enabled, note = "") {
       transientUi.modelSettingsGettingStarted = !!enabled;
+      const sharedWorldStart = !!(enabled && transientUi.sharedWorldStartAfterGettingStarted);
       const intro = $("gettingStartedModelIntro");
       const title = $("modelSettingsTitle");
       const subtitle = $("modelSettingsSubtitle");
       const next = $("btnModelSettingsNext");
+      const nextInline = $("btnModelSettingsNextInline");
       const noteEl = $("gettingStartedModelNote");
+      const ctaText = sharedWorldStart ? "✨ Start Adventure" : "Next (Set Up World or Story)";
       if (intro) intro.classList.toggle("hidden", !enabled);
-      if (next) next.classList.toggle("hidden", !enabled);
+      if (next) {
+        next.classList.toggle("hidden", !enabled);
+        next.textContent = ctaText;
+      }
+      if (nextInline) nextInline.textContent = ctaText;
       if (title) title.textContent = enabled ? "Getting Started: Model Settings" : "Model Settings";
       if (subtitle) subtitle.textContent = enabled
-        ? "Choose a key option, confirm model settings, then continue to world setup."
+        ? (sharedWorldStart
+          ? "Choose a key option, confirm model settings, then start the loaded shared world."
+          : "Choose a key option, confirm model settings, then continue to world setup.")
         : "Set your OpenRouter key, model preferences, and image generation options.";
-      if (noteEl) noteEl.textContent = note || "";
+      if (noteEl) noteEl.textContent = note || (sharedWorldStart ? "Shared world loaded. Confirm your key and model settings, then start the adventure." : "");
     }
 
     function openModelSettingsDialog(options = {}) {
@@ -3797,9 +3909,9 @@
     }
 
     async function fetchOpenRouterJsonOnce(label, messages, options = {}) {
-      const key = state.settings.apiKey.trim();
+      const key = String(options.api_key ?? state.settings.apiKey ?? "").trim();
       if (!key) throw new Error("Enter your OpenRouter API key first.");
-      const modelId = state.settings.llmModel || DEFAULT_LLM_MODEL;
+      const modelId = options.model || state.settings.llmModel || DEFAULT_LLM_MODEL;
       const disableJsonResponseFormat = options.disable_json_response_format ?? shouldDisableJsonResponseFormatForModel(modelId);
       const payload = {
         model: modelId,
@@ -3894,13 +4006,21 @@
     }
 
     function setCharacterSelectLoading(isLoading) {
-      const spinner = $("characterSelectSpinner");
-      if (spinner) {
-        spinner.classList.toggle("hidden", !isLoading);
-        spinner.setAttribute("aria-hidden", isLoading ? "false" : "true");
+      const target = transientUi.characterSelectTarget || "worldSetup";
+      const setupSpinner = $("characterSelectSpinner");
+      if (setupSpinner) {
+        setupSpinner.classList.toggle("hidden", !(isLoading && target !== "worldHashImport"));
+        setupSpinner.setAttribute("aria-hidden", isLoading && target !== "worldHashImport" ? "false" : "true");
       }
-      const button = $("btnGenerateCharacterSelect");
-      if (button) button.setAttribute("aria-busy", isLoading ? "true" : "false");
+      const hashSpinner = $("worldHashCharacterSelectSpinner");
+      if (hashSpinner) {
+        hashSpinner.classList.toggle("hidden", !(isLoading && target === "worldHashImport"));
+        hashSpinner.setAttribute("aria-hidden", isLoading && target === "worldHashImport" ? "false" : "true");
+      }
+      const setupButton = $("btnGenerateCharacterSelect");
+      if (setupButton) setupButton.setAttribute("aria-busy", isLoading && target !== "worldHashImport" ? "true" : "false");
+      const hashButton = $("btnWorldHashGenerateCharacterSelect");
+      if (hashButton) hashButton.setAttribute("aria-busy", isLoading && target === "worldHashImport" ? "true" : "false");
     }
 
     function characterSelectSystemPrompt() {
@@ -3933,13 +4053,18 @@ Character option requirements:
 - Do not change or rewrite the world setup fields; only generate character options.`;
     }
 
-    function buildCharacterSelectPrompt() {
-      const defaultTriggers = (state.defaultTriggers || []).map(t => ({
+    function buildCharacterSelectPrompt(source = null) {
+      const world = source?.world || state.world || {};
+      const defaultTriggerSource = source?.defaultTriggers ?? state.defaultTriggers ?? [];
+      const eventTriggerSource = source?.eventTriggers ?? state.eventTriggers ?? [];
+      const rpgStatSource = source?.rpgStats ?? state.rpgStats ?? [];
+      const useRpgStats = source?.useRpgStats ?? state.settings.useRpgStats;
+      const defaultTriggers = (defaultTriggerSource || []).map(t => ({
         name: t.name || "",
         rules: t.rules || "",
         starting_value: t.value || ""
       }));
-      const rpgStats = normalizeRpgStats(state.rpgStats || []).map(s => ({
+      const rpgStats = normalizeRpgStats(rpgStatSource || []).map(s => ({
         name: s.name || "",
         value_percent: s.value,
         covers: s.note || ""
@@ -3947,17 +4072,17 @@ Character option requirements:
       return JSON.stringify({
         request: "Generate four player-character options for this choose-your-own-adventure world, then return only the required JSON object.",
         world_details_to_use: {
-          title: state.world.title || "",
-          genre: state.world.genre || "",
-          tone: state.world.tone || "",
-          premise_and_starting_situation: state.world.premise || "",
-          story_rules_and_style_guide: state.world.rules || "",
+          title: world.title || "",
+          genre: Array.isArray(world.genre) ? world.genre.join(", ") : (world.genre || ""),
+          tone: Array.isArray(world.tone) ? world.tone.join(", ") : (world.tone || ""),
+          premise_and_starting_situation: world.premise || "",
+          story_rules_and_style_guide: world.rules || "",
           default_world_state_trackers: defaultTriggers,
-          event_triggers: normalizeEventTriggers(state.eventTriggers || []).map(compactEventTriggerForPrompt),
-          rpg_percentile_stats_enabled: !!state.settings.useRpgStats,
-          rpg_percentile_stats: state.settings.useRpgStats ? rpgStats : []
+          event_triggers: normalizeEventTriggers(eventTriggerSource || []).map(compactEventTriggerForPrompt),
+          rpg_percentile_stats_enabled: !!useRpgStats,
+          rpg_percentile_stats: useRpgStats ? rpgStats : []
         },
-        current_player_character_text_to_replace_or_use_as_optional_inspiration: state.world.character || "",
+        current_player_character_text_to_replace_or_use_as_optional_inspiration: world.character || "",
         output_note: "Return exactly four characters: 2 men and 2 women. Each must include player_character_text ready to paste into the Player character textbox."
       }, null, 2);
     }
@@ -4036,11 +4161,41 @@ Character option requirements:
       dialog.removeAttribute("hidden");
     }
 
+    function setImportedWorldCharacter(imported, text) {
+      if (!imported || typeof imported !== "object") return;
+      const world = imported.world || imported.setup || imported;
+      if (!world || typeof world !== "object") return;
+      if ("character" in world || !("player_character" in world)) world.character = text;
+      else world.player_character = text;
+    }
+
+    function getCharacterSelectPromptSourceForTarget(target = transientUi.characterSelectTarget) {
+      if (target === "worldHashImport") {
+        const pending = transientUi.pendingWorldHashImport;
+        if (!pending?.payload) return null;
+        return pending.payload;
+      }
+      return null;
+    }
+
     function chooseGeneratedCharacter(index) {
       const character = transientUi.characterSelectOptions?.[index];
       if (!character) return;
       const text = String(character.playerText || character.name || "").trim();
       if (!text) return;
+
+      if (transientUi.characterSelectTarget === "worldHashImport") {
+        const pending = transientUi.pendingWorldHashImport;
+        if (!pending) return;
+        if (!pending.payload) pending.payload = extractWorldImportPayload(pending.imported);
+        pending.payload.world.character = text;
+        setImportedWorldCharacter(pending.imported, text);
+        setWorldHashPreviewField("worldHashPreviewCharacter", text);
+        closeCharacterSelectDialog();
+        toast(`Loaded-world player character set to ${character.name || "the selected option"}.`);
+        return;
+      }
+
       const characterBox = $("character");
       if (characterBox) characterBox.value = text;
       state.world.character = text;
@@ -4067,22 +4222,44 @@ Character option requirements:
       return `${message}\n\nTry again, or choose a different story model in Model Settings if this keeps happening.`;
     }
 
-    async function generateCharacterSelect() {
+    async function generateCharacterSelect(target = "worldSetup") {
       if (busy) return;
-      syncFormToState();
-      syncInlineWorldEditorState();
+      transientUi.characterSelectTarget = target || "worldSetup";
+      const promptSource = getCharacterSelectPromptSourceForTarget(transientUi.characterSelectTarget);
+      if (transientUi.characterSelectTarget === "worldHashImport" && !promptSource) {
+        toast("No shared world is waiting to generate characters for.");
+        return;
+      }
+      if (transientUi.characterSelectTarget !== "worldHashImport") {
+        syncFormToState();
+        syncInlineWorldEditorState();
+      } else {
+        syncFormToState();
+      }
       setCharacterSelectLoading(true);
       showLlmWaitIndicator();
       await waitForNextPaint(1);
       setBusy(true, "Generating characters");
       try {
+        const hasSavedKey = !!String(state.settings.apiKey || $("apiKey")?.value || "").trim();
+        const useTemporaryCommunityKey = transientUi.characterSelectTarget === "worldHashImport" && !hasSavedKey;
+        const characterSelectOptions = {
+          temperature: Math.max(0.55, Number(state.settings.temperature ?? 0.85)),
+          max_tokens: 3000,
+          json_retries: 3,
+          no_content_retries: 3
+        };
+        if (useTemporaryCommunityKey) {
+          characterSelectOptions.api_key = communityApiKey();
+          characterSelectOptions.model = DEFAULT_FREE_LLM_MODEL;
+        }
         let characters = [];
         let validationError = null;
         for (let attempt = 0; attempt < 2; attempt += 1) {
           const raw = await callOpenRouterJson("character select", buildOpenRouterInstructionMessages(
             characterSelectSystemPrompt(),
-            buildCharacterSelectPrompt()
-          ), { temperature: Math.max(0.55, Number(state.settings.temperature ?? 0.85)), max_tokens: 3000, json_retries: 3, no_content_retries: 3 });
+            buildCharacterSelectPrompt(promptSource)
+          ), characterSelectOptions);
           characters = normalizeGeneratedCharacterOptions(raw);
           if (characters.length < 4) {
             validationError = new Error(`The model returned only ${characters.length} usable character option${characters.length === 1 ? "" : "s"}. Try again or choose a stronger JSON model.`);
@@ -5312,6 +5489,226 @@ ${missingList}`,
       return worldOnly;
     }
 
+    function bytesToBase64Url(bytes) {
+      let binary = "";
+      const chunkSize = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+      }
+      return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/g, "");
+    }
+
+    function base64UrlToBytes(value = "") {
+      const clean = String(value || "").trim().replace(/^gzip:/i, "").replace(/^gz:/i, "").replace(/^deflate:/i, "");
+      if (!clean) throw new Error("The #world value is empty.");
+      const base64 = clean.replaceAll("-", "+").replaceAll("_", "/").padEnd(Math.ceil(clean.length / 4) * 4, "=");
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+      return bytes;
+    }
+
+    function requireCompressionStream(kind) {
+      if (typeof CompressionStream !== "function" || typeof DecompressionStream !== "function") {
+        throw new Error(`${kind} requires browser support for CompressionStream and DecompressionStream. Try a current Chrome, Edge, Firefox, or Safari browser.`);
+      }
+    }
+
+    async function compressTextToBase64Url(text) {
+      requireCompressionStream("Generating world URLs");
+      const bytes = new TextEncoder().encode(String(text || ""));
+      const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream("gzip"));
+      const compressed = new Uint8Array(await new Response(stream).arrayBuffer());
+      return bytesToBase64Url(compressed);
+    }
+
+    async function decompressBase64UrlToText(value) {
+      const bytes = base64UrlToBytes(value);
+
+      // Prefer gzip, which this app generates. Try deflate too so hand-built links have a graceful path.
+      if (typeof DecompressionStream === "function") {
+        for (const format of ["gzip", "deflate"]) {
+          try {
+            const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream(format));
+            return await new Response(stream).text();
+          } catch (err) {
+            // Try the next compression format below.
+          }
+        }
+      }
+
+      // Helpful fallback for uncompressed base64url JSON, useful while debugging shared links.
+      try {
+        const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes).trim();
+        if (text.startsWith("{")) return text;
+      } catch (err) {}
+
+      requireCompressionStream("Loading #world links");
+      throw new Error("Could not decompress the #world value. This app expects gzip-compressed base64url world JSON.");
+    }
+
+    async function copyTextToClipboardOrPrompt(text, promptLabel = "Copy this text:") {
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+      } catch (err) {
+        // Fall through to the manual copy prompt.
+      }
+      const copied = prompt(promptLabel, text);
+      return copied !== null;
+    }
+
+    function readWorldHashValue(hash = window.location.hash) {
+      const rawHash = String(hash || "").replace(/^#/, "").trim();
+      if (!rawHash) return "";
+      try {
+        const params = new URLSearchParams(rawHash.startsWith("?") ? rawHash.slice(1) : rawHash);
+        const value = params.get("world");
+        if (value) return value.trim();
+      } catch (err) {}
+      const match = rawHash.match(/(?:^|&)world=([^&]+)/);
+      return match ? decodeURIComponent(match[1]).trim() : "";
+    }
+
+    async function generateWorldUrl() {
+      try {
+        const worldOnly = buildWorldExport();
+        const compactJson = JSON.stringify(worldOnly);
+        const encoded = await compressTextToBase64Url(compactJson);
+        const url = new URL(window.location.href);
+        url.hash = `world=${encoded}`;
+        const shareUrl = url.toString();
+        const copied = await copyTextToClipboardOrPrompt(shareUrl, "Copy this generated world URL:");
+        if (copied) {
+          showWorldCopyStatus("World URL Copied");
+          toast(`Generated #world URL and copied it to your clipboard. Length: ${shareUrl.length.toLocaleString()} characters.`, 7000);
+        } else {
+          showWorldCopyStatus("World URL generated — copy it from the prompt");
+          toast("Generated world URL, but it was not copied.", 6000);
+        }
+      } catch (err) {
+        showMessagePopup("Generate URL failed", err?.message || String(err || "Something went wrong."));
+      }
+    }
+
+    function setWorldHashPreviewField(id, value) {
+      const el = $(id);
+      if (!el) return;
+      const text = Array.isArray(value) ? value.join(", ") : String(value || "").trim();
+      el.textContent = text || "Not provided";
+      el.classList.toggle("dim", !text);
+    }
+
+    let worldCopyStatusTimer = null;
+    function showWorldCopyStatus(message = "") {
+      const el = $("worldCopyStatus");
+      if (!el) return;
+      if (worldCopyStatusTimer) clearTimeout(worldCopyStatusTimer);
+      el.textContent = message;
+      el.classList.toggle("hidden", !message);
+      if (message) {
+        worldCopyStatusTimer = setTimeout(() => {
+          if (el.textContent === message) el.textContent = "";
+          el.classList.add("hidden");
+        }, 4500);
+      }
+    }
+
+    function closeWorldHashImportDialog(result = false) {
+      const dialog = $("worldHashImportDialog");
+      if (dialog && dialog.open) dialog.close();
+      const resolver = transientUi.pendingWorldHashImportResolver;
+      transientUi.pendingWorldHashImport = null;
+      transientUi.pendingWorldHashImportResolver = null;
+      if (resolver) resolver(!!result);
+    }
+
+    function openWorldHashImportDialog(imported, encoded) {
+      return new Promise(resolve => {
+        let payload;
+        try {
+          payload = extractWorldImportPayload(imported);
+          if (!payload.world.title && !payload.world.character && !payload.world.premise && !payload.rpgStats.length && !payload.defaultTriggers.length && !payload.eventTriggers.length) {
+            throw new Error("That #world value does not look like a saved world setup.");
+          }
+        } catch (err) {
+          showMessagePopup("#world import failed", err?.message || String(err || "Something went wrong."));
+          resolve(false);
+          return;
+        }
+
+        transientUi.pendingWorldHashImport = { imported, encoded, payload };
+        transientUi.pendingWorldHashImportResolver = resolve;
+        setWorldHashPreviewField("worldHashPreviewTitle", payload.world.title);
+        setWorldHashPreviewField("worldHashPreviewGenre", payload.world.genre);
+        setWorldHashPreviewField("worldHashPreviewTone", payload.world.tone);
+        setWorldHashPreviewField("worldHashPreviewCharacter", payload.world.character);
+        setWorldHashPreviewField("worldHashPreviewPremise", payload.world.premise);
+
+        const dialog = $("worldHashImportDialog");
+        if (!dialog || typeof dialog.showModal !== "function") {
+          showMessagePopup("Load shared world", "This browser does not support the shared world preview popup. Try a current desktop browser.");
+          closeWorldHashImportDialog(false);
+          return;
+        }
+
+        try {
+          if (dialog.open) dialog.close();
+          dialog.showModal();
+          setTimeout(() => $("btnWorldHashImportConfirm")?.focus(), 50);
+        } catch (err) {
+          showMessagePopup("Load shared world", "The shared world preview could not open because another popup is already open. Close the other popup and change the URL hash again to retry.");
+          closeWorldHashImportDialog(false);
+        }
+      });
+    }
+
+    function confirmWorldHashImport() {
+      const pending = transientUi.pendingWorldHashImport;
+      if (!pending) return closeWorldHashImportDialog(false);
+      try {
+        const loaded = applyWorldImport(pending.imported, { skipConfirm: true });
+        if (loaded) {
+          transientUi.lastImportedWorldHash = pending.encoded;
+          transientUi.sharedWorldStartAfterGettingStarted = true;
+          closeWorldHashImportDialog(true);
+          syncStateToForm();
+          renderAll();
+          toast("Loaded world setup from #world URL.", 6500);
+          return;
+        }
+      } catch (err) {
+        closeWorldHashImportDialog(false);
+        showMessagePopup("#world import failed", err?.message || String(err || "Something went wrong."));
+        return;
+      }
+      closeWorldHashImportDialog(false);
+    }
+
+    async function importWorldFromHashValue(encodedHashValue) {
+      const encoded = String(encodedHashValue || "").trim();
+      if (!encoded || transientUi.worldHashImportInProgress || transientUi.lastImportedWorldHash === encoded) return false;
+      transientUi.worldHashImportInProgress = true;
+      try {
+        const jsonText = await decompressBase64UrlToText(encoded);
+        const imported = JSON.parse(jsonText);
+        return await openWorldHashImportDialog(imported, encoded);
+      } catch (err) {
+        showMessagePopup("#world import failed", err?.message || String(err || "Something went wrong."));
+      } finally {
+        transientUi.worldHashImportInProgress = false;
+      }
+      return false;
+    }
+
+    function maybeImportWorldFromLocationHash() {
+      const encoded = readWorldHashValue();
+      if (!encoded) return Promise.resolve(false);
+      return importWorldFromHashValue(encoded);
+    }
+
     function exportWorld() {
       const worldOnly = buildWorldExport();
       const name = safeFileName(worldOnly.world.title || "world-setup") + ".world";
@@ -5347,12 +5744,12 @@ ${missingList}`,
       };
     }
 
-    function applyWorldImport(imported) {
+    function applyWorldImport(imported, options = {}) {
       const payload = extractWorldImportPayload(imported);
       if (!payload.world.title && !payload.world.character && !payload.world.premise && !payload.rpgStats.length && !payload.defaultTriggers.length && !payload.eventTriggers.length) {
         throw new Error("That JSON does not look like a saved world setup.");
       }
-      if (state.turns.length && !confirm("Load this world setup? It will replace the setup fields, RPG stats, and default trackers. Existing story turns will remain, but they may no longer match the loaded world.")) return false;
+      if (!options.skipConfirm && state.turns.length && !confirm("Load this world setup? It will replace the setup fields, RPG stats, and default trackers. Existing story turns will remain, but they may no longer match the loaded world.")) return false;
 
       state.world.title = String(payload.world.title || state.world.title || "").trim();
       state.world.genre = Array.isArray(payload.world.genre) ? payload.world.genre.join(", ") : String(payload.world.genre || "").trim();
@@ -5424,8 +5821,10 @@ ${missingList}`,
           document.body.removeChild(area);
           if (!ok) throw new Error("Browser clipboard copy was blocked.");
         }
+        showWorldCopyStatus("World Copied");
         toast("Copied world setup JSON to clipboard.");
       } catch (err) {
+        showWorldCopyStatus("World copy blocked — copy manually from the text box");
         openWorldTextImportDialog(text);
         const editor = $("worldTextImportEditor");
         if (editor) {
@@ -6443,13 +6842,39 @@ Rules:
       addClick("btnInfiniteWorldImportStory", () => $("infiniteWorldImportStoryFile")?.click());
       addClick("btnCloseModelSettings", closeModelSettingsDialog);
       addClick("btnModelSettingsDone", closeModelSettingsDialog);
-      const continueToWorldSetupFromModelSettings = () => { syncFormToState(); closeDialog("modelSettingsDialog"); openWorldSetupDialog(); };
-      addClick("btnModelSettingsNext", continueToWorldSetupFromModelSettings);
-      addClick("btnModelSettingsNextInline", continueToWorldSetupFromModelSettings);
+      const continueFromModelSettings = async () => {
+        syncFormToState();
+        closeDialog("modelSettingsDialog");
+        if (transientUi.sharedWorldStartAfterGettingStarted) {
+          await startAdventure();
+          if (state.turns.length) transientUi.sharedWorldStartAfterGettingStarted = false;
+          return;
+        }
+        openWorldSetupDialog();
+      };
+      addClick("btnModelSettingsNext", continueFromModelSettings);
+      addClick("btnModelSettingsNextInline", continueFromModelSettings);
       addClick("btnCloseWorldSetup", closeWorldSetupDialog);
       addClick("btnCloseEditState", closeEditStateDialog);
-      addClick("btnGettingUseOwnKey", () => { closeDialog("gettingStartedDialog"); openModelSettingsDialog({ gettingStarted: true, note: "Paste your own OpenRouter key, choose models, then continue to world setup." }); });
-      addClick("btnGettingUseCommunityKey", () => { applyCommunityApiKeySettings(); closeDialog("gettingStartedDialog"); openModelSettingsDialog({ gettingStarted: true, note: "Community API Key loaded. Free-model filtering has been enabled automatically." }); });
+      addClick("btnGettingUseOwnKey", () => {
+        closeDialog("gettingStartedDialog");
+        openModelSettingsDialog({
+          gettingStarted: true,
+          note: transientUi.sharedWorldStartAfterGettingStarted
+            ? "Paste your own OpenRouter key, choose models, then start the loaded shared world."
+            : "Paste your own OpenRouter key, choose models, then continue to world setup."
+        });
+      });
+      addClick("btnGettingUseCommunityKey", () => {
+        applyCommunityApiKeySettings();
+        closeDialog("gettingStartedDialog");
+        openModelSettingsDialog({
+          gettingStarted: true,
+          note: transientUi.sharedWorldStartAfterGettingStarted
+            ? "Community API Key loaded. Free-model filtering has been enabled automatically. Confirm settings, then start the loaded shared world."
+            : "Community API Key loaded. Free-model filtering has been enabled automatically."
+        });
+      });
       addClick("btnSkipGettingStartedToStory", () => {
         closeDialog("gettingStartedDialog");
         const hasKey = !!($("apiKey")?.value.trim() || state.settings?.apiKey);
@@ -6478,7 +6903,7 @@ Rules:
       });
       $("btnOpenWorldGen").addEventListener("click", openWorldGenDialog);
       $("btnWorldGenRun").addEventListener("click", generateWorldSetup);
-      $("btnGenerateCharacterSelect").addEventListener("click", generateCharacterSelect);
+      $("btnGenerateCharacterSelect").addEventListener("click", () => generateCharacterSelect("worldSetup"));
       $("btnCloseCharacterSelect").addEventListener("click", closeCharacterSelectDialog);
       $("btnCharacterSelectCancel").addEventListener("click", closeCharacterSelectDialog);
       addCtrlEnter("worldGenPrompt", generateWorldSetup);
@@ -6515,6 +6940,7 @@ Rules:
       $("importFile").addEventListener("change", e => { if (e.target.files?.[0]) loadStory(e.target.files[0]); e.target.value = ""; });
       $("btnSaveWorld").addEventListener("click", exportWorld);
       $("btnCopyWorld").addEventListener("click", copyWorldToClipboard);
+      $("btnGenerateWorldUrl")?.addEventListener("click", generateWorldUrl);
       $("btnLoadWorldText").addEventListener("click", () => openWorldTextImportDialog());
       $("worldImportFile").addEventListener("change", e => { if (e.target.files?.[0]) importWorld(e.target.files[0]); e.target.value = ""; });
       $("infiniteWorldImportWorldFile")?.addEventListener("change", e => { if (e.target.files?.[0]) importInfiniteWorldsWorldFile(e.target.files[0]); e.target.value = ""; });
@@ -6522,6 +6948,11 @@ Rules:
       $("btnWorldTextImportCancel").addEventListener("click", closeWorldTextImportDialog);
       $("btnWorldTextImportConfirm").addEventListener("click", () => importWorldFromText($("worldTextImportEditor").value));
       addCtrlEnter("worldTextImportEditor", () => $("btnWorldTextImportConfirm")?.click());
+      $("btnWorldHashImportClose")?.addEventListener("click", () => closeWorldHashImportDialog(false));
+      $("btnWorldHashImportCancel")?.addEventListener("click", () => closeWorldHashImportDialog(false));
+      $("btnWorldHashGenerateCharacterSelect")?.addEventListener("click", () => generateCharacterSelect("worldHashImport"));
+      $("btnWorldHashImportConfirm")?.addEventListener("click", confirmWorldHashImport);
+      $("worldHashImportDialog")?.addEventListener("cancel", event => { event.preventDefault(); closeWorldHashImportDialog(false); });
       $("btnAddTracker").addEventListener("click", addTracker);
       $("btnSaveScratch").addEventListener("click", () => { setViewedScratchpad($("scratchpad").value); markUnsavedForFullExport(); saveState(); renderAll(); toast("Scratchpad updated for the viewed turn."); });
       $("btnImagePromptCancel").addEventListener("click", closeImagePromptDialog);
@@ -6533,14 +6964,23 @@ Rules:
         ["scratch", "trackers", "history"].forEach(name => $("tab-" + name).classList.toggle("hidden", name !== btn.dataset.tab));
       }));
       window.addEventListener("beforeunload", handleBeforeUnload);
+      window.addEventListener("hashchange", () => { maybeImportWorldFromLocationHash(); });
       setInterval(() => { syncFormToState(); }, 12000);
     }
 
-    bindEvents();
-    loadState();
-    maybeApplySpecialApiKeyPreset();
-    maybeOpenGettingStarted();
-    loadModels({ showSuccessToast: false });
+    async function bootApp() {
+      bindEvents();
+      loadState();
+      await maybeApplySpecialApiKeyPreset();
+      await maybeImportWorldFromLocationHash();
+      maybeOpenGettingStarted();
+      loadModels({ showSuccessToast: false });
+    }
+
+    bootApp().catch(err => {
+      console.error(err);
+      showMessagePopup("Startup failed", err?.message || String(err || "Something went wrong."));
+    });
   </script>
 </body>
 </html>

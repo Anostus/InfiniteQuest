@@ -734,6 +734,37 @@
 
     .character-select-card strong { color: #fff; font-size: 1rem; }
 
+    .character-select-header {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      min-width: 0;
+    }
+
+    .character-select-thumbnail-wrap {
+      flex: 0 0 auto;
+      width: 64px;
+      height: 64px;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,.16);
+      background: rgba(0,0,0,.22);
+      box-shadow: 0 8px 20px rgba(0,0,0,.22);
+    }
+
+    .character-select-thumbnail {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .character-select-title {
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+    }
+
     .character-select-meta {
       color: var(--gold2);
       font-size: .82rem;
@@ -1161,8 +1192,14 @@
             </span>
             <textarea id="character" placeholder="Who is the player? Include name, role, wants, flaws, and visual details."></textarea>
           </label>
+          <label>Background Story
+            <textarea id="backgroundStory" placeholder="Optional text shown to the player in a popup before the first generated turn. Also included in story context."></textarea>
+          </label>
           <label>Premise and starting situation
             <textarea id="premise" placeholder="What is the world, what just happened, and where does the first scene begin?"></textarea>
+          </label>
+          <label>First Action
+            <textarea id="firstAction" placeholder="Optional first action to use when starting a new game. Leave empty to use the default opening action."></textarea>
           </label>
           <label>Story rules / style guide
             <textarea id="rules" placeholder="E.g. second-person prose, meaningful consequences, no instant success, keep secrets until discovered..."></textarea>
@@ -1192,6 +1229,8 @@
             <span>Event triggers</span>
           </summary>
             <div id="eventTriggersPanel" class="setup-section-body stack hidden">
+              <label class="checkline"><input id="suppressTriggers" type="checkbox" /> Suppress Triggers</label>
+              <p class="mini">When enabled, custom event triggers stay saved but the app skips all trigger-check LLM prompts and behaves as though no event triggers exist.</p>
               <p class="mini">Define special event triggers that the app checks with a separate LLM prompt before or after the main story response. Activated trigger instructions can influence the next story response, or optionally add a brief after-response passage.</p>
               <div class="row wrap event-trigger-mode-row" role="radiogroup" aria-label="When to check this event trigger">
                 <label class="checkline"><input id="eventTriggerTimingBefore" type="radio" name="eventTriggerTiming" value="before" checked /> Check before the LLM's main story response</label>
@@ -1249,7 +1288,7 @@
               <button id="btnLoadWorldText" type="button">📝 Load world from text</button>
               <span id="worldCopyStatus" class="mini world-copy-status" aria-live="polite"></span>
             </div>
-            <p class="mini">Save, copy, or share only the world setup: title, genre, tone, player character, premise, style guide, RPG stats, and default trackers. Story turns, current run state, generated pictures, and API keys are not included.</p>
+            <p class="mini">Save, copy, or share only the world setup: title, genre, tone, background story, player character, premise, first action, style guide, RPG stats, default trackers, event triggers, and trigger suppression setting. Load accepts saved .world JSON, .story JSON, or Infinite Worlds JSON exports; multi-character Infinite Worlds JSON opens a no-LLM character picker first. Story turns, current run state, generated pictures, and API keys are not included in .world saves.</p>
           </div>
       </div>
     </div>
@@ -1326,7 +1365,7 @@
       <div class="dialog-header">
         <div>
           <h3>Choose a player character</h3>
-          <p class="mini">Pick one of the generated characters. The selected description will fill the Player character textbox in World Set Up.</p>
+          <p class="mini">Pick one of the generated or imported characters. The selected description will fill the Player character textbox in World Set Up.</p>
         </div>
         <button id="btnCloseCharacterSelect" class="small ghost" type="button" aria-label="Close character select">✕</button>
       </div>
@@ -1376,10 +1415,10 @@
     <form method="dialog" class="world-gen-card">
       <div>
         <h3>Load world from text</h3>
-        <p class="mini">Paste the JSON from a saved .world file or copied world setup, then load it into the world fields, RPG stats, and default trackers.</p>
+        <p class="mini">Paste JSON from a saved .world file, a .story file, or an Infinite Worlds JSON export, then load it into the world fields, RPG stats, and default trackers.</p>
       </div>
       <label>World setup JSON
-        <textarea id="worldTextImportEditor" placeholder='Paste saved .world JSON here, for example: { "export_type": "infinite-quest-world", ... }' style="min-height:240px;"></textarea>
+        <textarea id="worldTextImportEditor" placeholder='Paste saved .world, .story, or Infinite Worlds JSON here, for example: { "title": "...", "possibleCharacters": [...] }' style="min-height:240px;"></textarea>
       </label>
       <div class="row wrap" style="justify-content:flex-end;">
         <button id="btnWorldTextImportCancel" type="button">Cancel</button>
@@ -1400,7 +1439,7 @@
       </div>
       <div class="dialog-scroll stack">
         <p>Are you sure you would like to load this world and replace the current world setup?</p>
-        <p class="mini">This will replace the title, genre, tone, player character, premise, story rules, RPG stats, default trackers, and event triggers. If you start a new adventure, existing story turns will be deleted; otherwise they will remain, but they may no longer match the loaded world.</p>
+        <p class="mini">This will replace the title, genre, tone, background story, player character, premise, first action, story rules, RPG stats, default trackers, event triggers, and trigger suppression setting. If you start a new adventure, existing story turns will be deleted; otherwise they will remain, but they may no longer match the loaded world.</p>
         <div class="world-gen-box world-hash-preview" aria-label="Shared world preview">
           <div class="world-hash-preview-field">
             <strong>Title</strong>
@@ -1415,6 +1454,10 @@
             <p id="worldHashPreviewTone"></p>
           </div>
           <div class="world-hash-preview-field">
+            <strong>Background Story</strong>
+            <p id="worldHashPreviewBackgroundStory"></p>
+          </div>
+          <div class="world-hash-preview-field">
             <div class="world-hash-preview-label-row">
               <strong>Player character</strong>
               <span class="field-label-actions">
@@ -1427,6 +1470,10 @@
           <div class="world-hash-preview-field">
             <strong>Premise and starting situation</strong>
             <p id="worldHashPreviewPremise"></p>
+          </div>
+          <div class="world-hash-preview-field">
+            <strong>First Action</strong>
+            <p id="worldHashPreviewFirstAction"></p>
           </div>
         </div>
       </div>
@@ -1510,6 +1557,7 @@
     const POLLINATIONS_IMAGE_MODEL_ALIASES = [POLLINATIONS_IMAGE_MODEL, "pollinations.ai"];
     const DEFAULT_LLM_MODEL = "deepseek/deepseek-v3.2";
     const DEFAULT_FREE_LLM_MODEL = "inclusionai/ling-2.6-1t:free";
+    const INFINITE_WORLDS_IMAGE_BASE_URL = "https://infinite-worlds-images-4.us-mia-1.linodeobjects.com/";
     const LEGACY_DEFAULT_LLM_MODEL = "openai/gpt-5.2";
     const SPECIAL_OPENROUTER_KEY_SHA256 = "4b18234b9f22208451723e6a07f560a6ca4bef9172770b89139a23e60e87a833";
     const SPECIAL_OPENROUTER_KEY_LENGTH = 73;
@@ -1849,9 +1897,12 @@
         title: "",
         genre: "",
         tone: "",
+        backgroundStory: "",
         character: "",
         premise: "",
-        rules: ""
+        firstAction: "",
+        rules: "",
+        suppressTriggers: false
       },
       modelLists: { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS },
       rpgStats: deepClone(DEFAULT_RPG_STATS),
@@ -1885,6 +1936,7 @@
       lastImportedWorldHash: "",
       worldHashImportInProgress: false,
       pendingWorldHashImport: null,
+      pendingInfiniteWorldsJsonImport: null,
       pendingWorldHashImportResolver: null,
       pendingWorldHashStartConfirmResolver: null
     };
@@ -2202,8 +2254,10 @@
         title: truncateText(state.world.title || "", PROMPT_LIMITS.worldField),
         genre: truncateText(state.world.genre || "", PROMPT_LIMITS.worldField),
         tone: truncateText(state.world.tone || "", PROMPT_LIMITS.worldField),
+        background_story: truncateText(state.world.backgroundStory || "", PROMPT_LIMITS.worldField),
         character: truncateText(state.world.character || "", PROMPT_LIMITS.worldField),
         premise: truncateText(state.world.premise || "", PROMPT_LIMITS.worldField),
+        first_action: truncateText(state.world.firstAction || "", PROMPT_LIMITS.action),
         rules: truncateText(state.world.rules || "", PROMPT_LIMITS.worldField)
       };
     }
@@ -2411,7 +2465,7 @@
     function cleanupDeprecatedState(target = state) {
       if (!target || typeof target !== "object") return target;
       if (!target.turns?.length && isLegacySchoolOfMagicDefaultWorld(target.world || {})) {
-        target.world = { title: "", genre: "", tone: "", character: "", premise: "", rules: "" };
+        target.world = { title: "", genre: "", tone: "", backgroundStory: "", character: "", premise: "", firstAction: "", rules: "", suppressTriggers: false };
       }
       delete target.collapsedPanels;
       if (target.settings && typeof target.settings === "object") {
@@ -3269,9 +3323,12 @@
       state.world.title = $("worldTitle").value.trim();
       state.world.genre = $("genre").value.trim();
       state.world.tone = $("tone").value.trim();
+      state.world.backgroundStory = $("backgroundStory")?.value.trim() || "";
       state.world.character = $("character").value.trim();
       state.world.premise = $("premise").value.trim();
+      state.world.firstAction = $("firstAction")?.value.trim() || "";
       state.world.rules = $("rules").value.trim();
+      state.world.suppressTriggers = !!$("suppressTriggers")?.checked;
       coerceFreeModelSettings();
       applyFreeModelUiState();
       saveState();
@@ -3302,9 +3359,12 @@
       $("worldTitle").value = state.world.title || "";
       $("genre").value = state.world.genre || "";
       $("tone").value = state.world.tone || "";
+      if ($("backgroundStory")) $("backgroundStory").value = state.world.backgroundStory || "";
       $("character").value = state.world.character || "";
       $("premise").value = state.world.premise || "";
+      if ($("firstAction")) $("firstAction").value = state.world.firstAction || "";
       $("rules").value = state.world.rules || "";
+      if ($("suppressTriggers")) $("suppressTriggers").checked = !!state.world.suppressTriggers;
       $("scratchpad").value = getViewedScratchpad();
       setAddEventTriggerAppendEnabled();
       applyFreeModelUiState();
@@ -3814,7 +3874,12 @@
       state.eventTriggers = normalizeEventTriggers(state.eventTriggers);
     }
 
+    function areEventTriggersSuppressed() {
+      return !!state.world?.suppressTriggers;
+    }
+
     function eventTriggersForPhase(phase) {
+      if (areEventTriggersSuppressed()) return [];
       normalizeEventTriggerState(state);
       return state.eventTriggers.filter(trigger => trigger.timing === phase);
     }
@@ -4001,8 +4066,10 @@
       const suggestions = [
         state.world.genre,
         state.world.tone,
+        state.world.backgroundStory,
         state.world.character,
-        state.world.premise
+        state.world.premise,
+        state.world.firstAction
       ].filter(Boolean).join("\n\n");
       if (!promptBox.value.trim() && suggestions.trim()) {
         promptBox.value = suggestions;
@@ -4024,6 +4091,9 @@
     }
 
     function closeCharacterSelectDialog() {
+      if (transientUi.characterSelectTarget === "infiniteWorldsJsonImport") {
+        transientUi.pendingInfiniteWorldsJsonImport = null;
+      }
       closeDialog("characterSelectDialog");
     }
 
@@ -4097,10 +4167,12 @@ Character option requirements:
           title: world.title || "",
           genre: Array.isArray(world.genre) ? world.genre.join(", ") : (world.genre || ""),
           tone: Array.isArray(world.tone) ? world.tone.join(", ") : (world.tone || ""),
+          background_story: world.backgroundStory || world.background_story || "",
           premise_and_starting_situation: world.premise || "",
+          first_action: world.firstAction || world.first_action || "",
           story_rules_and_style_guide: world.rules || "",
           default_world_state_trackers: defaultTriggers,
-          event_triggers: normalizeEventTriggers(eventTriggerSource || []).map(compactEventTriggerForPrompt),
+          event_triggers: (world.suppressTriggers || world.suppress_triggers) ? [] : normalizeEventTriggers(eventTriggerSource || []).map(compactEventTriggerForPrompt),
           rpg_percentile_stats_enabled: !!useRpgStats,
           rpg_percentile_stats: useRpgStats ? rpgStats : []
         },
@@ -4123,6 +4195,67 @@ Character option requirements:
         const playerText = String(item?.player_character_text || item?.playerCharacterText || item?.description || item?.character || "").trim();
         return { name, gender, role, personality, background, fit, playerText };
       }).filter(character => character.playerText || character.name).slice(0, 4);
+    }
+
+    function inferInfiniteWorldsCharacterGender(character = {}) {
+      const bucketFromText = value => {
+        const text = String(value || "").toLowerCase();
+        if (/\b(female|woman|girl|women|girls|she|her)\b/.test(text)) return "woman";
+        if (/\b(male|man|boy|men|boys|he|him)\b/.test(text)) return "man";
+        return "";
+      };
+      const explicit = bucketFromText([character.gender, character.sex, isPlainObject(character.portraitPromptDetails) ? character.portraitPromptDetails.illustrAppearance : ""].join(" "));
+      if (explicit) return explicit;
+      const firstSentence = String(character.description || "").split(/[.!?]/)[0] || "";
+      return bucketFromText(firstSentence || character.description);
+    }
+
+    function summarizeInfiniteWorldsSkillsForCard(skills = {}) {
+      if (Array.isArray(skills)) {
+        return skills.map(item => {
+          if (typeof item === "string") return item;
+          if (isPlainObject(item)) return [item.name || item.skill || item.stat, item.value ?? item.score ?? item.rating].filter(value => value !== undefined && value !== null && String(value).trim() !== "").join(" ");
+          return "";
+        }).filter(Boolean).join(", ");
+      }
+      if (!isPlainObject(skills)) return "";
+      return Object.entries(skills).map(([name, value]) => `${name} ${textFromAny(value)}`.trim()).filter(Boolean).join(", ");
+    }
+
+    function buildInfiniteWorldsImageUrl(filename = "") {
+      const value = textFromAny(filename);
+      if (!value) return "";
+      if (/^https?:\/\//i.test(value)) return value;
+      return INFINITE_WORLDS_IMAGE_BASE_URL + encodeURIComponent(value).replaceAll("%2F", "/");
+    }
+
+    function getInfiniteWorldsCharacterThumbnail(character = {}) {
+      if (!isPlainObject(character)) return "";
+      const options = Array.isArray(character.portraitOptions) ? character.portraitOptions : [];
+      const currentIndex = Number(character.currentPortraitIndex);
+      const indexedPortrait = Number.isInteger(currentIndex) && currentIndex >= 0 && currentIndex < options.length ? options[currentIndex] : "";
+      return buildInfiniteWorldsImageUrl(indexedPortrait || character.portrait || options[0] || character.fullSizePortrait || "");
+    }
+
+    function normalizeInfiniteWorldsCharacterSelectOptions(source = {}) {
+      return getInfiniteWorldsPlayableCharacters(source).map((character, idx) => {
+        const name = textFromAny(character.name || `Character ${idx + 1}`);
+        const description = textFromAny(character.description);
+        const skills = summarizeInfiniteWorldsSkillsForCard(character.skills);
+        const mechanicMatch = description.match(/(?:unique (?:feature|mechanic)|version of [^.]+ includes|His version of [^.]+ includes|Her version of [^.]+ includes)[^.!?]*(?:[.!?]|$)/i);
+        return {
+          name: name || `Character ${idx + 1}`,
+          gender: inferInfiniteWorldsCharacterGender(character),
+          role: skills ? `Skills: ${skills}` : "Infinite Worlds character",
+          personality: "",
+          background: description,
+          fit: mechanicMatch ? mechanicMatch[0].trim() : "Imported from this Infinite Worlds JSON.",
+          playerText: buildInfiniteWorldsCharacterText(character),
+          portraitUrl: getInfiniteWorldsCharacterThumbnail(character),
+          sourceCharacter: character,
+          infiniteWorldsIndex: idx
+        };
+      });
     }
 
     function characterGenderBucket(gender = "") {
@@ -4156,9 +4289,16 @@ Character option requirements:
         button.type = "button";
         button.dataset.characterSelectIndex = String(idx);
         const metaParts = [character.gender, character.role].filter(Boolean).join(" • ");
+        const portraitUrl = textFromAny(character.portraitUrl || character.thumbnailUrl || character.imageUrl);
+        const portraitAlt = `${character.name || `Character ${idx + 1}`} portrait`;
         button.innerHTML = `
-          <strong>${escapeHtml(character.name || `Character ${idx + 1}`)}</strong>
-          ${metaParts ? `<div class="character-select-meta">${escapeHtml(metaParts)}</div>` : ""}
+          <div class="character-select-header">
+            ${portraitUrl ? `<span class="character-select-thumbnail-wrap"><img class="character-select-thumbnail" src="${escapeHtml(portraitUrl)}" alt="${escapeHtml(portraitAlt)}" loading="lazy" onerror="this.parentElement.remove()"></span>` : ""}
+            <span class="character-select-title">
+              <strong>${escapeHtml(character.name || `Character ${idx + 1}`)}</strong>
+              ${metaParts ? `<span class="character-select-meta">${escapeHtml(metaParts)}</span>` : ""}
+            </span>
+          </div>
           ${character.personality ? `<p><strong>Personality:</strong> ${escapeHtml(character.personality)}</p>` : ""}
           ${character.background ? `<p><strong>Background:</strong> ${escapeHtml(character.background)}</p>` : ""}
           ${character.fit ? `<p><strong>Story fit:</strong> ${escapeHtml(character.fit)}</p>` : ""}
@@ -4215,6 +4355,24 @@ Character option requirements:
         setWorldHashPreviewField("worldHashPreviewCharacter", text);
         closeCharacterSelectDialog();
         toast(`Loaded-world player character set to ${character.name || "the selected option"}.`);
+        return;
+      }
+
+      if (transientUi.characterSelectTarget === "infiniteWorldsJsonImport") {
+        const pending = transientUi.pendingInfiniteWorldsJsonImport;
+        if (!pending?.source) return;
+        const characters = getInfiniteWorldsPlayableCharacters(pending.source);
+        const selectedCharacter = character.sourceCharacter || characters[Number(character.infiniteWorldsIndex)] || characters[0] || {};
+        const converted = convertInfiniteWorldsJsonToWorldImport(pending.source, selectedCharacter);
+        const loaded = applyWorldImport(converted, { skipConfirm: true });
+        if (!loaded) return;
+        const selectedName = textFromAny(selectedCharacter.name || character.name || "selected character");
+        const toastMessage = pending.toastMessage || `Loaded Infinite Worlds JSON with ${selectedName} as the player character.`;
+        const shouldCloseTextDialog = !!pending.closeTextDialogOnLoad;
+        transientUi.pendingInfiniteWorldsJsonImport = null;
+        closeCharacterSelectDialog();
+        if (shouldCloseTextDialog) closeWorldTextImportDialog();
+        toast(toastMessage, 7500);
         return;
       }
 
@@ -4319,8 +4477,10 @@ Required JSON shape:
   "title": "short evocative world/adventure title",
   "genre": "concise genre blend",
   "tone": "concise tone description",
+  "background_story": "optional player-facing background text shown before the first generated turn; use an empty string if not needed",
   "player_character": "second-person-compatible description of the player character, including name if useful, role, wants, flaws, skills, and visual details",
   "premise": "the core setting, immediate situation, opening location, inciting tension, and what is happening at the first scene",
+  "first_action": "optional first player action to use when starting the adventure; use an empty string to default to Begin the adventure.",
   "story_rules": "style guide for the story engine: prose POV, pacing, consequences, secrecy, content boundaries, and how choices should feel",
   "default_triggers": [
     {"name":"Tracker name", "rules":"when and how the story engine should update it", "value":"starting value for turn one"}
@@ -4363,8 +4523,10 @@ Make the setup immediately playable and specific enough for a first turn.`;
           title: state.world.title || "",
           genre: state.world.genre || "",
           tone: state.world.tone || "",
+          background_story: state.world.backgroundStory || "",
           player_character: state.world.character || "",
           premise: state.world.premise || "",
+          first_action: state.world.firstAction || "",
           story_rules: state.world.rules || ""
         },
         current_default_triggers: autoGenerateTrackers ? (state.defaultTriggers || []).map(t => ({ name: t.name || "", rules: t.rules || "", starting_value: t.value || "" })) : [],
@@ -4425,8 +4587,10 @@ Make the setup immediately playable and specific enough for a first turn.`;
         const title = raw.title || raw.world_title || raw.name;
         const genre = raw.genre || raw.genres;
         const tone = raw.tone || raw.mood;
+        const backgroundStory = raw.background_story || raw.backgroundStory || raw.background || raw.introduction || raw.intro_text;
         const character = raw.player_character || raw.character || raw.playerCharacter;
         const premise = raw.premise || raw.starting_situation || raw.startingSituation || raw.opening_situation;
+        const firstAction = raw.first_action || raw.firstAction || raw.opening_action || raw.starting_action;
         const rules = raw.story_rules || raw.rules || raw.style_guide || raw.styleGuide;
         const stats = raw.rpg_statistics || raw.rpg_stats || raw.stats || raw.statistics;
         const defaultTriggers = raw.default_triggers || raw.defaultTriggers || raw.triggers || raw.trackers;
@@ -4434,8 +4598,10 @@ Make the setup immediately playable and specific enough for a first turn.`;
         if (title) state.world.title = String(title).trim();
         if (genre) state.world.genre = Array.isArray(genre) ? genre.join(", ") : String(genre).trim();
         if (tone) state.world.tone = Array.isArray(tone) ? tone.join(", ") : String(tone).trim();
+        if (backgroundStory !== undefined) state.world.backgroundStory = String(backgroundStory || "").trim();
         if (character) state.world.character = String(character).trim();
         if (premise) state.world.premise = String(premise).trim();
+        if (firstAction !== undefined) state.world.firstAction = String(firstAction || "").trim();
         if (rules) state.world.rules = String(rules).trim();
         state.settings.useRpgStats = useRpgPercentileStats;
         if (useRpgPercentileStats && Array.isArray(stats) && stats.length) {
@@ -5176,7 +5342,8 @@ Rewrite rules:
           await updateFullHistoryFromRecentTurns();
           saveState();
         }
-        const pendingFromPreviousAfterChecks = normalizePendingEventTriggers(state.pendingEventTriggers || []);
+        const triggersSuppressed = areEventTriggersSuppressed();
+        const pendingFromPreviousAfterChecks = triggersSuppressed ? [] : normalizePendingEventTriggers(state.pendingEventTriggers || []);
         state.pendingEventTriggers = [];
         let activatedForMainStory = [...pendingFromPreviousAfterChecks];
         let raw;
@@ -5283,9 +5450,12 @@ ${missingList}`,
       state.world.title = String(payload.world.title || "").trim();
       state.world.genre = Array.isArray(payload.world.genre) ? payload.world.genre.join(", ") : String(payload.world.genre || "").trim();
       state.world.tone = Array.isArray(payload.world.tone) ? payload.world.tone.join(", ") : String(payload.world.tone || "").trim();
+      state.world.backgroundStory = String(payload.world.backgroundStory || "").trim();
       state.world.character = String(payload.world.character || "").trim();
       state.world.premise = String(payload.world.premise || "").trim();
+      state.world.firstAction = String(payload.world.firstAction || "").trim();
       state.world.rules = String(payload.world.rules || "").trim();
+      state.world.suppressTriggers = !!payload.world.suppressTriggers;
       if (payload.rpgStats.length) state.rpgStats = payload.rpgStats;
       if (payload.useRpgStats !== undefined) state.settings.useRpgStats = !!payload.useRpgStats;
       else if (payload.rpgStats.length) state.settings.useRpgStats = true;
@@ -5342,7 +5512,43 @@ ${missingList}`,
       state.viewIndex = -1;
       saveState();
       renderAll();
-      await generateTurn("Begin the adventure.");
+      await showBackgroundStoryBeforeStart();
+      await generateTurn(firstActionForNewAdventure());
+    }
+
+    function firstActionForNewAdventure() {
+      return String(state.world?.firstAction || "").trim() || "Begin the adventure.";
+    }
+
+    function showBackgroundStoryBeforeStart() {
+      const background = String(state.world?.backgroundStory || "").trim();
+      if (!background) return Promise.resolve(false);
+      const dialog = $("messagePopupDialog");
+      const titleEl = $("messagePopupTitle");
+      const bodyEl = $("messagePopupBody");
+      if (!dialog || !titleEl || !bodyEl || typeof dialog.showModal !== "function") {
+        alert(background);
+        return Promise.resolve(true);
+      }
+      try {
+        if (dialog.open) dialog.close();
+      } catch (_) {}
+      return new Promise(resolve => {
+        const done = () => {
+          dialog.removeEventListener("close", done);
+          resolve(true);
+        };
+        titleEl.textContent = "Background Story";
+        bodyEl.textContent = background;
+        dialog.addEventListener("close", done, { once: true });
+        try {
+          dialog.showModal();
+        } catch (err) {
+          dialog.removeEventListener("close", done);
+          alert(background);
+          resolve(true);
+        }
+      });
     }
 
     function takeAction(action) {
@@ -5363,7 +5569,7 @@ ${missingList}`,
 
     async function retryLatest() {
       if (!state.turns.length || busy) return;
-      const action = state.turns[state.turns.length - 1].action || "Begin the adventure.";
+      const action = state.turns[state.turns.length - 1].action || firstActionForNewAdventure();
       state.turns.pop();
       state.viewIndex = state.turns.length - 1;
       restoreStateAfterTurnIndex(state.viewIndex);
@@ -5471,9 +5677,12 @@ ${missingList}`,
           title: state.world.title || "",
           genre: state.world.genre || "",
           tone: state.world.tone || "",
+          backgroundStory: state.world.backgroundStory || "",
           character: state.world.character || "",
           premise: state.world.premise || "",
-          rules: state.world.rules || ""
+          firstAction: state.world.firstAction || "",
+          rules: state.world.rules || "",
+          suppressTriggers: !!state.world.suppressTriggers
         },
         settings: {
           useRpgStats: !!state.settings.useRpgStats,
@@ -5666,8 +5875,10 @@ ${missingList}`,
         setWorldHashPreviewField("worldHashPreviewTitle", payload.world.title);
         setWorldHashPreviewField("worldHashPreviewGenre", payload.world.genre);
         setWorldHashPreviewField("worldHashPreviewTone", payload.world.tone);
+        setWorldHashPreviewField("worldHashPreviewBackgroundStory", payload.world.backgroundStory);
         setWorldHashPreviewField("worldHashPreviewCharacter", payload.world.character);
         setWorldHashPreviewField("worldHashPreviewPremise", payload.world.premise);
+        setWorldHashPreviewField("worldHashPreviewFirstAction", payload.world.firstAction);
 
         const dialog = $("worldHashImportDialog");
         if (!dialog || typeof dialog.showModal !== "function") {
@@ -5788,7 +5999,387 @@ ${missingList}`,
       return normalizeTrackers(trackers);
     }
 
+    function parseJsonTextForImport(rawText) {
+      let text = String(rawText || "").trim().replace(/^\uFEFF/, "");
+      const fenced = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+      if (fenced) text = fenced[1].trim();
+      return JSON.parse(text);
+    }
+
+    function isPlainObject(value) {
+      return !!value && typeof value === "object" && !Array.isArray(value);
+    }
+
+    function looksLikeInfiniteWorldsJson(value) {
+      if (!isPlainObject(value)) return false;
+      if (Array.isArray(value.possibleCharacters)) return true;
+      if (Array.isArray(value.triggerEvents) && ("background" in value || "instructions" in value || "firstInput" in value)) return true;
+      if (("schemaVersion" in value || "autoAdvanceVersion" in value) && ("background" in value || "instructions" in value || "objective" in value)) return true;
+      return false;
+    }
+
+    function getInfiniteWorldsPlayableCharacters(source = {}) {
+      return (Array.isArray(source?.possibleCharacters) ? source.possibleCharacters : []).filter(isPlainObject);
+    }
+
+    function looksLikeStoryJson(value) {
+      return isPlainObject(value) && isPlainObject(value.world) && (Array.isArray(value.turns) || isPlainObject(value.settings) || "scratchpad" in value || "fullHistory" in value);
+    }
+
+    function worldImportSourceKind(imported) {
+      if (looksLikeInfiniteWorldsJson(imported)) return "infinite_worlds_json";
+      if (looksLikeStoryJson(imported)) return "story";
+      return "world";
+    }
+
+    function infiniteWorldsImportToast(kind, defaultMessage = "Loaded world setup.") {
+      if (kind === "infinite_worlds_json") return "Loaded Infinite Worlds JSON into the world setup fields without using an LLM.";
+      if (kind === "story") return "Loaded world setup from .story JSON.";
+      return defaultMessage;
+    }
+
+    function textFromAny(value) {
+      if (value == null) return "";
+      if (typeof value === "string") return value.trim();
+      if (typeof value === "number" || typeof value === "boolean") return String(value);
+      return "";
+    }
+
+    function compactJsonForWorldImport(value) {
+      try { return JSON.stringify(value, null, 2); }
+      catch { return String(value || "").trim(); }
+    }
+
+    function sectionText(title, body) {
+      const text = String(body || "").trim();
+      if (!text) return "";
+      return `${title}\n${text}`;
+    }
+
+    function joinImportSections(sections) {
+      return sections.map(part => String(part || "").trim()).filter(Boolean).join("\n\n").trim();
+    }
+
+    function infiniteWorldsPathLastKey(path = "") {
+      const match = String(path || "").match(/(?:^|\.)([^.\[\]]+)(?:\[\d+\])?$/);
+      return match ? match[1] : "";
+    }
+
+    function shouldSkipInfiniteWorldsJsonImportPath(path = "") {
+      const pathText = String(path || "");
+      const key = infiniteWorldsPathLastKey(pathText);
+
+      // Root-level editor metadata that Infinite Worlds says is for selection, tracking, warnings,
+      // sharing, or design bookkeeping rather than gameplay/story AI context.
+      const rootOnlyExcluded = new Set([
+        // Already imported into dedicated fields, trackers, event triggers, or the selected character card.
+        "title", "name", "description", "background", "instructions", "objective", "firstInput",
+        "authorStyle", "summaryRequest", "possibleCharacters", "triggerEvents", "victoryCondition",
+        "defeatCondition", "instructionBlocks",
+        // Editor metadata, image-selection data, warnings, sharing, or design bookkeeping.
+        "version", "autoAdvanceVersion", "favorite", "schemaVersion",
+        "recommendedAIModel", "nsfw", "contentWarnings", "permissionsOnceShared",
+        "previewImage", "fullSizePreviewImage", "previewImageOptions", "fullSizePreviewImageOptions",
+        "currentPreviewImageIndex", "imagePromptDetails", "imageModel", "imageStyle",
+        "illustrationStyleNonCharacterLowPriority", "illustrationStyleNonCharacterHighPriority",
+        "illustrationStyleCharacterLowPriority", "illustrationStyleCharacterHighPriority",
+        "imageStyleCharacterPre", "imageStyleCharacterPost", "imageStyleNonCharacterPre", "imageStyleNonCharacterPost",
+        "allowChangeCharacterName", "allowChangeCharacterDescription", "allowChangeCharacterSkills",
+        "allowChangeCharacterItemValues", "allowChangeCharacterPortrait", "allowChangeCharacterNewPortrait",
+        "enableAISpecificInstructionBlocks", "designNotes"
+      ]);
+      if (pathText === `InfiniteWorlds.${key}` && rootOnlyExcluded.has(key)) return true;
+
+      // Character portrait data is only used for character-selection images in Infinite Worlds and is
+      // never seen in-game, so do not import it into gameplay fields or the longform archive.
+      const anyLevelExcluded = new Set([
+        "portrait", "fullSizePortrait", "portraitOptions", "fullSizePortraitOptions",
+        "currentPortraitIndex", "portraitPromptDetails", "characterId"
+      ]);
+      if (anyLevelExcluded.has(key)) return true;
+      if (pathText.includes(".portraitPromptDetails") || pathText.includes(".imagePromptDetails")) return true;
+
+      return false;
+    }
+
+    function collectLongformStrings(value, path = "source", out = [], seen = new WeakSet(), shouldSkipPath = null) {
+      if (shouldSkipPath && shouldSkipPath(path, value)) return out;
+      if (typeof value === "string") {
+        const text = value.trim();
+        if (text && (text.length >= 120 || text.includes("\n"))) out.push({ path, text });
+        return out;
+      }
+      if (!value || typeof value !== "object") return out;
+      if (seen.has(value)) return out;
+      seen.add(value);
+      if (Array.isArray(value)) {
+        value.forEach((item, idx) => collectLongformStrings(item, `${path}[${idx}]`, out, seen, shouldSkipPath));
+        return out;
+      }
+      Object.entries(value).forEach(([key, item]) => {
+        const childPath = path ? `${path}.${key}` : key;
+        collectLongformStrings(item, childPath, out, seen, shouldSkipPath);
+      });
+      return out;
+    }
+
+    function buildInfiniteWorldsLongformArchive(source) {
+      const entries = collectLongformStrings(source, "InfiniteWorlds", [], new WeakSet(), shouldSkipInfiniteWorldsJsonImportPath);
+      if (!entries.length) return "";
+      return sectionText("Infinite Worlds source archive — gameplay-relevant longform fields preserved verbatim", entries.map(entry => `[${entry.path}]\n${entry.text}`).join("\n\n---\n\n"));
+    }
+
+    function mapInfiniteWorldsSkillToPercent(value) {
+      const n = Number(value);
+      if (Number.isFinite(n)) {
+        if (n <= 1) return 20;
+        if (n === 2) return 40;
+        if (n === 3) return 60;
+        if (n === 4) return 80;
+        if (n >= 5) return 99;
+      }
+      return 50;
+    }
+
+    function convertInfiniteWorldsSkillsToRpgStats(skills = {}, characterName = "") {
+      const entries = [];
+      if (Array.isArray(skills)) {
+        skills.forEach(item => {
+          if (typeof item === "string") entries.push([item, 3]);
+          else if (isPlainObject(item)) entries.push([item.name || item.skill || item.stat || "Skill", item.value ?? item.score ?? item.rating ?? 3]);
+        });
+      } else if (isPlainObject(skills)) {
+        Object.entries(skills).forEach(([name, value]) => entries.push([name, value]));
+      }
+      return entries.map(([name, value]) => ({
+        name: String(name || "Skill").trim(),
+        value: mapInfiniteWorldsSkillToPercent(value),
+        covers: `Imported from Infinite Worlds${characterName ? ` for ${characterName}` : ""}. Original 1–5 rating: ${textFromAny(value) || "unknown"}.`
+      })).filter(stat => stat.name);
+    }
+
+    function trackedItemToTracker(item, idx = 0, ownerName = "") {
+      if (typeof item === "string") {
+        return { name: item || `Tracked Item ${idx + 1}`, rules: `Track this Infinite Worlds item${ownerName ? ` for ${ownerName}` : ""} whenever it changes.`, value: item || "Not yet established." };
+      }
+      if (!isPlainObject(item)) return null;
+      const name = textFromAny(item.name || item.title || item.label || item.item || item.key || `Tracked Item ${idx + 1}`);
+      const description = textFromAny(item.description || item.details || item.context || item.prompt || item.rules);
+      const updateRules = textFromAny(item.updateRules || item.update_rules || item.whenToUpdate || item.when_to_update || item.rules || description);
+      const value = textFromAny(item.value || item.initialValue || item.initial_value || item.currentValue || item.current_value || item.startingValue || item.starting_value || description || "Not yet established.");
+      return { name, rules: updateRules || `Track this Infinite Worlds item${ownerName ? ` for ${ownerName}` : ""} whenever it changes.`, value };
+    }
+
+    function convertInfiniteWorldsTrackedItems(items = [], ownerName = "") {
+      return (Array.isArray(items) ? items : []).map((item, idx) => trackedItemToTracker(item, idx, ownerName)).filter(Boolean);
+    }
+
+    function convertInfiniteWorldsTriggerEvents(events = []) {
+      return (Array.isArray(events) ? events : []).map((event, idx) => {
+        if (!isPlainObject(event)) return null;
+        const name = textFromAny(event.name || event.title || `Infinite Worlds Trigger ${idx + 1}`);
+        const conditionParts = [];
+        if (event.triggerOnStartOfGame) conditionParts.push("At the start of the adventure.");
+        if (Array.isArray(event.triggerConditions) && event.triggerConditions.length) {
+          conditionParts.push(event.triggerConditions.map((condition, cIdx) => {
+            if (typeof condition === "string") return condition;
+            if (isPlainObject(condition)) return textFromAny(condition.text || condition.condition || condition.data || compactJsonForWorldImport(condition));
+            return "";
+          }).filter(Boolean).join("\n"));
+        }
+        const effectText = Array.isArray(event.triggerEffects)
+          ? event.triggerEffects.map((effect, eIdx) => {
+              if (typeof effect === "string") return effect;
+              if (isPlainObject(effect)) return textFromAny(effect.data || effect.text || effect.effect || effect.instructions || compactJsonForWorldImport(effect));
+              return "";
+            }).filter(Boolean).join("\n\n")
+          : "";
+        const condition = conditionParts.filter(Boolean).join("\n") || `When the Infinite Worlds trigger “${name}” should fire.`;
+        const effect = effectText || textFromAny(event.effect || event.instructions || event.data || compactJsonForWorldImport(event));
+        if (!condition && !effect) return null;
+        return { timing: event.triggerOnStartOfGame ? "before" : "before", condition: `${name}: ${condition}`, effect, addTextAfter: false };
+      }).filter(Boolean);
+    }
+
+    function conditionToEventTrigger(rawCondition, fallbackName, fallbackEffect) {
+      if (!rawCondition) return null;
+      const condition = typeof rawCondition === "string" ? rawCondition : textFromAny(rawCondition.condition || rawCondition.when || rawCondition.text || rawCondition.name || compactJsonForWorldImport(rawCondition));
+      const effect = typeof rawCondition === "string" ? fallbackEffect : textFromAny(rawCondition.effect || rawCondition.result || rawCondition.outcome || rawCondition.data || rawCondition.text || fallbackEffect);
+      if (!condition && !effect) return null;
+      return { timing: "after", condition: `${fallbackName}: ${condition || fallbackName}`, effect: effect || fallbackEffect, addTextAfter: true };
+    }
+
+    function buildInfiniteWorldsCharacterText(character = {}, allCharacters = []) {
+      if (!isPlainObject(character)) return "";
+      const name = textFromAny(character.name || "Player Character");
+      const initialTrackers = Array.isArray(character.initialTrackedItemValues) && character.initialTrackedItemValues.length
+        ? sectionText("Initial tracked item values:", compactJsonForWorldImport(character.initialTrackedItemValues))
+        : "";
+      return joinImportSections([
+        name,
+        textFromAny(character.description),
+        initialTrackers
+      ]);
+    }
+
+    function buildInfiniteWorldsImageGuidance(source = {}) {
+      const fields = [
+        ["Image model", source.imageModel],
+        ["Image style", source.imageStyle],
+        ["Non-character style, low priority", source.illustrationStyleNonCharacterLowPriority],
+        ["Non-character style, high priority", source.illustrationStyleNonCharacterHighPriority],
+        ["Character style, low priority", source.illustrationStyleCharacterLowPriority],
+        ["Character style, high priority", source.illustrationStyleCharacterHighPriority],
+        ["Character image prefix", source.imageStyleCharacterPre],
+        ["Character image suffix", source.imageStyleCharacterPost],
+        ["Non-character image prefix", source.imageStyleNonCharacterPre],
+        ["Non-character image suffix", source.imageStyleNonCharacterPost]
+      ].filter(([, value]) => textFromAny(value));
+      const promptDetails = isPlainObject(source.imagePromptDetails) && Object.keys(source.imagePromptDetails).length
+        ? `Image prompt details:\n${compactJsonForWorldImport(source.imagePromptDetails)}`
+        : "";
+      const text = [fields.map(([label, value]) => `${label}: ${textFromAny(value)}`).join("\n"), promptDetails].filter(Boolean).join("\n\n");
+      return sectionText("Infinite Worlds image / illustration guidance", text);
+    }
+
+    function buildInfiniteWorldsPermissionNotes(source = {}) {
+      const fields = [
+        ["NSFW", source.nsfw],
+        ["Content warnings", source.contentWarnings],
+        ["AI-specific instruction blocks enabled", source.enableAISpecificInstructionBlocks],
+        ["Allow character name changes", source.allowChangeCharacterName],
+        ["Allow character description changes", source.allowChangeCharacterDescription],
+        ["Allow character skills changes", source.allowChangeCharacterSkills],
+        ["Allow character item-value changes", source.allowChangeCharacterItemValues],
+        ["Allow character portrait changes", source.allowChangeCharacterPortrait],
+        ["Allow new character portraits", source.allowChangeCharacterNewPortrait],
+        ["Permissions once shared", isPlainObject(source.permissionsOnceShared) ? compactJsonForWorldImport(source.permissionsOnceShared) : ""]
+      ].filter(([, value]) => value !== undefined && value !== null && textFromAny(value) !== "");
+      return sectionText("Infinite Worlds settings and permissions", fields.map(([label, value]) => `${label}: ${textFromAny(value)}`).join("\n"));
+    }
+
+    function buildInfiniteWorldsInstructionBlocks(source = {}) {
+      const blocks = Array.isArray(source.instructionBlocks) ? source.instructionBlocks : [];
+      if (!blocks.length) return "";
+      return sectionText("Infinite Worlds instruction blocks", blocks.map((block, idx) => {
+        if (!isPlainObject(block)) return "";
+        return `${textFromAny(block.name || `Instruction Block ${idx + 1}`)}\n${textFromAny(block.content || block.text || block.instructions || compactJsonForWorldImport(block))}`.trim();
+      }).filter(Boolean).join("\n\n"));
+    }
+
+    function inferInfiniteWorldsGenre(source = {}) {
+      const text = joinImportSections([
+        source.title,
+        source.background,
+        source.instructions,
+        source.objective,
+        Array.isArray(source.possibleCharacters) ? source.possibleCharacters.map(c => isPlainObject(c) ? c.description : "").join("\n") : ""
+      ]).toLowerCase();
+      const genres = [];
+      if (/\b(masterpc|software|computer|interface|program|reality)\b/.test(text)) genres.push("contemporary science fiction");
+      if (/\b(magic|wizard|spell|fantasy)\b/.test(text)) genres.push("fantasy");
+      if (/\b(murder|mystery|detective|investigat)\b/.test(text)) genres.push("mystery");
+      if (/\b(cyberpunk|megacorp|hacker|neon)\b/.test(text)) genres.push("cyberpunk");
+      if (/\b(college|campus|student|professor|dorm)\b/.test(text)) genres.push("campus drama");
+      if (/\b(pirate|ship|island|tortuga)\b/.test(text)) genres.push("pirate adventure");
+      if (/\b(zombie|undead|outbreak)\b/.test(text)) genres.push("survival horror");
+      return [...new Set(genres)].join(", ") || "Imported Infinite Worlds adventure";
+    }
+
+    function inferInfiniteWorldsTone(source = {}) {
+      const style = textFromAny(source.authorStyle);
+      return style || "Interactive fiction adapted from Infinite Worlds JSON";
+    }
+
+    function convertInfiniteWorldsJsonToWorldImport(source = {}, selectedCharacter = null) {
+      const characters = getInfiniteWorldsPlayableCharacters(source);
+      const firstCharacter = isPlainObject(selectedCharacter) ? selectedCharacter : (characters[0] || {});
+      const firstCharacterName = textFromAny(firstCharacter.name);
+
+      const premise = joinImportSections([
+        sectionText("Description", source.description),
+        sectionText("Objective", source.objective)
+      ]);
+
+      const triggerSummary = Array.isArray(source.triggerEvents) && source.triggerEvents.length
+        ? sectionText("Infinite Worlds trigger events", compactJsonForWorldImport(source.triggerEvents))
+        : "";
+      const victoryDefeat = joinImportSections([
+        source.victoryCondition ? sectionText("Victory condition", typeof source.victoryCondition === "string" ? source.victoryCondition : compactJsonForWorldImport(source.victoryCondition)) : "",
+        source.defeatCondition ? sectionText("Defeat condition", typeof source.defeatCondition === "string" ? source.defeatCondition : compactJsonForWorldImport(source.defeatCondition)) : ""
+      ]);
+
+      const storyRules = joinImportSections([
+        sectionText("Main Infinite Worlds instructions", source.instructions),
+        sectionText("Summary request", source.summaryRequest),
+        buildInfiniteWorldsImageGuidance(source),
+        buildInfiniteWorldsInstructionBlocks(source),
+        buildInfiniteWorldsLongformArchive(source)
+      ]);
+
+      const defaultTriggers = [];
+      if (source.summaryRequest) {
+        defaultTriggers.push({
+          name: "Continuity / source summary request",
+          rules: "Update whenever source-important continuity changes occur. This tracker was created from the Infinite Worlds summaryRequest field.",
+          value: textFromAny(source.summaryRequest)
+        });
+      }
+      defaultTriggers.push(...convertInfiniteWorldsTrackedItems(firstCharacter.initialTrackedItemValues, firstCharacterName));
+
+      const eventTriggers = convertInfiniteWorldsTriggerEvents(source.triggerEvents);
+      const victoryTrigger = conditionToEventTrigger(source.victoryCondition, "Victory condition", "Resolve the victory condition according to the imported Infinite Worlds source.");
+      const defeatTrigger = conditionToEventTrigger(source.defeatCondition, "Defeat condition", "Resolve the defeat condition according to the imported Infinite Worlds source.");
+      if (victoryTrigger) eventTriggers.push(victoryTrigger);
+      if (defeatTrigger) eventTriggers.push(defeatTrigger);
+
+      return {
+        export_type: "infinite-quest-world",
+        version: 1,
+        world: {
+          title: textFromAny(source.title || source.name || "Imported Infinite Worlds Adventure"),
+          genre: inferInfiniteWorldsGenre(source),
+          tone: inferInfiniteWorldsTone(source),
+          backgroundStory: textFromAny(source.background),
+          character: buildInfiniteWorldsCharacterText(firstCharacter, characters),
+          premise,
+          firstAction: textFromAny(source.firstInput),
+          rules: storyRules,
+          suppressTriggers: false
+        },
+        settings: {
+          useRpgStats: !!(firstCharacter.skills && Object.keys(firstCharacter.skills || {}).length),
+          enableResponseEditing: false,
+          betterMemoryManagement: true
+        },
+        rpgStats: convertInfiniteWorldsSkillsToRpgStats(firstCharacter.skills, firstCharacterName),
+        defaultTriggers,
+        eventTriggers
+      };
+    }
+
+    function loadInfiniteWorldsJsonWithCharacterChoice(imported, options = {}) {
+      const characters = getInfiniteWorldsPlayableCharacters(imported);
+      if (characters.length > 1 && !isPlainObject(options.selectedCharacter)) {
+        if (!options.skipConfirm && state.turns.length && !confirm("Load this Infinite Worlds JSON? It will replace the setup fields, RPG stats, and default trackers after you choose a player character. Existing story turns will remain, but they may no longer match the loaded world.")) return false;
+        if (options.closeTextDialogOnLoad) closeWorldTextImportDialog();
+        transientUi.characterSelectTarget = "infiniteWorldsJsonImport";
+        transientUi.characterSelectOptions = normalizeInfiniteWorldsCharacterSelectOptions(imported);
+        transientUi.pendingInfiniteWorldsJsonImport = {
+          source: imported,
+          closeTextDialogOnLoad: !!options.closeTextDialogOnLoad,
+          toastMessage: options.toastMessage || "Loaded Infinite Worlds JSON into the world setup fields without using an LLM."
+        };
+        renderCharacterSelectOptions();
+        openCharacterSelectDialog();
+        return "pending";
+      }
+      const selectedCharacter = isPlainObject(options.selectedCharacter) ? options.selectedCharacter : (characters[0] || {});
+      return applyWorldImport(convertInfiniteWorldsJsonToWorldImport(imported, selectedCharacter), options);
+    }
+
     function extractWorldImportPayload(imported) {
+      imported = looksLikeInfiniteWorldsJson(imported) ? convertInfiniteWorldsJsonToWorldImport(imported) : imported;
       const world = imported.world || imported.setup || imported;
       const settings = imported.settings || {};
       const stats = imported.rpgStats || imported.rpg_stats || imported.rpg_statistics || imported.stats || [];
@@ -5799,9 +6390,12 @@ ${missingList}`,
           title: world.title || world.world_title || world.name || "",
           genre: world.genre || world.genres || "",
           tone: world.tone || world.mood || "",
+          backgroundStory: world.backgroundStory || world.background_story || world.background || world.introduction || "",
           character: world.character || world.player_character || world.playerCharacter || "",
           premise: world.premise || world.starting_situation || world.startingSituation || world.opening_situation || "",
-          rules: world.rules || world.story_rules || world.storyRules || world.style_guide || world.styleGuide || ""
+          firstAction: world.firstAction || world.first_action || world.firstInput || world.first_input || world.opening_action || world.starting_action || "",
+          rules: world.rules || world.story_rules || world.storyRules || world.style_guide || world.styleGuide || "",
+          suppressTriggers: !!(world.suppressTriggers ?? world.suppress_triggers ?? imported.suppressTriggers ?? imported.suppress_triggers ?? settings.suppressTriggers ?? settings.suppress_triggers)
         },
         useRpgStats: settings.useRpgStats ?? settings.use_rpg_stats ?? imported.useRpgStats ?? imported.use_rpg_stats,
         enableResponseEditing: settings.enableResponseEditing ?? settings.enable_response_editing ?? imported.enableResponseEditing ?? imported.enable_response_editing,
@@ -5822,9 +6416,12 @@ ${missingList}`,
       state.world.title = String(payload.world.title || state.world.title || "").trim();
       state.world.genre = Array.isArray(payload.world.genre) ? payload.world.genre.join(", ") : String(payload.world.genre || "").trim();
       state.world.tone = Array.isArray(payload.world.tone) ? payload.world.tone.join(", ") : String(payload.world.tone || "").trim();
+      state.world.backgroundStory = String(payload.world.backgroundStory || "").trim();
       state.world.character = String(payload.world.character || "").trim();
       state.world.premise = String(payload.world.premise || "").trim();
+      state.world.firstAction = String(payload.world.firstAction || "").trim();
       state.world.rules = String(payload.world.rules || "").trim();
+      state.world.suppressTriggers = !!payload.world.suppressTriggers;
       if (payload.rpgStats.length) state.rpgStats = payload.rpgStats;
       if (payload.useRpgStats !== undefined) state.settings.useRpgStats = !!payload.useRpgStats;
       else if (payload.rpgStats.length) state.settings.useRpgStats = true;
@@ -5846,11 +6443,23 @@ ${missingList}`,
       const rawText = String(text || "").trim();
       if (!rawText) return toast("Paste world setup JSON first.");
       try {
-        const imported = JSON.parse(rawText);
+        const imported = parseJsonTextForImport(rawText);
+        const kind = worldImportSourceKind(imported);
+        if (kind === "infinite_worlds_json") {
+          const result = loadInfiniteWorldsJsonWithCharacterChoice(imported, {
+            closeTextDialogOnLoad: true,
+            toastMessage: infiniteWorldsImportToast(kind, "Loaded world setup from pasted text.")
+          });
+          if (result === true) {
+            closeWorldTextImportDialog();
+            toast(infiniteWorldsImportToast(kind, "Loaded world setup from pasted text."), 7500);
+          }
+          return;
+        }
         const loaded = applyWorldImport(imported);
         if (loaded) {
           closeWorldTextImportDialog();
-          toast("Loaded world setup from pasted text.");
+          toast(infiniteWorldsImportToast(kind, "Loaded world setup from pasted text."), 7500);
         }
       } catch (err) {
         toast("World text load failed: " + (err.message || String(err)), 7000);
@@ -5861,9 +6470,17 @@ ${missingList}`,
       const reader = new FileReader();
       reader.onload = () => {
         try {
-          const imported = JSON.parse(reader.result);
+          const imported = parseJsonTextForImport(reader.result);
+          const kind = worldImportSourceKind(imported);
+          if (kind === "infinite_worlds_json") {
+            const result = loadInfiniteWorldsJsonWithCharacterChoice(imported, {
+              toastMessage: infiniteWorldsImportToast(kind, "Loaded world setup from file.")
+            });
+            if (result === true) toast(infiniteWorldsImportToast(kind, "Loaded world setup from file."), 7500);
+            return;
+          }
           const loaded = applyWorldImport(imported);
-          if (loaded) toast("Loaded world setup from file.");
+          if (loaded) toast(infiniteWorldsImportToast(kind, "Loaded world setup from file."), 7500);
         } catch (err) {
           toast("World file load failed: " + (err.message || String(err)), 7000);
         }
@@ -5907,7 +6524,7 @@ ${missingList}`,
       const dialog = $("worldTextImportDialog");
       const editor = $("worldTextImportEditor");
       if (!dialog || !editor || typeof dialog.showModal !== "function") {
-        const pasted = prompt("Paste saved .world JSON:", prefill || "");
+        const pasted = prompt("Paste saved .world, .story, or Infinite Worlds JSON:", prefill || "");
         if (pasted != null) importWorldFromText(pasted);
         return;
       }
@@ -6536,7 +7153,7 @@ Rules:
         custom_trackers: state.trackers.map(compactTrackerForPrompt),
         recent_imported_history: state.turns.slice(-8).map(t => compactTurnForPrompt(t, PROMPT_LIMITS.narration)),
         imported_turn: {
-          action: truncateText(sourceTurn.action || (importIndex === 0 ? "Begin the adventure." : "Continue."), PROMPT_LIMITS.action),
+          action: truncateText(sourceTurn.action || (importIndex === 0 ? firstActionForNewAdventure() : "Continue."), PROMPT_LIMITS.action),
           outcome: truncateText(sourceTurn.outcome || "", 7000)
         },
         output_note: "Return only the required JSON object. choices must contain exactly four useful next actions."
@@ -6612,7 +7229,7 @@ Rules:
           metadata.tracker_updates = metadata.tracker_updates || metadata.trackerUpdates || [];
           metadata.image_prompt = metadata.image_prompt || metadata.imagePrompt || "";
           applyTurnState(metadata);
-          const action = String(sourceTurn.action || (i === 0 ? "Begin the adventure." : "Continue.")).trim();
+          const action = String(sourceTurn.action || (i === 0 ? firstActionForNewAdventure() : "Continue.")).trim();
           const turn = normalizeTurnResult({
             narration: sourceTurn.outcome || sourceTurn.rawBlock || "",
             image_prompt: metadata.image_prompt || metadata.imagePrompt || "A cinematic adventure scene, no text.",
@@ -6693,8 +7310,10 @@ Rules:
       lines.push(`**Genre:** ${state.world.genre || ""}`);
       lines.push(`**Tone:** ${state.world.tone || ""}`);
       lines.push("");
+      if (state.world.backgroundStory) lines.push(`## Background Story\n\n${state.world.backgroundStory}`);
       lines.push(`## Character\n\n${state.world.character || ""}`);
       lines.push(`\n## Premise\n\n${state.world.premise || ""}`);
+      if (state.world.firstAction) lines.push(`\n## First Action\n\n${state.world.firstAction}`);
       lines.push("\n## Turns");
       state.turns.forEach(turn => {
         lines.push(`\n### Turn ${turn.turnNumber}`);
@@ -6786,7 +7405,7 @@ Rules:
           <h3>Choices offered</h3>
           <ul>${(turn.choices || []).map(c => `<li>${escapeHtml(c)}</li>`).join("")}</ul>
         </section>`).join("\n");
-      const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font-family:Georgia,serif;max-width:860px;margin:40px auto;padding:0 20px;line-height:1.6;background:#10131c;color:#f8f1ff}img{max-width:100%;border-radius:18px}.turn{border-top:1px solid #444;padding:24px 0}h1,h2{color:#ffdc66}.export-warning{border:1px solid #8b6b2b;background:#2a2113;color:#ffe7a3;border-radius:12px;padding:10px 12px;margin:12px 0}</style></head><body><h1>${title}</h1>${warningHtml}<p><strong>Genre:</strong> ${escapeHtml(state.world.genre || "")}</p><p><strong>Tone:</strong> ${escapeHtml(state.world.tone || "")}</p><h2>Character</h2><p>${escapeHtml(state.world.character || "")}</p><h2>Premise</h2><p>${escapeHtml(state.world.premise || "")}</p>${turns}</body></html>`;
+      const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font-family:Georgia,serif;max-width:860px;margin:40px auto;padding:0 20px;line-height:1.6;background:#10131c;color:#f8f1ff}img{max-width:100%;border-radius:18px}.turn{border-top:1px solid #444;padding:24px 0}h1,h2{color:#ffdc66}.export-warning{border:1px solid #8b6b2b;background:#2a2113;color:#ffe7a3;border-radius:12px;padding:10px 12px;margin:12px 0}</style></head><body><h1>${title}</h1>${warningHtml}<p><strong>Genre:</strong> ${escapeHtml(state.world.genre || "")}</p><p><strong>Tone:</strong> ${escapeHtml(state.world.tone || "")}</p>${state.world.backgroundStory ? `<h2>Background Story</h2><p>${escapeHtml(state.world.backgroundStory || "")}</p>` : ""}<h2>Character</h2><p>${escapeHtml(state.world.character || "")}</p><h2>Premise</h2><p>${escapeHtml(state.world.premise || "")}</p>${state.world.firstAction ? `<h2>First Action</h2><p>${escapeHtml(state.world.firstAction || "")}</p>` : ""}${turns}</body></html>`;
       downloadBlob(html, safeFileName(state.world.title || "adventure") + ".html", "text/html");
       markFullExportSaved();
       if (imageFailures.length) {
@@ -6840,7 +7459,14 @@ Rules:
       const reader = new FileReader();
       reader.onload = () => {
         try {
-          const imported = JSON.parse(reader.result);
+          const imported = parseJsonTextForImport(reader.result);
+          if (looksLikeInfiniteWorldsJson(imported)) {
+            const result = loadInfiniteWorldsJsonWithCharacterChoice(imported, {
+              toastMessage: "Loaded Infinite Worlds JSON into the world setup fields without using an LLM."
+            });
+            if (result === true) toast("Loaded Infinite Worlds JSON into the world setup fields without using an LLM.", 7500);
+            return;
+          }
           state = mergeDefaults(deepClone(DEFAULT_STATE), imported);
           normalizeDefaultTriggerState();
           normalizeEventTriggerState(state);
@@ -6886,7 +7512,7 @@ Rules:
     }
 
     function bindEvents() {
-      const autosaveInputs = ["apiKey", "llmModel", "llmModelCustom", "imageModel", "imageModelCustom", "imageAspectRatio", "imageSize", "temperature", "worldTitle", "genre", "tone", "character", "premise", "rules", "enableResponseEditing", "betterMemoryManagement"];
+      const autosaveInputs = ["apiKey", "llmModel", "llmModelCustom", "imageModel", "imageModelCustom", "imageAspectRatio", "imageSize", "temperature", "worldTitle", "genre", "tone", "backgroundStory", "character", "premise", "firstAction", "rules", "suppressTriggers", "enableResponseEditing", "betterMemoryManagement"];
       autosaveInputs.forEach(id => {
         const el = $(id);
         if (!el) return;

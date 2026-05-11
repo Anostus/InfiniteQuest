@@ -1192,20 +1192,27 @@
             </span>
             <textarea id="character" placeholder="Who is the player? Include name, role, wants, flaws, and visual details."></textarea>
           </label>
-          <label>Background Story
-            <textarea id="backgroundStory" placeholder="Optional text shown to the player in a popup before the first generated turn. Also included in story context."></textarea>
-          </label>
           <label>Premise and starting situation
             <textarea id="premise" placeholder="What is the world, what just happened, and where does the first scene begin?"></textarea>
-          </label>
-          <label>First Action
-            <textarea id="firstAction" placeholder="Optional first action to use when starting a new game. Leave empty to use the default opening action."></textarea>
           </label>
           <label>Story rules / style guide
             <textarea id="rules" placeholder="E.g. second-person prose, meaningful consequences, no instant success, keep secrets until discovered..."></textarea>
           </label>
           <label class="checkline"><input id="enableResponseEditing" type="checkbox" /> Enable the editing of responses</label>
-          <label class="checkline"><input id="betterMemoryManagement" type="checkbox" /> Better memory management (compress memories every 10 turns)</label>
+          <label class="checkline"><input id="betterMemoryManagement" type="checkbox" /> Better memory management (compress memory after 8 turns, and then every 6 turns after)</label>
+          <summary id="btnToggleAdvancedStart" class="setup-toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="advancedStartPanel">
+            <span class="setup-toggle-caret" aria-hidden="true">▸</span>
+            <span>Advanced Start Features</span>
+          </summary>
+            <div id="advancedStartPanel" class="setup-section-body stack hidden">
+              <p class="mini">Optional opening tools for stories that need a player-facing prologue or a custom first action.</p>
+              <label>Background Story
+                <textarea id="backgroundStory" placeholder="Optional text shown to the player in a popup before the first generated turn. Also included in story context."></textarea>
+              </label>
+              <label>First Action
+                <textarea id="firstAction" placeholder="Optional first action to use when starting a new game. Leave empty to use the default opening action."></textarea>
+              </label>
+            </div>
           <summary id="btnToggleDefaultTrackers" class="setup-toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="defaultTrackersPanel">
             <span class="setup-toggle-caret" aria-hidden="true">▸</span>
             <span>Default trackers</span>
@@ -1877,6 +1884,10 @@
       imagePrompt: 700,
       rationale: 500
     };
+    const MEMORY_FIRST_COMPRESS_TURN_COUNT = 8;
+    const MEMORY_SUBSEQUENT_COMPRESS_INTERVAL = 6;
+    const MEMORY_RECENT_TURNS_AFTER_COMPRESSION = 6;
+    const DEFAULT_RECENT_TURNS_FOR_PROMPT = 10;
 
     const DEFAULT_STATE = {
       settings: {
@@ -1913,6 +1924,7 @@
       trackers: [],
       scratchpad: "",
       fullHistory: null,
+      fullHistoryCompressedThroughTurn: 0,
       turns: [],
       viewIndex: -1,
       lastSavedAt: null,
@@ -2250,16 +2262,19 @@
     }
 
     function compactWorldForPrompt() {
-      return {
+      const world = {
         title: truncateText(state.world.title || "", PROMPT_LIMITS.worldField),
         genre: truncateText(state.world.genre || "", PROMPT_LIMITS.worldField),
         tone: truncateText(state.world.tone || "", PROMPT_LIMITS.worldField),
-        background_story: truncateText(state.world.backgroundStory || "", PROMPT_LIMITS.worldField),
         character: truncateText(state.world.character || "", PROMPT_LIMITS.worldField),
         premise: truncateText(state.world.premise || "", PROMPT_LIMITS.worldField),
-        first_action: truncateText(state.world.firstAction || "", PROMPT_LIMITS.action),
         rules: truncateText(state.world.rules || "", PROMPT_LIMITS.worldField)
       };
+      const backgroundStory = String(state.world.backgroundStory || "").trim();
+      if (backgroundStory) world.background_story = truncateText(backgroundStory, PROMPT_LIMITS.worldField);
+      const firstAction = String(state.world.firstAction || "").trim();
+      if (firstAction) world.first_action = truncateText(firstAction, PROMPT_LIMITS.action);
+      return world;
     }
 
     function compactRollForPrompt(roll) {
@@ -2279,14 +2294,16 @@
 
     function compactTurnForPrompt(turn, narrationLimit = PROMPT_LIMITS.narration) {
       if (!turn) return null;
-      return {
+      const compact = {
         turn: turn.turnNumber,
         player_action: truncateText(turn.action || "", PROMPT_LIMITS.action),
         narration_summary_or_text: truncateText(turn.narration || "", narrationLimit),
         choices_offered: (turn.choices || []).map(choice => truncateText(choice, 280)),
-        image_prompt_summary: truncateText(turn.imagePrompt || "", PROMPT_LIMITS.imagePrompt),
-        roll: compactRollForPrompt(turn.roll)
+        image_prompt_summary: truncateText(turn.imagePrompt || "", PROMPT_LIMITS.imagePrompt)
       };
+      const compactRoll = compactRollForPrompt(turn.roll);
+      if (compactRoll) compact.roll = compactRoll;
+      return compact;
     }
 
     function compactTrackerForPrompt(tracker) {
@@ -2867,6 +2884,27 @@
       return !!history && Object.values(history).some(value => String(value || "").trim());
     }
 
+    function shouldSendCompressedMemoryContext() {
+      return !!state.settings.betterMemoryManagement && fullHistoryHasContent();
+    }
+
+    function recentHistoryTurnCountForPrompt() {
+      return shouldSendCompressedMemoryContext() ? MEMORY_RECENT_TURNS_AFTER_COMPRESSION : DEFAULT_RECENT_TURNS_FOR_PROMPT;
+    }
+
+    function recentTurnsForPrompt(narrationLimit = PROMPT_LIMITS.narration) {
+      return state.turns.slice(-recentHistoryTurnCountForPrompt()).map(t => compactTurnForPrompt(t, narrationLimit));
+    }
+
+    function addCompressedMemoryContextForPrompt(promptPayload) {
+      if (shouldSendCompressedMemoryContext()) promptPayload.full_history = compactFullHistoryForPrompt();
+      return promptPayload;
+    }
+
+    function setFullHistoryCompressedThroughCurrentTurn() {
+      state.fullHistoryCompressedThroughTurn = state.turns.length;
+    }
+
     function setTurnStateSnapshot(turn, scratchpad, trackers) {
       if (!turn) return;
       const cleanScratchpad = String(scratchpad || "");
@@ -2958,6 +2996,7 @@
         state.viewIndex = -1;
       }
       state.fullHistory = normalizeFullHistory(state.fullHistory);
+      state.fullHistoryCompressedThroughTurn = Number.isFinite(Number(state.fullHistoryCompressedThroughTurn)) ? Math.max(0, Math.min(Number(state.fullHistoryCompressedThroughTurn), state.turns.length)) : (state.fullHistory ? state.turns.length : 0);
     }
 
     function defaultTriggersForExport() {
@@ -3081,6 +3120,7 @@
     }
 
     function closeWorldSetupSubsections() {
+      setSetupSectionOpen("advancedStartPanel", "btnToggleAdvancedStart", false);
       setSetupSectionOpen("defaultTrackersPanel", "btnToggleDefaultTrackers", false);
       setSetupSectionOpen("eventTriggersPanel", "btnToggleEventTriggers", false);
       setSetupSectionOpen("rpgStatsPanel", "btnToggleRpgStats", false);
@@ -4722,6 +4762,9 @@ Difficulty modifier guidance for d% target numbers: +30 routine, +15 easy, +0 st
     }
 
     function storySystemPrompt() {
+      const rpgRollRule = state.settings.useRpgStats
+        ? "- If an RPG roll result is provided, treat it as already rolled. Explicitly reflect whether the action succeeds or fails and build consequences from that result. Do not reroll or ignore it.\n"
+        : "";
       return `You are Infinite Quest, a robust choose-your-own-adventure story engine.
 Return ONLY valid JSON. Do not wrap it in markdown. Do not include comments.
 
@@ -4738,8 +4781,7 @@ Design principles:
 - Respect player agency, but apply plausible limits and consequences.
 - Do not let the player dictate hidden facts for free; interpret attempts as actions, not guaranteed outcomes.
 - Keep continuity with the scratchpad and tracked state.
-- If an RPG roll result is provided, treat it as already rolled. Explicitly reflect whether the action succeeds or fails and build consequences from that result. Do not reroll or ignore it.
-- If event_triggers are provided, treat their instructions as activated special events that must be reflected in the narration, scratchpad, tracker updates, and choices as appropriate.
+${rpgRollRule}- If event_triggers are provided, treat their instructions as activated special events that must be reflected in the narration, scratchpad, tracker updates, and choices as appropriate.
 - End at a meaningful decision point.
 - Choices must be materially different and must include at least one cautious/social option, one investigative option, one bold/risky option, and one character-driven option when plausible.
 - Use the requested tone and genre. Avoid mentioning that you are an AI or a game engine.
@@ -4760,20 +4802,24 @@ Required JSON shape:
 
 Memory rules:
 - Preserve important facts from any existing full history unless the latest turns clearly correct them.
-- Merge the last 10 turns into the full history; do not merely summarize those turns in isolation if existing full history is provided.
+- Merge the provided turns into the full history; do not merely summarize those turns in isolation if existing full history is provided.
 - Keep secrets and private continuity notes available to the story engine, but do not write future narration.
 - Be concise enough to remain useful as prompt context, but do not drop plot-relevant characters, setting facts, choices, or consequences.`;
     }
 
     function buildFullHistoryUpdatePrompt() {
       const hasExisting = fullHistoryHasContent();
+      const turnCountToMerge = hasExisting ? MEMORY_SUBSEQUENT_COMPRESS_INTERVAL : MEMORY_FIRST_COMPRESS_TURN_COUNT;
       return JSON.stringify({
         task: hasExisting
-          ? "Update the existing full history with the important information from the last 10 turns."
-          : "Create the first compressed full history summary from the last 10 turns.",
+          ? `Update the existing full history with the important information from the last ${turnCountToMerge} turns.`
+          : `Create the first compressed full history summary from the first ${turnCountToMerge} turns.`,
         world: compactWorldForPrompt(),
         existing_full_history: hasExisting ? compactFullHistoryForPrompt() : null,
-        last_10_turns: state.turns.slice(-10).map(t => compactTurnForPrompt(t, PROMPT_LIMITS.currentNarration)),
+        turns_to_merge: state.turns.slice(-turnCountToMerge).map(t => compactTurnForPrompt(t, PROMPT_LIMITS.currentNarration)),
+        turns_to_merge_count: turnCountToMerge,
+        compressed_through_turn_before_update: Number(state.fullHistoryCompressedThroughTurn || 0),
+        compressed_through_turn_after_update: state.turns.length,
         current_scratchpad: truncateText(state.scratchpad || "", PROMPT_LIMITS.scratchpad),
         current_trackers: state.trackers.map(compactTrackerForPrompt),
         output_requirement: "Return only the JSON object with Characters, Setting Details, Plot Details, and Other Important Notes."
@@ -4781,7 +4827,12 @@ Memory rules:
     }
 
     function shouldUpdateFullHistoryBeforeNextTurn() {
-      return !!state.settings.betterMemoryManagement && state.turns.length >= 10 && state.turns.length % 10 === 0;
+      if (!state.settings.betterMemoryManagement) return false;
+      if (state.turns.length < MEMORY_FIRST_COMPRESS_TURN_COUNT) return false;
+      const alreadyCompressedThrough = Number(state.fullHistoryCompressedThroughTurn || 0);
+      if (alreadyCompressedThrough >= state.turns.length) return false;
+      if (!fullHistoryHasContent()) return true;
+      return state.turns.length - alreadyCompressedThrough >= MEMORY_SUBSEQUENT_COMPRESS_INTERVAL;
     }
 
     function eventTriggerCheckSystemPrompt() {
@@ -4842,7 +4893,7 @@ ${beforeOnlyRule}
     function buildEventTriggerCheckPrompt(phase, action, triggers, options = {}) {
       const nextTurnNumber = options.currentTurn || (state.turns.length + 1);
       const generatedTurn = options.generatedTurn || null;
-      return JSON.stringify({
+      const promptPayload = {
         request: phase === "before"
           ? "Check whether any before-response event triggers should activate before the main story response is generated."
           : "Check whether any after-response event triggers should activate after the main story response that was just generated.",
@@ -4852,12 +4903,14 @@ ${beforeOnlyRule}
         world: compactWorldForPrompt(),
         existing_scratchpad: truncateText(state.scratchpad || "", PROMPT_LIMITS.scratchpad),
         custom_trackers: state.trackers.map(compactTrackerForPrompt),
-        recent_history: state.turns.slice(-10).map(t => compactTurnForPrompt(t, PROMPT_LIMITS.narration)),
+        recent_history: recentTurnsForPrompt(PROMPT_LIMITS.narration),
         just_generated_turn: generatedTurn ? compactTurnForPrompt(generatedTurn, PROMPT_LIMITS.currentNarration) : null,
         just_generated_narration_full: generatedTurn ? truncateText(generatedTurn.narration || "", PROMPT_LIMITS.currentNarration) : "",
         event_triggers_to_check: triggers.map(compactEventTriggerForPrompt),
         output_requirement: "Return only JSON with activated_triggers. Use an empty array if no trigger condition is clearly met."
-      }, null, 2);
+      };
+      addCompressedMemoryContextForPrompt(promptPayload);
+      return JSON.stringify(promptPayload, null, 2);
     }
 
     function buildSimpleEventTriggerCheckPrompt(phase, action, triggers, options = {}) {
@@ -5019,18 +5072,20 @@ Rules:
     }
 
     function buildEventTriggerExtensionPrompt(action, turn, activatedTriggers) {
-      return JSON.stringify({
+      const promptPayload = {
         request: "Extend the current turn slightly after the main story response because one or more after-response event triggers activated.",
         current_turn: turn?.turnNumber || state.turns.length,
         latest_player_action: truncateText(action || turn?.action || "", PROMPT_LIMITS.action),
         world: compactWorldForPrompt(),
         existing_scratchpad: truncateText(state.scratchpad || "", PROMPT_LIMITS.scratchpad),
         custom_trackers: state.trackers.map(compactTrackerForPrompt),
-        recent_history: state.turns.slice(-10).map(t => compactTurnForPrompt(t, PROMPT_LIMITS.narration)),
+        recent_history: recentTurnsForPrompt(PROMPT_LIMITS.narration),
         just_generated_turn: compactTurnForPrompt(turn, PROMPT_LIMITS.currentNarration),
         activated_event_triggers: activatedTriggers.map(compactActivatedEventForPrompt),
         output_requirement: "Return only JSON. The additional_text should be brief and appendable directly after the current narration."
-      }, null, 2);
+      };
+      addCompressedMemoryContextForPrompt(promptPayload);
+      return JSON.stringify(promptPayload, null, 2);
     }
 
     async function appendAfterResponseEventTriggerText(action, turn, activatedTriggers) {
@@ -5063,12 +5118,13 @@ ${addition}`.trim();
       const normalized = normalizeFullHistory(raw);
       if (!normalized) throw new Error("The model did not return a usable full-history memory summary.");
       state.fullHistory = normalized;
+      setFullHistoryCompressedThroughCurrentTurn();
       markUnsavedForFullExport();
       return normalized;
     }
 
     function buildUserPrompt(action, rollResult = null, eventTriggerResults = []) {
-      const recentTurns = state.turns.slice(-10).map(t => compactTurnForPrompt(t, PROMPT_LIMITS.narration));
+      const recentTurns = recentTurnsForPrompt(PROMPT_LIMITS.narration);
       const activeEventTriggers = normalizePendingEventTriggers(eventTriggerResults);
       const hasActivatedEventTriggers = activeEventTriggers.length > 0;
       const promptPayload = {
@@ -5080,12 +5136,17 @@ ${addition}`.trim();
         world: compactWorldForPrompt(),
         existing_scratchpad: truncateText(state.scratchpad || "", PROMPT_LIMITS.scratchpad),
         custom_trackers: state.trackers.map(compactTrackerForPrompt),
-        event_triggers: hasActivatedEventTriggers ? activeEventTriggers.map(compactActivatedEventForPrompt) : [],
-        rpg_system: { enabled: !!state.settings.useRpgStats, stats: normalizeRpgStats(state.rpgStats).map(s => ({ id: s.id, name: s.name, value_percent: s.value, covers: truncateText(s.note || "", 500) })), roll_result_for_latest_action: compactRollForPrompt(rollResult) }
+        event_triggers: hasActivatedEventTriggers ? activeEventTriggers.map(compactActivatedEventForPrompt) : []
       };
-      if (state.settings.betterMemoryManagement) {
-        promptPayload.full_history = compactFullHistoryForPrompt();
+      if (state.settings.useRpgStats) {
+        promptPayload.rpg_system = {
+          enabled: true,
+          stats: normalizeRpgStats(state.rpgStats).map(s => ({ id: s.id, name: s.name, value_percent: s.value, covers: truncateText(s.note || "", 500) }))
+        };
+        const compactRoll = compactRollForPrompt(rollResult);
+        if (compactRoll) promptPayload.rpg_system.roll_result_for_latest_action = compactRoll;
       }
+      addCompressedMemoryContextForPrompt(promptPayload);
       promptPayload.recent_history = recentTurns;
       return JSON.stringify(promptPayload, null, 2);
     }
@@ -5324,6 +5385,10 @@ Rewrite rules:
         const ok = confirm("You are viewing an older turn. Taking an action here will branch the story and delete later turns. Continue?");
         if (!ok) return false;
         state.turns = state.turns.slice(0, state.viewIndex + 1);
+        if (Number(state.fullHistoryCompressedThroughTurn || 0) > state.turns.length) {
+          state.fullHistory = null;
+          state.fullHistoryCompressedThroughTurn = 0;
+        }
         restoreStateAfterTurnIndex(state.viewIndex);
       }
       return true;
@@ -6224,8 +6289,6 @@ ${missingList}`,
 
     function buildInfiniteWorldsImageGuidance(source = {}) {
       const fields = [
-        ["Image model", source.imageModel],
-        ["Image style", source.imageStyle],
         ["Non-character style, low priority", source.illustrationStyleNonCharacterLowPriority],
         ["Non-character style, high priority", source.illustrationStyleNonCharacterHighPriority],
         ["Character style, low priority", source.illustrationStyleCharacterLowPriority],
@@ -6238,7 +6301,9 @@ ${missingList}`,
       const promptDetails = isPlainObject(source.imagePromptDetails) && Object.keys(source.imagePromptDetails).length
         ? `Image prompt details:\n${compactJsonForWorldImport(source.imagePromptDetails)}`
         : "";
-      const text = [fields.map(([label, value]) => `${label}: ${textFromAny(value)}`).join("\n"), promptDetails].filter(Boolean).join("\n\n");
+      const imageGuidanceText = [fields.map(([label, value]) => `${label}: ${textFromAny(value)}`).join("\n"), promptDetails].filter(Boolean).join("\n\n");
+      const imageGuidanceIntro = "Use the following as templates and guidelines when creating your image prompts";
+      const text = imageGuidanceText ? `${imageGuidanceIntro}\n${imageGuidanceText}` : "";
       return sectionText("Infinite Worlds image / illustration guidance", text);
     }
 
@@ -7619,6 +7684,7 @@ Rules:
       $("btnEditResponseCancel")?.addEventListener("click", closeEditResponseDialog);
       $("btnEditResponseSave")?.addEventListener("click", () => saveEditedResponse(transientUi.editingResponseTurnId, $("responseEditor")?.value || ""));
       addCtrlEnter("responseEditor", () => $("btnEditResponseSave")?.click());
+      bindSetupSummary("btnToggleAdvancedStart", "advancedStartPanel");
       bindSetupSummary("btnToggleDefaultTrackers", "defaultTrackersPanel");
       bindSetupSummary("btnToggleEventTriggers", "eventTriggersPanel");
       bindSetupSummary("btnToggleRpgStats", "rpgStatsPanel");

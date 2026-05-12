@@ -1081,7 +1081,9 @@
           <p class="mini">This is a purely client-side app. Calls go directly from your browser to OpenRouter; no key is sent anywhere else by this file.</p>
 
           <label class="checkline"><input id="filterFreeOptions" type="checkbox" /> Filter for free options</label>
-          <p class="mini">When enabled, the story model list shows Curated Free Mix, <code>openrouter/free</code>, and models ending in <code>:free</code>; the image model list shows only the Pollinations.ai option.</p>
+          <p class="mini">When enabled, the story model list shows Curated Free Mix, <code>openrouter/free</code>, and models ending in <code>:free</code>; the image model list shows only the Pollinations.ai option. When fallback models are enabled, Curated Free Mix is removed from all story model dropdowns.</p>
+          <label class="checkline"><input id="addFallbackModels" type="checkbox" /> Add fallback models if this one fails due to rate limiting</label>
+          <p class="mini">When enabled, OpenRouter receives the selected Story LLM first, followed by Fallback 1 and Fallback 2 as backup text models.</p>
 
           <div class="two-col">
             <label>Story LLM model
@@ -1089,6 +1091,14 @@
             </label>
             <label>Temperature
               <input id="temperature" type="number" min="0" max="2" step="0.05" />
+            </label>
+          </div>
+          <div id="fallbackModelRows" class="two-col hidden">
+            <label>Fallback 1
+              <select id="fallbackLlmModel1"></select>
+            </label>
+            <label>Fallback 2
+              <select id="fallbackLlmModel2"></select>
             </label>
           </div>
           <label>Custom story model ID, optional
@@ -1902,6 +1912,9 @@
         imageSize: "1K",
         generateImages: true,
         filterFreeOptions: false,
+        addFallbackModels: false,
+        fallbackLlmModel1: "",
+        fallbackLlmModel2: "",
         useRpgStats: false,
         enableResponseEditing: false,
         betterMemoryManagement: false,
@@ -2094,7 +2107,9 @@
       if (!alreadyLoaded && !transientUi.specialKeyLoadInProgress && !busy) {
         transientUi.specialKeyLoadInProgress = true;
         try {
-          toast("Special OpenRouter key detected. Switching to Curated Free Mix with pollination.ai images.");
+          toast(state.settings.addFallbackModels
+            ? "Special OpenRouter key detected. Using free OpenRouter models with pollination.ai images; Curated Free Mix is disabled while fallback models are enabled."
+            : "Special OpenRouter key detected. Switching to Curated Free Mix with pollination.ai images.");
           await loadModels();
           transientUi.specialKeyModelsLoadedForHash = checksum;
         } finally {
@@ -2516,8 +2531,25 @@
     }
 
     function freeLlmModelIds(items = []) {
-      const freeItems = uniqueModelIds(items, [DEFAULT_FREE_LLM_MODEL]).filter(isFreeModelId);
-      return uniqueModelIds([DEFAULT_FREE_LLM_MODEL, ...freeItems]);
+      const freeItems = uniqueModelIds(items, [DEFAULT_FREE_LLM_MODEL, "openrouter/free"]).filter(isFreeModelId);
+      const ids = uniqueModelIds([DEFAULT_FREE_LLM_MODEL, "openrouter/free", ...freeItems]);
+      return state.settings?.addFallbackModels ? ids.filter(id => !isCuratedFreeMixModelId(id)) : ids;
+    }
+
+    function fallbackAllowedLlmIds(items = []) {
+      const ids = uniqueModelIds(items);
+      return state.settings?.addFallbackModels ? ids.filter(id => !isCuratedFreeMixModelId(id)) : ids;
+    }
+
+    function firstAllowedLlmModel(items = [], { preferFree = false } = {}) {
+      const ids = fallbackAllowedLlmIds(uniqueModelIds(items, DEFAULT_LLM_MODELS));
+      if (preferFree) {
+        const freeIds = ids.filter(isFreeModelId);
+        if (freeIds.includes("openrouter/free")) return "openrouter/free";
+        return freeIds[0] || "openrouter/free";
+      }
+      if (ids.includes(DEFAULT_LLM_MODEL)) return DEFAULT_LLM_MODEL;
+      return ids[0] || DEFAULT_LLM_MODEL;
     }
 
     function parameterBValuesFromModelId(modelId = "") {
@@ -2624,6 +2656,113 @@
       return models;
     }
 
+    function fallbackCandidateModels(modelOptions = null, primaryModel = state.settings?.llmModel || DEFAULT_LLM_MODEL) {
+      const baseOptions = modelOptions || state.modelLists?.llms || DEFAULT_LLM_MODELS;
+      let candidates = uniqueModelIds([DEFAULT_FREE_LLM_MODEL, "openrouter/free", ...baseOptions])
+        .filter(id => id && id !== primaryModel);
+      if (state.settings?.addFallbackModels) {
+        candidates = candidates.filter(id => !isCuratedFreeMixModelId(id));
+      }
+      return state.settings?.filterFreeOptions ? candidates.filter(isFreeModelId) : candidates;
+    }
+
+    function ensureFallbackModelDefaults(modelOptions = null) {
+      state.settings ||= {};
+      const availableModels = modelOptions || state.modelLists?.llms || DEFAULT_LLM_MODELS;
+      let primaryModel = state.settings.llmModel || DEFAULT_LLM_MODEL;
+      if (state.settings.addFallbackModels && isCuratedFreeMixModelId(primaryModel)) {
+        primaryModel = firstAllowedLlmModel(availableModels, { preferFree: !!state.settings.filterFreeOptions });
+        state.settings.llmModel = primaryModel;
+      }
+
+      let fallback1 = String(state.settings.fallbackLlmModel1 || "").trim();
+      let fallback2 = String(state.settings.fallbackLlmModel2 || "").trim();
+      if (state.settings.filterFreeOptions) {
+        if (!isFreeModelId(fallback1)) fallback1 = "";
+        if (!isFreeModelId(fallback2)) fallback2 = "";
+      }
+      if (state.settings.addFallbackModels) {
+        if (isCuratedFreeMixModelId(fallback1)) fallback1 = "";
+        if (isCuratedFreeMixModelId(fallback2)) fallback2 = "";
+      }
+      if (fallback1 === primaryModel) fallback1 = "";
+      if (fallback2 === primaryModel || fallback2 === fallback1) fallback2 = "";
+
+      if (state.settings.addFallbackModels) {
+        const candidates = fallbackCandidateModels(availableModels, primaryModel);
+        if (!fallback1) fallback1 = candidates[0] || "";
+        if (!fallback2 || fallback2 === fallback1) fallback2 = candidates.find(id => id !== fallback1) || "";
+      }
+
+      state.settings.fallbackLlmModel1 = fallback1;
+      state.settings.fallbackLlmModel2 = fallback2;
+    }
+
+    function configuredFallbackLlmModels(primaryModel = state.settings?.llmModel || DEFAULT_LLM_MODEL) {
+      if (!state.settings?.addFallbackModels) return [];
+      ensureFallbackModelDefaults();
+      return uniqueModelIds([state.settings.fallbackLlmModel1, state.settings.fallbackLlmModel2])
+        .filter(id => id && id !== primaryModel && !isCuratedFreeMixModelId(id));
+    }
+
+    async function expandCuratedModelSelections(modelIds = [], apiKey = "") {
+      const expanded = [];
+      for (const modelId of uniqueModelIds(modelIds)) {
+        if (isCuratedFreeMixModelId(modelId)) {
+          expanded.push(...await getCuratedFreeMixModels(apiKey));
+        } else if (modelId) {
+          expanded.push(modelId);
+        }
+      }
+      return uniqueModelIds(expanded);
+    }
+
+    async function buildOpenRouterModelRequest(modelId, apiKey = "", options = {}) {
+      const fallbackEnabled = options.use_model_fallbacks ?? !!state.settings?.addFallbackModels;
+      let primaryModel = String(modelId || DEFAULT_LLM_MODEL).trim();
+      if (fallbackEnabled && isCuratedFreeMixModelId(primaryModel)) {
+        primaryModel = firstAllowedLlmModel(state.modelLists?.llms || DEFAULT_LLM_MODELS, { preferFree: !!state.settings?.filterFreeOptions });
+      }
+      const requested = uniqueModelIds(Array.isArray(options.models) && options.models.length ? options.models : [primaryModel]);
+      if (fallbackEnabled) requested.push(...configuredFallbackLlmModels(primaryModel));
+      let requestedUnique = uniqueModelIds(requested);
+      if (fallbackEnabled) requestedUnique = requestedUnique.filter(id => !isCuratedFreeMixModelId(id));
+      if (!requestedUnique.length) requestedUnique = [primaryModel];
+      const expanded = await expandCuratedModelSelections(requestedUnique, apiKey);
+      const useModelsPayload = isCuratedFreeMixModelId(primaryModel) || fallbackEnabled || (Array.isArray(options.models) && options.models.length > 0);
+      return {
+        model: primaryModel,
+        requested: requestedUnique,
+        expanded: expanded.length ? expanded : [primaryModel],
+        useModelsPayload
+      };
+    }
+
+    function shouldDisableJsonResponseFormatForModelList(modelIds = []) {
+      return uniqueModelIds(modelIds).some(id => shouldDisableJsonResponseFormatForModel(id));
+    }
+
+    function openRouterResponseModelName(data, fallbackModel = "") {
+      return String(data?.model || data?.choices?.[0]?.model || data?.choices?.[0]?.message?.model || fallbackModel || "").trim();
+    }
+
+    function attachOpenRouterModelMetadata(parsed, data, requestInfo = {}) {
+      if (!parsed || typeof parsed !== "object") return parsed;
+      const usedModel = openRouterResponseModelName(data, requestInfo.model || requestInfo.expanded?.[0] || "");
+      try {
+        Object.defineProperties(parsed, {
+          __openrouterModel: { value: usedModel, enumerable: false },
+          __openrouterRequestedModels: { value: uniqueModelIds(requestInfo.expanded || requestInfo.requested || []), enumerable: false },
+          __openrouterModelSelections: { value: uniqueModelIds(requestInfo.requested || []), enumerable: false }
+        });
+      } catch (_) {
+        parsed.__openrouterModel = usedModel;
+        parsed.__openrouterRequestedModels = uniqueModelIds(requestInfo.expanded || requestInfo.requested || []);
+        parsed.__openrouterModelSelections = uniqueModelIds(requestInfo.requested || []);
+      }
+      return parsed;
+    }
+
     function isSafeDisplayImageUrl(url = "") {
       const value = String(url || "").trim();
       if (!value) return false;
@@ -2668,7 +2807,8 @@
       // Free OpenRouter routes/models change often and may not reliably support
       // separate system/developer instruction messages. For these models, put
       // the same operational instructions inside the user JSON request instead.
-      return isFreeModelId(modelId || DEFAULT_FREE_LLM_MODEL);
+      const primaryModel = modelId || DEFAULT_FREE_LLM_MODEL;
+      return isFreeModelId(primaryModel) || configuredFallbackLlmModels(primaryModel).some(isFreeModelId);
     }
 
     function mergeDeveloperInstructionsIntoUserPrompt(userPrompt, developerInstructions) {
@@ -2727,7 +2867,10 @@
       const legacyImagelessFree = !!state.settings.freeModelsOnly && !legacyPollinationsFree;
 
       if (defaultToFree && !isFreeModelId(state.settings.llmModel)) {
-        state.settings.llmModel = DEFAULT_FREE_LLM_MODEL;
+        state.settings.llmModel = state.settings.addFallbackModels ? "openrouter/free" : DEFAULT_FREE_LLM_MODEL;
+      }
+      if (state.settings.addFallbackModels && isCuratedFreeMixModelId(state.settings.llmModel)) {
+        state.settings.llmModel = firstAllowedLlmModel(state.modelLists?.llms || DEFAULT_LLM_MODELS, { preferFree: !!state.settings.filterFreeOptions });
       }
       if (!state.settings.imageModel) state.settings.imageModel = DEFAULT_IMAGE_MODEL;
       state.settings.imageModel = normalizeImageModelId(state.settings.imageModel) || DEFAULT_IMAGE_MODEL;
@@ -2768,7 +2911,7 @@
       if (filterFreeOptions) {
         llms = freeLlmModelIds(allLlms);
         if (!isFreeModelId(selectedLlm)) {
-          selectedLlm = DEFAULT_FREE_LLM_MODEL;
+          selectedLlm = state.settings.addFallbackModels ? "openrouter/free" : DEFAULT_FREE_LLM_MODEL;
           state.settings.llmModel = selectedLlm;
         }
 
@@ -2777,7 +2920,19 @@
         state.settings.imageModel = selectedImage;
       }
 
+      if (state.settings.addFallbackModels) {
+        llms = llms.filter(id => !isCuratedFreeMixModelId(id));
+        if (isCuratedFreeMixModelId(selectedLlm)) {
+          selectedLlm = firstAllowedLlmModel(llms, { preferFree: filterFreeOptions });
+          state.settings.llmModel = selectedLlm;
+        }
+      }
+
+      ensureFallbackModelDefaults(llms);
+      selectedLlm = state.settings.llmModel || selectedLlm;
       populateSelect("llmModel", llms, selectedLlm);
+      populateFallbackSelect("fallbackLlmModel1", llms, state.settings.fallbackLlmModel1, "Choose fallback 1");
+      populateFallbackSelect("fallbackLlmModel2", llms, state.settings.fallbackLlmModel2, "Choose fallback 2");
       populateSelect("imageModel", images, selectedImage);
     }
 
@@ -2785,8 +2940,15 @@
       const el = $(id);
       if (!el) return;
       const previous = el.value;
-      const value = selectedValue || previous;
-      const allItems = uniqueModelIds(items, value ? [value] : []);
+      let value = selectedValue || previous;
+      const isStoryModelSelect = id === "llmModel";
+      if (isStoryModelSelect && state.settings?.addFallbackModels && isCuratedFreeMixModelId(value)) {
+        value = firstAllowedLlmModel(items, { preferFree: !!state.settings.filterFreeOptions });
+      }
+      let allItems = uniqueModelIds(items, value ? [value] : []);
+      if (isStoryModelSelect && state.settings?.addFallbackModels) {
+        allItems = allItems.filter(item => !isCuratedFreeMixModelId(item));
+      }
       el.innerHTML = "";
       allItems.forEach(item => {
         const opt = document.createElement("option");
@@ -2797,9 +2959,35 @@
       if (value) el.value = value;
     }
 
+    function populateFallbackSelect(id, items, selectedValue, emptyLabel = "Choose fallback") {
+      const el = $(id);
+      if (!el) return;
+      const value = (state.settings?.addFallbackModels && isCuratedFreeMixModelId(selectedValue)) ? "" : (selectedValue || "");
+      let allItems = uniqueModelIds(items, value ? [value] : []);
+      if (state.settings?.addFallbackModels) {
+        allItems = allItems.filter(item => !isCuratedFreeMixModelId(item));
+      }
+      el.innerHTML = "";
+      const emptyOpt = document.createElement("option");
+      emptyOpt.value = "";
+      emptyOpt.textContent = emptyLabel;
+      el.appendChild(emptyOpt);
+      allItems.forEach(item => {
+        const opt = document.createElement("option");
+        opt.value = item;
+        opt.textContent = item;
+        el.appendChild(opt);
+      });
+      el.value = value;
+    }
+
     function selectModelValue(id, value) {
       const el = $(id);
       if (!el) return;
+      const isStoryModelSelect = id === "llmModel" || id === "fallbackLlmModel1" || id === "fallbackLlmModel2";
+      if (isStoryModelSelect && state.settings?.addFallbackModels && isCuratedFreeMixModelId(value)) {
+        value = id === "llmModel" ? firstAllowedLlmModel(state.modelLists?.llms || DEFAULT_LLM_MODELS, { preferFree: !!state.settings.filterFreeOptions }) : "";
+      }
       if (value && !Array.from(el.options).some(opt => opt.value === value)) {
         const opt = document.createElement("option");
         opt.value = value;
@@ -2835,6 +3023,18 @@
         imageAspectRatio.disabled = pollinationsMode;
         imageAspectRatio.title = pollinationsMode ? "Pollinations.ai images display as a fixed 1:1 square." : "";
       }
+      const fallbackEnabled = !!state.settings.addFallbackModels;
+      const fallbackRows = $("fallbackModelRows");
+      if (fallbackRows) fallbackRows.classList.toggle("hidden", !fallbackEnabled);
+      ["fallbackLlmModel1", "fallbackLlmModel2"].forEach(id => {
+        const el = $(id);
+        if (!el) return;
+        el.disabled = !fallbackEnabled;
+        el.title = fallbackEnabled ? "Used after the selected Story LLM if OpenRouter needs a fallback." : "Enable fallback models to choose backup Story LLMs.";
+      });
+      const fallbackToggle = $("addFallbackModels");
+      if (fallbackToggle) fallbackToggle.checked = fallbackEnabled;
+
       const customLlm = $("llmModelCustom");
       if (customLlm) {
         customLlm.placeholder = filterFreeOptions || freeTextMode ? "Optional: custom model ID ending in :free" : "e.g. deepseek/deepseek-v3.2";
@@ -3450,19 +3650,43 @@
         filterFreeOptions = true;
         if ($("filterFreeOptions")) $("filterFreeOptions").checked = true;
       }
+      const fallbackModelsEnabled = !!$("addFallbackModels")?.checked;
+      state.settings.addFallbackModels = fallbackModelsEnabled;
       const customLlmEl = $("llmModelCustom");
       let customLlm = customLlmEl.value.trim();
       let customImage = normalizeImageModelId($("imageModelCustom").value.trim());
       if (filterFreeOptions && !isFreeModelId(customLlm)) customLlm = "";
+      if (fallbackModelsEnabled && isCuratedFreeMixModelId(customLlm)) customLlm = "";
       if (filterFreeOptions && !isPollinationsImageModel(customImage)) customImage = "";
 
+      const visibleLlmOptions = Array.from($("llmModel")?.options || []).map(opt => opt.value);
       let selectedLlm = customLlm || $("llmModel").value.trim() || DEFAULT_LLM_MODEL;
-      if (filterFreeOptions && !isFreeModelId(selectedLlm)) selectedLlm = DEFAULT_FREE_LLM_MODEL;
+      if (filterFreeOptions && !isFreeModelId(selectedLlm)) selectedLlm = fallbackModelsEnabled ? "openrouter/free" : DEFAULT_FREE_LLM_MODEL;
+      if (fallbackModelsEnabled && isCuratedFreeMixModelId(selectedLlm)) {
+        selectedLlm = firstAllowedLlmModel(visibleLlmOptions, { preferFree: filterFreeOptions });
+      }
 
       let selectedImage = customImage || normalizeImageModelId($("imageModel").value.trim()) || DEFAULT_IMAGE_MODEL;
       if (filterFreeOptions) selectedImage = POLLINATIONS_IMAGE_MODEL;
 
+      let fallback1 = String($("fallbackLlmModel1")?.value || "").trim();
+      let fallback2 = String($("fallbackLlmModel2")?.value || "").trim();
+      if (filterFreeOptions) {
+        if (!isFreeModelId(fallback1)) fallback1 = "";
+        if (!isFreeModelId(fallback2)) fallback2 = "";
+      }
+      if (fallbackModelsEnabled) {
+        if (isCuratedFreeMixModelId(fallback1)) fallback1 = "";
+        if (isCuratedFreeMixModelId(fallback2)) fallback2 = "";
+      }
+      if (fallback1 === selectedLlm) fallback1 = "";
+      if (fallback2 === selectedLlm || fallback2 === fallback1) fallback2 = "";
+
       state.settings.llmModel = selectedLlm;
+      state.settings.addFallbackModels = fallbackModelsEnabled;
+      state.settings.fallbackLlmModel1 = fallback1;
+      state.settings.fallbackLlmModel2 = fallback2;
+      ensureFallbackModelDefaults();
       state.settings.imageModel = selectedImage;
       state.settings.imageAspectRatio = $("imageAspectRatio").value;
       state.settings.imageSize = $("imageSize").value;
@@ -3504,6 +3728,9 @@
       $("imageSize").value = state.settings.imageSize || "1K";
       $("generateImages").checked = state.settings.generateImages !== false;
       if ($("filterFreeOptions")) $("filterFreeOptions").checked = !!state.settings.filterFreeOptions;
+      if ($("addFallbackModels")) $("addFallbackModels").checked = !!state.settings.addFallbackModels;
+      selectModelValue("fallbackLlmModel1", state.settings.fallbackLlmModel1 || "");
+      selectModelValue("fallbackLlmModel2", state.settings.fallbackLlmModel2 || "");
       $("useRpgStats").checked = !!state.settings.useRpgStats;
       if ($("enableResponseEditing")) $("enableResponseEditing").checked = !!state.settings.enableResponseEditing;
       if ($("betterMemoryManagement")) $("betterMemoryManagement").checked = !!state.settings.betterMemoryManagement;
@@ -3551,6 +3778,21 @@
           <div><strong>RPG roll:</strong> ${escapeHtml(roll.statName)} ${escapeHtml(roll.base)}% ${modText} difficulty = target ${escapeHtml(roll.target)}%. Rolled <strong>${escapeHtml(roll.roll)}</strong>: <strong class="${textCls}">${resultWord}</strong>.${margin}</div>
           ${roll.rationale ? `<div class="mini"><strong>Why this stat:</strong> ${escapeHtml(roll.rationale)}</div>` : ""}
           ${roll.stakes ? `<div class="mini"><strong>Stakes:</strong> ${escapeHtml(roll.stakes)}</div>` : ""}
+        </div>`;
+    }
+
+    function renderModelResponseCard(turn) {
+      if (!turn || !state.settings?.addFallbackModels) return "";
+      const info = turn.llmModelInfo || {};
+      const used = info.used || turn.modelUsed || "Unknown model";
+      const requested = uniqueModelIds(info.requested || info.selections || []);
+      const requestedHtml = requested.length
+        ? `<div class="mini"><strong>Fallback order:</strong> ${requested.map(escapeHtml).join(" → ")}</div>`
+        : "";
+      return `
+        <div class="roll-card model-response-card">
+          <div><strong>Model response:</strong> ${escapeHtml(used)}</div>
+          ${requestedHtml}
         </div>`;
     }
 
@@ -3604,6 +3846,7 @@
         ? `<img src="${escapeHtml(turn.imageUrl)}" alt="Scene illustration">`
         : `<div class="image-placeholder">${turn.imageGenerating ? `<span class="spinner"></span><br><br>Generating next scene...` : turn.imageUrl ? escapeHtml(invalidImageUrlMessage(turn.imageUrl)) : turn.imageError ? "Image generation failed: " + escapeHtml(turn.imageError) : "No image for this turn yet."}<br><br><span class="mini">Prompt: ${escapeHtml(turn.imagePrompt || "")}</span></div>`;
       const rollHtml = renderRollCard(turn.roll);
+      const modelResponseHtml = renderModelResponseCard(turn);
       const statsHtml = rpgStatsSummaryHtml();
       const imageActionsHtml = `
             <div class="image-actions">
@@ -3619,6 +3862,7 @@
         ${statsHtml}
         <div class="action-tag"><strong>Player action:</strong> ${escapeHtml(turn.action || "Begin")}</div>
         ${rollHtml}
+        ${modelResponseHtml}
         <div class="scene">
           <article class="narration">${renderMarkdown(turn.narration)}</article>
           <figure class="${imageWrapClass}">${imageHtml}${imageActionsHtml}
@@ -4151,18 +4395,17 @@
       const key = String(options.api_key ?? state.settings.apiKey ?? "").trim();
       if (!key) throw new Error("Enter your OpenRouter API key first.");
       const modelId = options.model || state.settings.llmModel || DEFAULT_LLM_MODEL;
-      const useCuratedFreeMix = isCuratedFreeMixModelId(modelId);
-      const curatedModels = useCuratedFreeMix ? await getCuratedFreeMixModels(key) : null;
-      const disableJsonResponseFormat = options.disable_json_response_format ?? shouldDisableJsonResponseFormatForModel(modelId);
+      const modelRequest = await buildOpenRouterModelRequest(modelId, key, options);
+      const disableJsonResponseFormat = options.disable_json_response_format ?? shouldDisableJsonResponseFormatForModelList(modelRequest.expanded);
       const payload = {
         messages,
         temperature: options.temperature ?? Number(state.settings.temperature ?? 0.85),
         max_tokens: options.max_tokens ?? 1200
       };
-      if (useCuratedFreeMix) {
-        payload.models = curatedModels;
+      if (modelRequest.useModelsPayload) {
+        payload.models = modelRequest.expanded;
       } else {
-        payload.model = modelId;
+        payload.model = modelRequest.model;
       }
       if (!disableJsonResponseFormat) {
         payload.response_format = { type: "json_object" };
@@ -4186,7 +4429,7 @@
       const data = await res.json();
       const content = data?.choices?.[0]?.message?.content;
       if (!content) throw modelNoContentError(label);
-      return extractJson(content);
+      return attachOpenRouterModelMetadata(extractJson(content), data, modelRequest);
     }
 
     function isProviderJsonModeNotEnabledError(err) {
@@ -4589,7 +4832,7 @@ Character option requirements:
         };
         if (useTemporaryCommunityKey) {
           characterSelectOptions.api_key = communityApiKey();
-          characterSelectOptions.model = DEFAULT_FREE_LLM_MODEL;
+          characterSelectOptions.model = state.settings?.addFallbackModels ? "openrouter/free" : DEFAULT_FREE_LLM_MODEL;
         }
         let characters = [];
         let validationError = null;
@@ -5466,6 +5709,11 @@ Rewrite rules:
         imageGenerating: false,
         choices,
         roll,
+        llmModelInfo: {
+          used: String(raw.__openrouterModel || "").trim(),
+          requested: uniqueModelIds(raw.__openrouterRequestedModels || []),
+          selections: uniqueModelIds(raw.__openrouterModelSelections || [])
+        },
         scratchpadSnapshot: String(raw.scratchpad || state.scratchpad || ""),
         trackersSnapshot: deepClone(state.trackers),
         worldStateSnapshot: { scratchpad: String(raw.scratchpad || state.scratchpad || ""), trackers: deepClone(state.trackers) },
@@ -5794,6 +6042,8 @@ ${missingList}`,
         coerceFreeModelSettings();
         populateModelSelects();
         selectModelValue("llmModel", state.settings.llmModel || DEFAULT_LLM_MODEL);
+        selectModelValue("fallbackLlmModel1", state.settings.fallbackLlmModel1 || "");
+        selectModelValue("fallbackLlmModel2", state.settings.fallbackLlmModel2 || "");
         selectModelValue("imageModel", state.settings.imageModel || DEFAULT_IMAGE_MODEL);
         saveState();
         if (showSuccessToast) {
@@ -7696,7 +7946,7 @@ Rules:
     }
 
     function bindEvents() {
-      const autosaveInputs = ["apiKey", "llmModel", "llmModelCustom", "imageModel", "imageModelCustom", "imageAspectRatio", "imageSize", "temperature", "worldTitle", "genre", "tone", "backgroundStory", "character", "premise", "firstAction", "rules", "suppressTriggers", "enableResponseEditing", "betterMemoryManagement"];
+      const autosaveInputs = ["apiKey", "llmModel", "llmModelCustom", "addFallbackModels", "fallbackLlmModel1", "fallbackLlmModel2", "imageModel", "imageModelCustom", "imageAspectRatio", "imageSize", "temperature", "worldTitle", "genre", "tone", "backgroundStory", "character", "premise", "firstAction", "rules", "suppressTriggers", "enableResponseEditing", "betterMemoryManagement"];
       autosaveInputs.forEach(id => {
         const el = $(id);
         if (!el) return;
@@ -7759,6 +8009,13 @@ Rules:
         toast(hasKey ? "Closed Getting Started." : "Key setup skipped for now. You can open Model Settings from the Menu when you are ready.");
       });
       ["rememberKey", "generateImages", "useRpgStats", "enableResponseEditing", "betterMemoryManagement"].forEach(id => $(id)?.addEventListener("change", () => { syncFormToState(); renderAll(); }));
+      $("addFallbackModels")?.addEventListener("change", () => {
+        syncFormToState();
+        populateModelSelects();
+        syncStateToForm();
+        renderAll();
+      });
+      ["fallbackLlmModel1", "fallbackLlmModel2"].forEach(id => $(id)?.addEventListener("change", () => { syncFormToState(); renderAll(); }));
       $("filterFreeOptions").addEventListener("change", () => {
         syncFormToState();
         populateModelSelects();
@@ -7769,6 +8026,7 @@ Rules:
         $("llmModelCustom").value = "";
         syncFormToState();
         populateModelSelects();
+        syncStateToForm();
         applyFreeModelUiState();
         renderAll();
       });

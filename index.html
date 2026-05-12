@@ -1081,7 +1081,7 @@
           <p class="mini">This is a purely client-side app. Calls go directly from your browser to OpenRouter; no key is sent anywhere else by this file.</p>
 
           <label class="checkline"><input id="filterFreeOptions" type="checkbox" /> Filter for free options</label>
-          <p class="mini">When enabled, the story model list shows only <code>openrouter/free</code> and models ending in <code>:free</code>; the image model list shows only the Pollinations.ai option.</p>
+          <p class="mini">When enabled, the story model list shows Curated Free Mix, <code>openrouter/free</code>, and models ending in <code>:free</code>; the image model list shows only the Pollinations.ai option.</p>
 
           <div class="two-col">
             <label>Story LLM model
@@ -1563,7 +1563,10 @@
     const POLLINATIONS_IMAGE_MODEL = "pollination.ai";
     const POLLINATIONS_IMAGE_MODEL_ALIASES = [POLLINATIONS_IMAGE_MODEL, "pollinations.ai"];
     const DEFAULT_LLM_MODEL = "deepseek/deepseek-v3.2";
-    const DEFAULT_FREE_LLM_MODEL = "inclusionai/ling-2.6-1t:free";
+    const CURATED_FREE_MIX_MODEL = "Curated Free Mix";
+    const DEFAULT_FREE_LLM_MODEL = CURATED_FREE_MIX_MODEL;
+    const LEGACY_DEFAULT_FREE_LLM_MODEL = "inclusionai/ling-2.6-1t:free";
+    const CURATED_FREE_MIX_MODEL_LIST_CACHE_MS = 15 * 60 * 1000;
     const INFINITE_WORLDS_IMAGE_BASE_URL = "https://infinite-worlds-images-4.us-mia-1.linodeobjects.com/";
     const LEGACY_DEFAULT_LLM_MODEL = "openai/gpt-5.2";
     const SPECIAL_OPENROUTER_KEY_SHA256 = "4b18234b9f22208451723e6a07f560a6ca4bef9172770b89139a23e60e87a833";
@@ -2091,7 +2094,7 @@
       if (!alreadyLoaded && !transientUi.specialKeyLoadInProgress && !busy) {
         transientUi.specialKeyLoadInProgress = true;
         try {
-          toast("Special OpenRouter key detected. Switching to inclusionai/ling-2.6-1t:free with pollination.ai images.");
+          toast("Special OpenRouter key detected. Switching to Curated Free Mix with pollination.ai images.");
           await loadModels();
           transientUi.specialKeyModelsLoadedForHash = checksum;
         } finally {
@@ -2379,7 +2382,8 @@
         world: { ...(source.world || {}) },
         modelLists: {
           llms: [...(source.modelLists?.llms || DEFAULT_LLM_MODELS)],
-          images: [...(source.modelLists?.images || DEFAULT_IMAGE_MODELS)]
+          images: [...(source.modelLists?.images || DEFAULT_IMAGE_MODELS)],
+          llmsLoadedAt: source.modelLists?.llmsLoadedAt || 0
         },
         rpgStats: (source.rpgStats || []).map(stat => ({ ...stat })),
         lastSavedAt: nowIso(),
@@ -2488,6 +2492,7 @@
       if (target.settings && typeof target.settings === "object") {
         delete target.settings.freeModelsOnly;
         delete target.settings.freeModelsWithPollinations;
+        if (target.settings.llmModel === LEGACY_DEFAULT_FREE_LLM_MODEL) target.settings.llmModel = DEFAULT_FREE_LLM_MODEL;
       }
       return target;
     }
@@ -2501,15 +2506,122 @@
       return values;
     }
 
+    function isCuratedFreeMixModelId(modelId = "") {
+      return String(modelId || "").trim().toLowerCase() === CURATED_FREE_MIX_MODEL.toLowerCase();
+    }
+
     function isFreeModelId(modelId = "") {
       const id = String(modelId || "").trim().toLowerCase();
-      return id === DEFAULT_FREE_LLM_MODEL || id.endsWith(":free");
+      return isCuratedFreeMixModelId(id) || id === "openrouter/free" || id.endsWith(":free");
     }
 
     function freeLlmModelIds(items = []) {
       const freeItems = uniqueModelIds(items, [DEFAULT_FREE_LLM_MODEL]).filter(isFreeModelId);
-      if (!freeItems.includes(DEFAULT_FREE_LLM_MODEL)) freeItems.unshift(DEFAULT_FREE_LLM_MODEL);
-      return freeItems;
+      return uniqueModelIds([DEFAULT_FREE_LLM_MODEL, ...freeItems]);
+    }
+
+    function parameterBValuesFromModelId(modelId = "") {
+      const values = [];
+      const id = String(modelId || "").toLowerCase();
+      const re = /(\d+(?:\.\d+)?)\s*b\b/g;
+      let match;
+      while ((match = re.exec(id))) {
+        const n = Number(match[1]);
+        if (Number.isFinite(n)) values.push(n);
+      }
+      return values;
+    }
+
+    function largestParameterB(modelId = "") {
+      const values = parameterBValuesFromModelId(modelId);
+      return values.length ? Math.max(...values) : 0;
+    }
+
+    function glmVersionParts(modelId = "") {
+      const id = String(modelId || "").toLowerCase();
+      const match = id.match(/glm[-_](\d+(?:\.\d+)+)/);
+      if (!match) return [];
+      return match[1].split(".").map(part => Number(part)).filter(Number.isFinite);
+    }
+
+    function compareVersionPartsDesc(aParts = [], bParts = []) {
+      const len = Math.max(aParts.length, bParts.length);
+      for (let i = 0; i < len; i += 1) {
+        const a = aParts[i] ?? 0;
+        const b = bParts[i] ?? 0;
+        if (a !== b) return b - a;
+      }
+      return 0;
+    }
+
+    function compareModelsByLargestBDesc(a, b) {
+      const diff = largestParameterB(b) - largestParameterB(a);
+      return diff || String(a).localeCompare(String(b));
+    }
+
+    function buildCuratedFreeMixModelOrder(modelIds = []) {
+      const freeIds = uniqueModelIds(modelIds)
+        .filter(id => isFreeModelId(id) && !isCuratedFreeMixModelId(id) && String(id).trim().toLowerCase().endsWith(":free"));
+
+      const order = [];
+      const add = id => { if (id && !order.includes(id) && order.length < 3) order.push(id); };
+      const largestMatchingModel = predicate => freeIds
+        .filter(id => predicate(String(id).toLowerCase()) && largestParameterB(id) > 0)
+        .sort(compareModelsByLargestBDesc)[0];
+
+      add(largestMatchingModel(id => id.includes("mistral")));
+      add(largestMatchingModel(id => id.includes("gemma")));
+      add(largestMatchingModel(id => /gpt[-_]?oss/.test(id)));
+
+      return order;
+    }
+
+    let curatedFreeMixModelListPromise = null;
+
+    async function refreshTextModelListForCuratedFreeMix(apiKey = "", { force = false } = {}) {
+      state.modelLists ||= { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS };
+      const cachedAt = Number(state.modelLists.llmsLoadedAt || 0);
+      const hasFreshCache = Array.isArray(state.modelLists.llms)
+        && state.modelLists.llms.length
+        && cachedAt
+        && Date.now() - cachedAt < CURATED_FREE_MIX_MODEL_LIST_CACHE_MS;
+      if (!force && hasFreshCache) return state.modelLists.llms;
+      if (curatedFreeMixModelListPromise) return curatedFreeMixModelListPromise;
+
+      curatedFreeMixModelListPromise = (async () => {
+        const headers = apiKey ? { "Authorization": `Bearer ${apiKey}` } : {};
+        const res = await fetch("https://openrouter.ai/api/v1/models", { headers });
+        if (!res.ok) throw new Error(`Model list failed (${res.status}).`);
+        const all = await res.json();
+        const llms = uniqueModelIds((all.data || []).map(m => m.id).sort(), DEFAULT_LLM_MODELS);
+        state.modelLists = {
+          ...(state.modelLists || {}),
+          llms,
+          llmsLoadedAt: Date.now()
+        };
+        populateModelSelects();
+        return llms;
+      })();
+
+      try {
+        return await curatedFreeMixModelListPromise;
+      } finally {
+        curatedFreeMixModelListPromise = null;
+      }
+    }
+
+    async function getCuratedFreeMixModels(apiKey = "") {
+      let ids = state.modelLists?.llms || DEFAULT_LLM_MODELS;
+      try {
+        ids = await refreshTextModelListForCuratedFreeMix(apiKey);
+      } catch (err) {
+        console.warn("Could not refresh OpenRouter model list for Curated Free Mix; using cached model list.", err);
+      }
+      const models = buildCuratedFreeMixModelOrder(ids);
+      if (!models.length) {
+        throw new Error("Curated Free Mix could not find any matching free Mistral, Gemma, or GPT-OSS models from the current OpenRouter model list. Load models again or choose a specific free model.");
+      }
+      return models;
     }
 
     function isSafeDisplayImageUrl(url = "") {
@@ -2549,7 +2661,7 @@
       // explicit free Gemma models, e.g. gemma-3-4b-it:free. The prompts
       // already require JSON-only output, so these models should use normal
       // chat completion requests and let extractJson parse the response.
-      return isGemmaFreeModelId(modelId);
+      return isCuratedFreeMixModelId(modelId) || isGemmaFreeModelId(modelId);
     }
 
     function shouldInlineDeveloperInstructionsForModel(modelId = state.settings?.llmModel) {
@@ -4039,13 +4151,19 @@
       const key = String(options.api_key ?? state.settings.apiKey ?? "").trim();
       if (!key) throw new Error("Enter your OpenRouter API key first.");
       const modelId = options.model || state.settings.llmModel || DEFAULT_LLM_MODEL;
+      const useCuratedFreeMix = isCuratedFreeMixModelId(modelId);
+      const curatedModels = useCuratedFreeMix ? await getCuratedFreeMixModels(key) : null;
       const disableJsonResponseFormat = options.disable_json_response_format ?? shouldDisableJsonResponseFormatForModel(modelId);
       const payload = {
-        model: modelId,
         messages,
         temperature: options.temperature ?? Number(state.settings.temperature ?? 0.85),
         max_tokens: options.max_tokens ?? 1200
       };
+      if (useCuratedFreeMix) {
+        payload.models = curatedModels;
+      } else {
+        payload.model = modelId;
+      }
       if (!disableJsonResponseFormat) {
         payload.response_format = { type: "json_object" };
       }
@@ -5670,7 +5788,8 @@ ${missingList}`,
 
         state.modelLists = {
           llms: uniqueModelIds((all.data || []).map(m => m.id).sort(), DEFAULT_LLM_MODELS),
-          images: uniqueModelIds(imageIds, DEFAULT_IMAGE_MODELS)
+          images: uniqueModelIds(imageIds, DEFAULT_IMAGE_MODELS),
+          llmsLoadedAt: Date.now()
         };
         coerceFreeModelSettings();
         populateModelSelects();

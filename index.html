@@ -1084,7 +1084,6 @@
           <p class="mini">When enabled, the story model list shows Curated Free Mix, <code>openrouter/free</code>, and models ending in <code>:free</code>; the image model list shows only the Pollinations.ai option. When fallback models are enabled, Curated Free Mix is removed from all story model dropdowns.</p>
           <label class="checkline"><input id="addFallbackModels" type="checkbox" /> Add fallback models if this one fails due to rate limiting</label>
           <p class="mini">When enabled, OpenRouter receives the selected Story LLM first, followed by Fallback 1 and Fallback 2 as backup text models.</p>
-
           <div class="two-col">
             <label>Story LLM model
               <select id="llmModel"></select>
@@ -1574,6 +1573,7 @@
     const POLLINATIONS_IMAGE_MODEL_ALIASES = [POLLINATIONS_IMAGE_MODEL, "pollinations.ai"];
     const DEFAULT_LLM_MODEL = "deepseek/deepseek-v3.2";
     const CURATED_FREE_MIX_MODEL = "Curated Free Mix";
+    const CURATED_FREE_MIX_DEVELOPER_SENTINEL = "DEVELOPER";
     const DEFAULT_FREE_LLM_MODEL = CURATED_FREE_MIX_MODEL;
     const LEGACY_DEFAULT_FREE_LLM_MODEL = "inclusionai/ling-2.6-1t:free";
     const CURATED_FREE_MIX_MODEL_LIST_CACHE_MS = 15 * 60 * 1000;
@@ -1913,6 +1913,7 @@
         generateImages: true,
         filterFreeOptions: false,
         addFallbackModels: false,
+        curatedFreeMixDeveloperMode: false,
         fallbackLlmModel1: "",
         fallbackLlmModel2: "",
         useRpgStats: false,
@@ -2507,6 +2508,7 @@
       if (target.settings && typeof target.settings === "object") {
         delete target.settings.freeModelsOnly;
         delete target.settings.freeModelsWithPollinations;
+        delete target.settings.showCuratedFreeMixUsage;
         if (target.settings.llmModel === LEGACY_DEFAULT_FREE_LLM_MODEL) target.settings.llmModel = DEFAULT_FREE_LLM_MODEL;
       }
       return target;
@@ -2523,6 +2525,10 @@
 
     function isCuratedFreeMixModelId(modelId = "") {
       return String(modelId || "").trim().toLowerCase() === CURATED_FREE_MIX_MODEL.toLowerCase();
+    }
+
+    function isCuratedFreeMixDeveloperSentinel(value = "") {
+      return String(value || "").trim().toUpperCase() === CURATED_FREE_MIX_DEVELOPER_SENTINEL;
     }
 
     function isFreeModelId(modelId = "") {
@@ -2569,6 +2575,42 @@
       return values.length ? Math.max(...values) : 0;
     }
 
+    function activeParameterBValuesFromModelId(modelId = "") {
+      const values = [];
+      const id = String(modelId || "").toLowerCase();
+      const re = /a(\d+(?:\.\d+)?)\s*b\b/g;
+      let match;
+      while ((match = re.exec(id))) {
+        const n = Number(match[1]);
+        if (Number.isFinite(n)) values.push(n);
+      }
+      return values;
+    }
+
+    function largestActiveParameterB(modelId = "") {
+      const values = activeParameterBValuesFromModelId(modelId);
+      return values.length ? Math.max(...values) : 0;
+    }
+
+    function nonActiveParameterBValuesFromModelId(modelId = "") {
+      const values = [];
+      const id = String(modelId || "").toLowerCase();
+      const re = /(\d+(?:\.\d+)?)\s*b\b/g;
+      let match;
+      while ((match = re.exec(id))) {
+        const numberStart = match.index;
+        if (numberStart > 0 && id[numberStart - 1] === "a") continue;
+        const n = Number(match[1]);
+        if (Number.isFinite(n)) values.push(n);
+      }
+      return values;
+    }
+
+    function largestNonActiveParameterB(modelId = "") {
+      const values = nonActiveParameterBValuesFromModelId(modelId);
+      return values.length ? Math.max(...values) : 0;
+    }
+
     function glmVersionParts(modelId = "") {
       const id = String(modelId || "").toLowerCase();
       const match = id.match(/glm[-_](\d+(?:\.\d+)+)/);
@@ -2591,18 +2633,30 @@
       return diff || String(a).localeCompare(String(b));
     }
 
+    function compareModelsByActiveThenTotalBDesc(a, b) {
+      const activeDiff = largestActiveParameterB(b) - largestActiveParameterB(a);
+      if (activeDiff) return activeDiff;
+      const totalDiff = largestNonActiveParameterB(b) - largestNonActiveParameterB(a);
+      return totalDiff || String(a).localeCompare(String(b));
+    }
+
     function buildCuratedFreeMixModelOrder(modelIds = []) {
       const freeIds = uniqueModelIds(modelIds)
         .filter(id => isFreeModelId(id) && !isCuratedFreeMixModelId(id) && String(id).trim().toLowerCase().endsWith(":free"));
 
       const order = [];
       const add = id => { if (id && !order.includes(id) && order.length < 3) order.push(id); };
+      const activeAndTotalMatchingModel = (predicate, activePredicate = () => true) => freeIds
+        .filter(id => predicate(String(id).toLowerCase()))
+        .filter(id => largestActiveParameterB(id) > 0 && largestNonActiveParameterB(id) > 0)
+        .filter(id => activePredicate(largestActiveParameterB(id)))
+        .sort(compareModelsByActiveThenTotalBDesc)[0];
       const largestMatchingModel = predicate => freeIds
         .filter(id => predicate(String(id).toLowerCase()) && largestParameterB(id) > 0)
         .sort(compareModelsByLargestBDesc)[0];
 
-      add(largestMatchingModel(id => id.includes("mistral")));
-      add(largestMatchingModel(id => id.includes("gemma")));
+      add(activeAndTotalMatchingModel(id => id.includes("gemma")));
+      add(activeAndTotalMatchingModel(id => id.includes("nemotron"), activeB => activeB < 20));
       add(largestMatchingModel(id => /gpt[-_]?oss/.test(id)));
 
       return order;
@@ -2651,7 +2705,7 @@
       }
       const models = buildCuratedFreeMixModelOrder(ids);
       if (!models.length) {
-        throw new Error("Curated Free Mix could not find any matching free Mistral, Gemma, or GPT-OSS models from the current OpenRouter model list. Load models again or choose a specific free model.");
+        throw new Error("Curated Free Mix could not find any matching free Gemma, Nemotron, or GPT-OSS models from the current OpenRouter model list. Load models again or choose a specific free model.");
       }
       return models;
     }
@@ -2720,6 +2774,7 @@
     async function buildOpenRouterModelRequest(modelId, apiKey = "", options = {}) {
       const fallbackEnabled = options.use_model_fallbacks ?? !!state.settings?.addFallbackModels;
       let primaryModel = String(modelId || DEFAULT_LLM_MODEL).trim();
+      if (isCuratedFreeMixDeveloperSentinel(primaryModel)) primaryModel = DEFAULT_LLM_MODEL;
       if (fallbackEnabled && isCuratedFreeMixModelId(primaryModel)) {
         primaryModel = firstAllowedLlmModel(state.modelLists?.llms || DEFAULT_LLM_MODELS, { preferFree: !!state.settings?.filterFreeOptions });
       }
@@ -2748,7 +2803,7 @@
 
     function attachOpenRouterModelMetadata(parsed, data, requestInfo = {}) {
       if (!parsed || typeof parsed !== "object") return parsed;
-      const usedModel = openRouterResponseModelName(data, requestInfo.model || requestInfo.expanded?.[0] || "");
+      const usedModel = openRouterResponseModelName(data, requestInfo.expanded?.[0] || requestInfo.model || "");
       try {
         Object.defineProperties(parsed, {
           __openrouterModel: { value: usedModel, enumerable: false },
@@ -3653,7 +3708,10 @@
       const fallbackModelsEnabled = !!$("addFallbackModels")?.checked;
       state.settings.addFallbackModels = fallbackModelsEnabled;
       const customLlmEl = $("llmModelCustom");
-      let customLlm = customLlmEl.value.trim();
+      const rawCustomLlm = customLlmEl.value.trim();
+      // Hidden developer mode: this sentinel toggles attribution without replacing the selected model.
+      const developerSentinelEntered = isCuratedFreeMixDeveloperSentinel(rawCustomLlm);
+      let customLlm = developerSentinelEntered ? "" : rawCustomLlm;
       let customImage = normalizeImageModelId($("imageModelCustom").value.trim());
       if (filterFreeOptions && !isFreeModelId(customLlm)) customLlm = "";
       if (fallbackModelsEnabled && isCuratedFreeMixModelId(customLlm)) customLlm = "";
@@ -3683,6 +3741,9 @@
       if (fallback2 === selectedLlm || fallback2 === fallback1) fallback2 = "";
 
       state.settings.llmModel = selectedLlm;
+      state.settings.curatedFreeMixDeveloperMode = developerSentinelEntered
+        && isCuratedFreeMixModelId(selectedLlm)
+        && !fallbackModelsEnabled;
       state.settings.addFallbackModels = fallbackModelsEnabled;
       state.settings.fallbackLlmModel1 = fallback1;
       state.settings.fallbackLlmModel2 = fallback2;
@@ -3722,7 +3783,9 @@
       $("rememberKey").checked = !!state.settings.rememberKey;
       selectModelValue("llmModel", state.settings.llmModel || DEFAULT_LLM_MODEL);
       selectModelValue("imageModel", state.settings.imageModel || DEFAULT_IMAGE_MODEL);
-      $("llmModelCustom").value = modelInList("llms", state.settings.llmModel) ? "" : (state.settings.llmModel || "");
+      $("llmModelCustom").value = state.settings.curatedFreeMixDeveloperMode && isCuratedFreeMixModelId(state.settings.llmModel)
+        ? CURATED_FREE_MIX_DEVELOPER_SENTINEL
+        : (modelInList("llms", state.settings.llmModel) ? "" : (state.settings.llmModel || ""));
       $("imageModelCustom").value = modelInList("images", state.settings.imageModel) ? "" : (state.settings.imageModel || "");
       $("imageAspectRatio").value = state.settings.imageAspectRatio || "3:2";
       $("imageSize").value = state.settings.imageSize || "1K";
@@ -3782,12 +3845,21 @@
     }
 
     function renderModelResponseCard(turn) {
-      if (!turn || !state.settings?.addFallbackModels) return "";
+      if (!turn) return "";
       const info = turn.llmModelInfo || {};
+      const selections = uniqueModelIds(info.selections || []);
+      const isCuratedFreeMixResponse = selections.some(isCuratedFreeMixModelId);
+      const showFallbackUsage = !!state.settings?.addFallbackModels;
+      const showCuratedUsage = !!state.settings?.curatedFreeMixDeveloperMode
+        && isCuratedFreeMixModelId(state.settings?.llmModel)
+        && isCuratedFreeMixResponse;
+      if (!showFallbackUsage && !showCuratedUsage) return "";
+
       const used = info.used || turn.modelUsed || "Unknown model";
-      const requested = uniqueModelIds(info.requested || info.selections || []);
+      const requested = uniqueModelIds(info.requested || selections);
+      const orderLabel = showCuratedUsage ? "Curated mix order" : "Fallback order";
       const requestedHtml = requested.length
-        ? `<div class="mini"><strong>Fallback order:</strong> ${requested.map(escapeHtml).join(" → ")}</div>`
+        ? `<div class="mini"><strong>${orderLabel}:</strong> ${requested.map(escapeHtml).join(" → ")}</div>`
         : "";
       return `
         <div class="roll-card model-response-card">
@@ -7901,7 +7973,7 @@ Rules:
             if (result === true) toast("Loaded Infinite Worlds JSON into the world setup fields without using an LLM.", 7500);
             return;
           }
-          state = mergeDefaults(deepClone(DEFAULT_STATE), imported);
+          state = cleanupDeprecatedState(mergeDefaults(deepClone(DEFAULT_STATE), imported));
           normalizeDefaultTriggerState();
           normalizeEventTriggerState(state);
           normalizePerTurnSnapshots();

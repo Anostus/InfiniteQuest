@@ -974,7 +974,7 @@
           <button id="btnOpenModelSettings" type="button" role="menuitem">Model Settings</button>
           <button id="btnOpenEditState" type="button" role="menuitem">Edit State</button>
           <button id="btnRestartGettingStarted" type="button" role="menuitem">Restart Getting Started Dialogue</button>
-          <button id="btnOpenInfiniteWorldsImport" type="button" role="menuitem">Import from Infinite Worlds (Experimental)</button>
+          <button id="btnOpenInfiniteWorldsImport" type="button" role="menuitem">Import from Infinite Worlds</button>
         </div>
       </div>
     </header>
@@ -1525,19 +1525,59 @@
     <div class="world-gen-card">
       <div class="dialog-header">
         <div>
-          <h3>Import from Infinite Worlds (Experimental)</h3>
-          <p class="mini">Convert Infinite Worlds exports into Infinite Quest using your current Story LLM and image settings.</p>
-          <p class="mini"><strong>Heads up:</strong> this process can take several minutes, especially for large worlds, long stories, or image generation.</p>
+          <h3>Import from Infinite Worlds</h3>
+          <p class="mini">Load Infinite Worlds worlds from raw JSON, import an in-progress story from its text export, or use the legacy LLM-based world converter for copied page text.</p>
+          <p class="mini"><strong>Recommended for worlds:</strong> use the direct raw-JSON loaders below. For stories, Quick Story Import avoids per-turn LLM calls; the detailed Load Story importer and legacy world converter can take several minutes.</p>
         </div>
         <button id="btnCloseInfiniteWorldsImport" class="small ghost" type="button" aria-label="Close Infinite Worlds import">✕</button>
       </div>
       <div class="dialog-scroll stack">
         <div class="world-gen-box stack">
-          <h4 style="margin:0;color:#fff;">Import World</h4>
-          <p>In Infinite Worlds, open the world editor, uncollapse every part of the entire page, select all, and copy all the text. Save that copied text into a <code>.txt</code> file.</p>
-          <p class="mini">Click Import World and choose that text file. The app will ask the current Story LLM to convert the world into Infinite Quest fields, use the first Infinite Worlds player character, convert 1–5 stats to d% values, and carry over tracked items as default trackers.</p>
+          <h4 style="margin:0;color:#fff;">Load an Infinite Worlds World (Recommended)</h4>
+          <p>Use Infinite Worlds' raw JSON export to load a world directly without asking an LLM to convert it:</p>
+          <ol class="mini" style="margin:0;padding-left:1.4rem;line-height:1.55;">
+            <li>In Infinite Worlds, find the world you want, click <strong>Edit World</strong>, and select <strong>Show optional features</strong>.</li>
+            <li>Open <strong>Misc advanced features (optional)</strong>, then click <strong>Show raw JSON</strong>.</li>
+            <li>Copy the JSON that appears. Choose <strong>Load world from text</strong> below to paste it, or save it as a JSON/text file and choose <strong>Load world from file</strong>.</li>
+            <li>Confirm the prompts to load the world. If the world offers multiple player characters, the character-selection screen will appear.</li>
+          </ol>
           <div class="row wrap">
-            <button id="btnInfiniteWorldImportWorld" class="primary" type="button">📥 Import World</button>
+            <button id="btnInfiniteWorldLoadWorldFile" class="accent" type="button">📂 Load world from file</button>
+            <button id="btnInfiniteWorldLoadWorldText" class="primary" type="button">📝 Load world from text</button>
+          </div>
+        </div>
+
+        <div class="world-gen-box stack">
+          <h4 style="margin:0;color:#fff;">Load an In-Progress Story</h4>
+          <p>First load the Infinite Worlds world associated with the story, then export the story as a text file:</p>
+          <ol class="mini" style="margin:0;padding-left:1.4rem;line-height:1.55;">
+            <li>Inside Infinite Worlds, open a story you have already played and click <strong>Menu</strong>.</li>
+            <li>In the thin pop-up containing the story options, choose <strong>Export Story</strong> near the bottom.</li>
+            <li>On the <strong>Export Story</strong> screen, check <strong>Text</strong> under <strong>Output</strong> and uncheck every other output option.</li>
+            <li>Click <strong>Ok</strong> to create the text file.</li>
+            <li>Click <strong>Quick Story Import</strong> for the fast direct import, or <strong>Load Story</strong> for the detailed per-turn LLM import, then select the resulting text file.</li>
+          </ol>
+          <p class="mini"><strong>Quick Story Import</strong> copies every exported action and outcome directly, automatically loads the Character section into the World Setup player-character field, and makes only one Story LLM request: four continuation options plus an image prompt for the final imported turn. Earlier turns keep their image and four options blank.</p>
+          <p class="mini"><strong>Load Story</strong> is the detailed importer. It asks the current Story LLM for metadata on every turn and may generate an image for every turn, so long stories can take several minutes. See the <a href="https://thechangingmirror.com/phpbb/viewtopic.php?f=49&amp;t=13248" target="_blank" rel="noopener noreferrer">Infinite Quest release notes</a> for additional details.</p>
+          <div class="row wrap">
+            <button id="btnInfiniteWorldQuickImportStory" class="primary" type="button">Quick Story Import</button>
+            <button id="btnInfiniteWorldImportStory" class="accent" type="button">Load Story</button>
+            <span id="infiniteWorldImportStorySpinner" class="spinner hidden" aria-hidden="true" title="Importing story"></span>
+            <div id="infiniteWorldImportStoryProgress" class="import-progress hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Story import progress">
+              <div class="import-progress-bar"><div id="infiniteWorldImportStoryProgressFill" class="import-progress-fill"></div></div>
+              <span id="infiniteWorldImportStoryProgressLabel" class="import-progress-label">0%</span>
+            </div>
+            <input id="infiniteWorldQuickImportStoryFile" type="file" accept=".txt,text/plain" class="hidden" />
+            <input id="infiniteWorldImportStoryFile" type="file" accept=".txt,text/plain" class="hidden" />
+          </div>
+        </div>
+
+        <div class="world-gen-box stack">
+          <h4 style="margin:0;color:#fff;">Legacy World Conversion</h4>
+          <p>In Infinite Worlds, open the world editor, uncollapse every part of the entire page, select all, and copy all the text. Save that copied text into a <code>.txt</code> file.</p>
+          <p class="mini">This legacy method asks the current Story LLM to convert the copied page text into Infinite Quest fields. Direct raw-JSON loading above is faster and more reliable.</p>
+          <div class="row wrap">
+            <button id="btnInfiniteWorldImportWorld" class="primary" type="button">Legacy Import World (Not Recommended)</button>
             <span id="infiniteWorldImportWorldSpinner" class="spinner hidden" aria-hidden="true" title="Importing world"></span>
             <div id="infiniteWorldImportWorldProgress" class="import-progress hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="World import progress">
               <div class="import-progress-bar"><div id="infiniteWorldImportWorldProgressFill" class="import-progress-fill"></div></div>
@@ -1547,20 +1587,6 @@
           </div>
         </div>
 
-        <div class="world-gen-box stack">
-          <h4 style="margin:0;color:#fff;">Import Story</h4>
-          <p>First import the world for this story. Then export the story from Infinite Worlds in <code>.txt</code> format and upload the resulting file.</p>
-          <p class="mini">For each imported turn, the app will ask the Story LLM to generate Infinite Quest-style choices, an image prompt, scratchpad continuity, and tracker updates. If image generation is enabled, it will also generate each turn’s image using your current image settings.</p>
-          <div class="row wrap">
-            <button id="btnInfiniteWorldImportStory" class="accent" type="button">📜 Import Story</button>
-            <span id="infiniteWorldImportStorySpinner" class="spinner hidden" aria-hidden="true" title="Importing story"></span>
-            <div id="infiniteWorldImportStoryProgress" class="import-progress hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Story import progress">
-              <div class="import-progress-bar"><div id="infiniteWorldImportStoryProgressFill" class="import-progress-fill"></div></div>
-              <span id="infiniteWorldImportStoryProgressLabel" class="import-progress-label">0%</span>
-            </div>
-            <input id="infiniteWorldImportStoryFile" type="file" accept=".txt,text/plain" class="hidden" />
-          </div>
-        </div>
       </div>
     </div>
   </dialog>
@@ -2254,7 +2280,7 @@
       busy = isBusy;
       const pill = $("busyPill");
       pill.innerHTML = isBusy ? `<span class="spinner"></span> ${escapeHtml(label)}` : "Ready";
-      ["btnStart", "btnTakeAction", "btnRetry", "btnEditResponse", "btnOpenWorldGen", "btnWorldGenRun", "btnGenerateCharacterSelect", "btnWorldHashGenerateCharacterSelect", "btnWorldHashImportConfirm", "btnWorldHashImportStart", "btnRegenerateImageConfirm", "btnSaveWorld", "btnCopyWorld", "btnGenerateWorldUrl", "btnLoadWorldText", "btnWorldTextImportConfirm", "btnInfiniteWorldImportWorld", "btnInfiniteWorldImportStory"].forEach(id => { const el = $(id); if (el) el.disabled = isBusy; });
+      ["btnStart", "btnTakeAction", "btnRetry", "btnEditResponse", "btnOpenWorldGen", "btnWorldGenRun", "btnGenerateCharacterSelect", "btnWorldHashGenerateCharacterSelect", "btnWorldHashImportConfirm", "btnWorldHashImportStart", "btnRegenerateImageConfirm", "btnSaveWorld", "btnCopyWorld", "btnGenerateWorldUrl", "btnLoadWorldText", "btnWorldTextImportConfirm", "btnInfiniteWorldLoadWorldFile", "btnInfiniteWorldLoadWorldText", "btnInfiniteWorldImportWorld", "btnInfiniteWorldQuickImportStory", "btnInfiniteWorldImportStory"].forEach(id => { const el = $(id); if (el) el.disabled = isBusy; });
       $$(".sample-world-button").forEach(button => { button.disabled = isBusy; });
       const freeAction = $("freeAction");
       if (freeAction) freeAction.disabled = isBusy;
@@ -7626,6 +7652,50 @@ Final cleanup mode:
       return { storyBackground, characterText, turns };
     }
 
+    function extractIwUnderlinedSubsection(block, heading) {
+      const source = String(block || "").replace(/\r\n/g, "\n");
+      const marker = new RegExp(`(^|\\n)\\s*${escapeRegExp(heading)}\\s*\\n\\s*-{2,}\\s*\\n`, "i");
+      const match = marker.exec(source);
+      if (!match) return "";
+      const start = match.index + match[0].length;
+      const rest = source.slice(start);
+      const next = rest.search(/\n\s*[^\n]+\s*\n\s*-{2,}\s*\n/);
+      return (next >= 0 ? rest.slice(0, next) : rest).trim();
+    }
+
+    function formatInfiniteWorldsStoryCharacter(characterText = "") {
+      const source = String(characterText || "").replace(/\r\n/g, "\n").trim();
+      if (!source) return "";
+      const name = extractIwUnderlinedSubsection(source, "Name");
+      const background = extractIwUnderlinedSubsection(source, "Background");
+      const skills = extractIwUnderlinedSubsection(source, "Skills");
+      const parts = [];
+      if (name) parts.push(`Name: ${name.replace(/\s*\n\s*/g, " ").trim()}`);
+      if (background) parts.push(`Background:\n${background.trim()}`);
+      if (skills) parts.push(`Skills:\n${skills.trim()}`);
+      if (parts.length) return parts.join("\n\n");
+      return source.replace(/^\s*-{2,}\s*$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
+    }
+
+    function importedStoryCharacterText(parsedStory) {
+      return formatInfiniteWorldsStoryCharacter(parsedStory?.characterText || "");
+    }
+
+    function missingWorldFieldsForImportedStory(parsedStory) {
+      const importedCharacter = importedStoryCharacterText(parsedStory);
+      return REQUIRED_WORLD_SETUP_FIELDS.filter(field => {
+        if (field.key === "character" && importedCharacter) return false;
+        return !String(state.world?.[field.key] || "").trim();
+      });
+    }
+
+    function applyImportedStoryCharacter(parsedStory) {
+      const importedCharacter = importedStoryCharacterText(parsedStory);
+      if (!importedCharacter) return "";
+      state.world.character = importedCharacter;
+      return importedCharacter;
+    }
+
     function importedStoryTurnSystemPrompt() {
       return `You convert one imported Infinite Worlds story turn into Infinite Quest turn metadata.
 Return ONLY valid JSON. Do not wrap it in markdown. Do not include comments.
@@ -7673,6 +7743,48 @@ Rules:
       ), { temperature: Math.max(0.25, Number(state.settings.temperature ?? 0.85)), max_tokens: 2600, json_retries: 2, no_content_retries: 2 });
     }
 
+    function quickImportedStoryFinalTurnSystemPrompt() {
+      return `You prepare only the continuation controls for the final turn of an imported Infinite Worlds story.
+Return ONLY valid JSON. Do not wrap it in markdown. Do not include comments or extra keys.
+
+Required JSON shape:
+{
+  "image_prompt": "A vivid prompt for one safe scene illustration of the final imported turn. No text, logos, UI, captions, or watermarks.",
+  "choices": ["exactly four distinct next actions"]
+}
+
+Rules:
+- Treat every imported action and outcome as established canon. Do not rewrite or summarize the final outcome.
+- Generate exactly four useful choices that continue from the END of the final imported outcome.
+- Generate one image_prompt for the most visually important moment in the final imported outcome.
+- Keep the image prompt suitable for normal image providers. If the source is mature, imply restricted sexual or graphic details rather than depicting them explicitly.
+- Do not generate scratchpad text, tracker updates, narration, world fields, or any other metadata.`;
+    }
+
+    function buildQuickImportedStoryFinalTurnPrompt(parsedStory, sourceTurn, importIndex) {
+      return JSON.stringify({
+        task: "Generate exactly four continuation choices and one image prompt for the final turn of a directly imported Infinite Worlds story.",
+        import_position: importIndex + 1,
+        source_turn_number: sourceTurn.turnNumber,
+        world: compactWorldForPrompt(),
+        source_story_background: truncateText(parsedStory.storyBackground || "", 5000),
+        source_character: truncateText(importedStoryCharacterText(parsedStory) || parsedStory.characterText || "", 2500),
+        recent_imported_history: state.turns.slice(-8).map(t => compactTurnForPrompt(t, PROMPT_LIMITS.narration)),
+        final_imported_turn: {
+          action: truncateText(sourceTurn.action || (importIndex === 0 ? firstActionForNewAdventure() : "Continue."), PROMPT_LIMITS.action),
+          outcome: truncateText(sourceTurn.outcome || sourceTurn.rawBlock || "", 8000)
+        },
+        output_note: "Return only image_prompt and choices. choices must contain exactly four useful next actions."
+      }, null, 2);
+    }
+
+    async function generateQuickImportedFinalTurnMetadata(parsedStory, sourceTurn, importIndex) {
+      return callOpenRouterJson("Infinite Worlds quick story final turn", buildOpenRouterInstructionMessages(
+        quickImportedStoryFinalTurnSystemPrompt(),
+        buildQuickImportedStoryFinalTurnPrompt(parsedStory, sourceTurn, importIndex)
+      ), { temperature: Math.max(0.25, Number(state.settings.temperature ?? 0.85)), max_tokens: 1500, json_retries: 2, no_content_retries: 2 });
+    }
+
     async function generateImageForImportedTurn(turn) {
       if (state.settings.generateImages === false || !turn?.imagePrompt) return;
       turn.imageGenerating = true;
@@ -7698,17 +7810,18 @@ Rules:
     async function importInfiniteWorldsStoryFromText(rawText, sourceName = "") {
       if (busy) return;
       syncFormToState();
-      const missingFields = missingRequiredWorldSetupFields();
-      if (missingFields.length) {
-        showWorldSetupRequiredError(missingFields);
-        return;
-      }
       const parsed = parseInfiniteWorldsStoryText(rawText);
       if (!parsed.turns.length) {
         showMessagePopup("Infinite Worlds story import failed", "I could not find any '-- Turn N --' sections in that file. Export the Infinite Worlds story as a text file, then try again.");
         return;
       }
-      if (state.turns.length && !confirm(`Import ${parsed.turns.length} Infinite Worlds turns and replace the current story history?`)) return;
+      const missingFields = missingWorldFieldsForImportedStory(parsed);
+      if (missingFields.length) {
+        showWorldSetupRequiredError(missingFields);
+        return;
+      }
+      const characterNote = importedStoryCharacterText(parsed) ? " The Character section will also replace the current player character." : "";
+      if (state.turns.length && !confirm(`Import ${parsed.turns.length} Infinite Worlds turns and replace the current story history?${characterNote}`)) return;
 
       setInfiniteWorldsImportSpinner("story", true);
       setInfiniteWorldsImportProgress("story", 0, "0% — preparing story import");
@@ -7719,7 +7832,9 @@ Rules:
       state.viewIndex = -1;
       state.baseTrackersAtStart = deepClone(state.defaultTriggers || []);
       state.trackers = cloneDefaultTriggersForCurrentRun();
+      applyImportedStoryCharacter(parsed);
       markUnsavedForFullExport();
+      syncStateToForm();
       renderAll();
       saveState();
 
@@ -7775,6 +7890,118 @@ Rules:
       } finally {
         setInfiniteWorldsImportSpinner("story", false);
         setBusy(false);
+      }
+    }
+
+    async function importInfiniteWorldsQuickStoryFromText(rawText, sourceName = "") {
+      if (busy) return;
+      syncFormToState();
+      const parsed = parseInfiniteWorldsStoryText(rawText);
+      if (!parsed.turns.length) {
+        showMessagePopup("Infinite Worlds quick story import failed", "I could not find any '-- Turn N --' sections in that file. Export the Infinite Worlds story as a text file, then try again.");
+        return;
+      }
+      const missingFields = missingWorldFieldsForImportedStory(parsed);
+      if (missingFields.length) {
+        showWorldSetupRequiredError(missingFields);
+        return;
+      }
+      const characterNote = importedStoryCharacterText(parsed) ? " The Character section will also replace the current player character." : "";
+      if (state.turns.length && !confirm(`Quick-import ${parsed.turns.length} Infinite Worlds turns and replace the current story history?${characterNote}`)) return;
+
+      setInfiniteWorldsImportSpinner("story", true);
+      setInfiniteWorldsImportProgress("story", 0, "0% — preparing quick story import");
+      closeInfiniteWorldsImportDialog();
+      state.turns = [];
+      state.scratchpad = "";
+      state.fullHistory = null;
+      state.fullHistoryCompressedThroughTurn = 0;
+      state.viewIndex = -1;
+      state.baseTrackersAtStart = deepClone(state.defaultTriggers || []);
+      state.trackers = cloneDefaultTriggersForCurrentRun();
+      const importedCharacter = applyImportedStoryCharacter(parsed);
+      markUnsavedForFullExport();
+      syncStateToForm();
+      renderAll();
+      saveState();
+
+      try {
+        setBusy(true, `Quick importing ${parsed.turns.length} turns`);
+        let finalTurn = null;
+        for (let i = 0; i < parsed.turns.length; i += 1) {
+          const sourceTurn = parsed.turns[i];
+          const isFinalTurn = i === parsed.turns.length - 1;
+          const copyPercent = Math.min(72, ((i + 1) / parsed.turns.length) * 72);
+          setInfiniteWorldsImportProgress("story", copyPercent, `${Math.round(copyPercent)}% — copying turn ${i + 1}/${parsed.turns.length}`);
+
+          let metadata = { image_prompt: "", choices: [] };
+          if (isFinalTurn) {
+            setBusy(true, "Generating final choices and image prompt");
+            setInfiniteWorldsImportProgress("story", 78, "78% — generating final choices and image prompt");
+            metadata = await generateQuickImportedFinalTurnMetadata(parsed, sourceTurn, i);
+            metadata.image_prompt = metadata.image_prompt || metadata.imagePrompt || "";
+            metadata.choices = Array.isArray(metadata.choices) ? metadata.choices : [];
+            setInfiniteWorldsImportProgress("story", 90, "90% — final continuation controls ready");
+          }
+
+          const action = String(sourceTurn.action || (i === 0 ? firstActionForNewAdventure() : "Continue.")).trim();
+          const turn = normalizeTurnResult({
+            narration: sourceTurn.outcome || sourceTurn.rawBlock || "",
+            image_prompt: metadata.image_prompt || "",
+            choices: metadata.choices || [],
+            scratchpad: state.scratchpad || "",
+            tracker_updates: []
+          }, action, null);
+          if (!isFinalTurn) {
+            turn.imagePrompt = "";
+            turn.imageUrl = "";
+            turn.imageError = "";
+            turn.choices = [];
+          }
+          turn.importedFrom = {
+            source: "Infinite Worlds",
+            mode: "quick",
+            sourceFileName: sourceName || "",
+            sourceTurnNumber: sourceTurn.turnNumber,
+            importedAt: nowIso()
+          };
+          setTurnStateSnapshot(turn, state.scratchpad, state.trackers);
+          state.turns.push(turn);
+          finalTurn = turn;
+        }
+
+        state.viewIndex = state.turns.length - 1;
+        renderAll();
+        saveState();
+        if (finalTurn) {
+          await waitForTurnNarrationDisplayed(finalTurn);
+          setInfiniteWorldsImportProgress("story", 94, `94% — ${state.settings.generateImages === false ? "leaving final image blank" : "generating final image"}`);
+          await generateImageForImportedTurn(finalTurn);
+        }
+        setInfiniteWorldsImportProgress("story", 100, "100% — quick story import complete");
+        markUnsavedForFullExport();
+        renderAll();
+        saveState();
+        const characterMessage = importedCharacter ? " The exported character was loaded into World Setup." : "";
+        const imageMessage = state.settings.generateImages === false ? " The final image prompt was generated; image generation is disabled." : " The final image was generated when possible.";
+        toast(`Quick-imported ${parsed.turns.length} Infinite Worlds turns. Earlier turns have blank images and choices; the final turn has four choices and an image prompt.${imageMessage}${characterMessage}`, 11000);
+      } catch (err) {
+        console.error(err);
+        showMessagePopup("Infinite Worlds quick story import stopped", explainWorldGenerationError(err), 12000);
+      } finally {
+        setInfiniteWorldsImportSpinner("story", false);
+        setBusy(false);
+      }
+    }
+
+    async function importInfiniteWorldsQuickStoryFile(file) {
+      if (!file) return;
+      try {
+        const text = await readFileAsText(file);
+        await importInfiniteWorldsQuickStoryFromText(text, file.name || "");
+      } catch (err) {
+        setInfiniteWorldsImportSpinner("story", false);
+        showMessagePopup("Quick story file read failed", err?.message || String(err || "Something went wrong."));
       }
     }
 
@@ -8038,7 +8265,16 @@ Rules:
       addClick("btnRestartGettingStarted", restartGettingStartedDialogue);
       addClick("btnOpenInfiniteWorldsImport", () => { closeMenu(); openInfiniteWorldsImportDialog(); });
       addClick("btnCloseInfiniteWorldsImport", closeInfiniteWorldsImportDialog);
+      addClick("btnInfiniteWorldLoadWorldFile", () => {
+        closeInfiniteWorldsImportDialog();
+        $("worldImportFile")?.click();
+      });
+      addClick("btnInfiniteWorldLoadWorldText", () => {
+        closeInfiniteWorldsImportDialog();
+        openWorldTextImportDialog();
+      });
       addClick("btnInfiniteWorldImportWorld", () => $("infiniteWorldImportWorldFile")?.click());
+      addClick("btnInfiniteWorldQuickImportStory", () => $("infiniteWorldQuickImportStoryFile")?.click());
       addClick("btnInfiniteWorldImportStory", () => $("infiniteWorldImportStoryFile")?.click());
       addClick("btnCloseModelSettings", closeModelSettingsDialog);
       addClick("btnModelSettingsDone", closeModelSettingsDialog);
@@ -8153,6 +8389,7 @@ Rules:
       $("btnLoadWorldText").addEventListener("click", () => openWorldTextImportDialog());
       $("worldImportFile").addEventListener("change", e => { if (e.target.files?.[0]) importWorld(e.target.files[0]); e.target.value = ""; });
       $("infiniteWorldImportWorldFile")?.addEventListener("change", e => { if (e.target.files?.[0]) importInfiniteWorldsWorldFile(e.target.files[0]); e.target.value = ""; });
+      $("infiniteWorldQuickImportStoryFile")?.addEventListener("change", e => { if (e.target.files?.[0]) importInfiniteWorldsQuickStoryFile(e.target.files[0]); e.target.value = ""; });
       $("infiniteWorldImportStoryFile")?.addEventListener("change", e => { if (e.target.files?.[0]) importInfiniteWorldsStoryFile(e.target.files[0]); e.target.value = ""; });
       $("btnWorldTextImportCancel").addEventListener("click", closeWorldTextImportDialog);
       $("btnWorldTextImportConfirm").addEventListener("click", () => importWorldFromText($("worldTextImportEditor").value));

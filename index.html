@@ -933,6 +933,69 @@
       line-height: 1.45;
     }
 
+
+
+    .name-correction-mode-grid,
+    .name-correction-strategy-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 9px;
+    }
+
+    .name-correction-strategy-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+    .name-radio-card {
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      min-height: 64px;
+      padding: 11px;
+      border: 1px solid rgba(255,255,255,.13);
+      border-radius: 14px;
+      background: rgba(255,255,255,.04);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .name-radio-card input { width: auto; margin-top: 3px; }
+    .name-radio-card span { display: grid; gap: 3px; }
+    .name-radio-card strong { color: #fff; font-size: .9rem; }
+    .name-radio-card small { color: var(--dim); font-size: .76rem; line-height: 1.35; }
+
+    .name-map-groups { display: grid; gap: 10px; }
+    .name-map-groups details > div { padding-top: 2px; }
+    .name-map-grid { display: grid; gap: 7px; }
+
+    .name-map-row {
+      display: grid;
+      grid-template-columns: minmax(110px, .85fr) auto minmax(150px, 1.15fr);
+      gap: 8px;
+      align-items: center;
+    }
+
+    .name-map-source {
+      color: var(--muted);
+      font-size: .84rem;
+      overflow-wrap: anywhere;
+    }
+
+    .name-map-arrow { color: var(--gold2); font-weight: 850; }
+    .name-map-row input { min-height: 38px; padding: 8px 10px; }
+    .name-correction-status { white-space: pre-wrap; line-height: 1.45; }
+    .custom-name-source-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .custom-name-source-grid textarea { min-height: 118px; }
+
+    @media (max-width: 680px) {
+      .name-correction-mode-grid,
+      .name-correction-strategy-grid,
+      .custom-name-source-grid { grid-template-columns: 1fr; }
+      .name-map-row { grid-template-columns: minmax(90px, .8fr) auto minmax(120px, 1.2fr); }
+    }
+
     .footer-note {
       margin-top: 18px;
       color: var(--dim);
@@ -972,6 +1035,7 @@
           <button id="btnExportMarkdown" type="button" role="menuitem">Export to Markdown</button>
           <button id="btnExportHtml" type="button" role="menuitem">Export to HTML</button>
           <button id="btnOpenModelSettings" type="button" role="menuitem">Model Settings</button>
+          <button id="btnOpenNameCorrection" type="button" role="menuitem">Name Correction</button>
           <button id="btnOpenEditState" type="button" role="menuitem">Edit State</button>
           <button id="btnRestartGettingStarted" type="button" role="menuitem">Restart Getting Started Dialogue</button>
           <button id="btnOpenInfiniteWorldsImport" type="button" role="menuitem">Import from Infinite Worlds</button>
@@ -1376,6 +1440,96 @@
     </form>
   </dialog>
 
+
+
+  <dialog id="nameCorrectionDialog" class="world-gen-dialog app-dialog wide-dialog">
+    <div class="world-gen-card">
+      <div class="dialog-header">
+        <div>
+          <h3>Name Correction</h3>
+          <p class="mini">Replace recurring LLM-favored names after text generation and before the result is shown.</p>
+        </div>
+        <button id="btnCloseNameCorrection" class="small ghost" type="button" aria-label="Close name correction">✕</button>
+      </div>
+      <div class="dialog-scroll stack">
+        <div class="world-gen-box stack">
+          <h4 style="margin:0;color:#fff;">Correction mode</h4>
+          <div class="name-correction-mode-grid" role="radiogroup" aria-label="Name correction mode">
+            <label class="name-radio-card"><input type="radio" name="nameCorrectionMode" value="dumb"><span><strong>Dumb Correction</strong><small>Fast local replacement based directly on the bundled name changer.</small></span></label>
+            <label class="name-radio-card"><input type="radio" name="nameCorrectionMode" value="smart"><span><strong>Smart Correction</strong><small>Runs the local pass, then asks the Story LLM to repair nicknames, initials, variants, and false positives.</small></span></label>
+            <label class="name-radio-card"><input type="radio" name="nameCorrectionMode" value="off"><span><strong>Off</strong><small>Show generated names exactly as returned.</small></span></label>
+          </div>
+        </div>
+
+        <div class="world-gen-box stack">
+          <h4 style="margin:0;color:#fff;">Replacement method</h4>
+          <div class="name-correction-strategy-grid" role="radiogroup" aria-label="Name replacement method">
+            <label class="name-radio-card"><input type="radio" name="nameCorrectionStrategy" value="random"><span><strong>Random (Rotating, No Reuse)</strong><small>Given names and family names are mapped independently within each generated response. Repeated source tokens stay consistent in that response, then rotate again in later responses.</small></span></label>
+            <label class="name-radio-card"><input type="radio" name="nameCorrectionStrategy" value="one-to-one"><span><strong>1-for-1</strong><small>Uses the editable source-to-replacement table below.</small></span></label>
+          </div>
+          <label>Replacement culture
+            <select id="nameCorrectionCulture"></select>
+          </label>
+        </div>
+
+        <div class="world-gen-box stack">
+          <div>
+            <h4 style="margin:0;color:#fff;">Additional names to replace</h4>
+            <p class="mini">Add personal given names or family names that are not in the bundled common-LLM lists. Separate entries with commas, semicolons, or new lines. These names are saved with the story and are included automatically in the 1-for-1 table.</p>
+          </div>
+          <div class="custom-name-source-grid">
+            <label>Male personal names
+              <textarea id="nameCorrectionCustomMale" placeholder="e.g. Dorian&#10;Finn&#10;Milo"></textarea>
+            </label>
+            <label>Female personal names
+              <textarea id="nameCorrectionCustomFemale" placeholder="e.g. Celeste&#10;Freya&#10;Iris"></textarea>
+            </label>
+            <label>Family names
+              <textarea id="nameCorrectionCustomFamily" placeholder="e.g. Everhart&#10;Moon&#10;Winters"></textarea>
+            </label>
+          </div>
+          <div class="row wrap">
+            <button id="btnApplyCustomNameSources" class="small accent" type="button">Apply additional names</button>
+            <span id="nameCorrectionCustomCount" class="mini"></span>
+          </div>
+        </div>
+
+        <div id="nameCorrectionRandomPanel" class="world-gen-box stack">
+          <div class="row wrap">
+            <div class="grow">
+              <h4 style="margin:0;color:#fff;">Rotating mapping history</h4>
+              <p class="mini">Existing destination names in the current story are skipped. Each category uses the maximum unique Faker pool available, capped at 200, and loops after that category is exhausted.</p>
+            </div>
+            <button id="btnResetNameCorrectionHistory" class="small danger" type="button">Reset rotation history</button>
+          </div>
+        </div>
+
+        <div id="nameCorrectionOneToOnePanel" class="world-gen-box stack hidden">
+          <div class="row wrap">
+            <div class="grow">
+              <h4 style="margin:0;color:#fff;">1-for-1 replacement table</h4>
+              <p class="mini">Every bundled and player-added source name is listed. Personal names are divided by sex and initialized from the corresponding Faker pool.</p>
+            </div>
+            <button id="btnRerandomizeNameMappings" class="small accent" type="button">Rerandomize 1-for-1 names</button>
+          </div>
+          <div class="name-map-groups">
+            <details open><summary>Male personal names</summary><div id="nameMapMale" class="name-map-grid"></div></details>
+            <details><summary>Female personal names</summary><div id="nameMapFemale" class="name-map-grid"></div></details>
+            <details><summary>Family names</summary><div id="nameMapFamily" class="name-map-grid"></div></details>
+          </div>
+        </div>
+
+        <div class="world-gen-box stack">
+          <h4 style="margin:0;color:#fff;">Current status</h4>
+          <p id="nameCorrectionStatus" class="mini name-correction-status">Name correction is off.</p>
+        </div>
+      </div>
+      <div class="row wrap dialog-actions">
+        <button id="btnNameCorrectionDone" class="primary" type="button">Done</button>
+      </div>
+    </div>
+  </dialog>
+
   <dialog id="characterSelectDialog" class="world-gen-dialog app-dialog wide-dialog">
     <div class="world-gen-card">
       <div class="dialog-header">
@@ -1619,6 +1773,36 @@
       { id: "charm", name: "Charm", value: 50, note: "Persuasion, empathy, deception, and social grace." },
       { id: "magic", name: "Magic", value: 50, note: "Spellcasting, arcane theory, rituals, and supernatural senses." }
     ];
+
+
+    const NAME_CORRECTION_SOURCE_MALE = ["Adrian", "Adrien", "Aiden", "Alaric", "Aldric", "Aris", "Asher", "Cael", "Caelum", "Cassian", "Damian", "Daniel", "David", "Elian", "Elias", "Enzo", "Ethan", "Gareth", "Garrick", "James", "Kael", "Kaelan", "Kaelen", "Kai", "Kenji", "Leo", "Lucian", "Lucien", "Lysander", "Marcus", "Michael", "Nathan", "Orion", "Rowan", "Sebastian", "Silas", "Sol", "Thomas", "Torren", "Valerian", "Valerius", "Vax", "Victor"];
+    const NAME_CORRECTION_SOURCE_FEMALE = ["Amara", "Anya", "Aria", "Astra", "Catherine", "Charlotte", "Claire", "Clara", "Echo", "Elara", "Eleanor", "Elena", "Elise", "Elowyn", "Ember", "Emily", "Emma", "Eva", "Isla", "Kestrel", "Kira", "Lena", "Lila", "Lily", "Liora", "Lirael", "Lumen", "Luna", "Lydia", "Lyra", "Lysandra", "Maeve", "Mara", "Maya", "Mia", "Mira", "Nimbus", "Nova", "Nyx", "Phoenix", "Raven", "Rune", "Sage", "Sarah", "Seraphina", "Seraphine", "Zara"];
+    const NAME_CORRECTION_SOURCE_FAMILY = ["Ashford", "Ashworth", "Blackthorne", "Blackwell", "Blackwood", "Calder", "Castellan", "Castellanos", "Chen", "Cole", "Cross", "Fairfax", "Frost", "Hale", "Hargreaves", "Hartley", "Hartwell", "Hayes", "Kincaid", "Knox", "Kowalski", "Marchetti", "Marsh", "Mercer", "Moretti", "Morrison", "Nakamura", "Okafor", "Okonkwo", "Petrova", "Pierce", "Quinn", "Reed", "Reid", "Rivers", "Rodriguez", "Rostova", "Sato", "Sharma", "Shaw", "Silverwood", "Stone", "Tanaka", "Thorne", "Vale", "Vance", "Vasquez", "Vex", "Volkov", "Voss", "Wandermere", "Wanderstaff", "Wayfarer", "Wayfinder", "Wayward", "Westwood", "Whitby"];
+    const NAME_CORRECTION_POOLS = {"meta":{"seed":20260724,"max_per_list":200,"generator":"Faker 40.1.2","source_lists_filtered":true,"blocked_source_name_count":147},"cultures":{"american":{"label":"American mix (US/UK English with Mexican surnames)","locales":["en_US","en_GB","es_MX"],"male":["Lee","Dave","Conrado","Abilio","Ariel","Custodio","Alexis","Allan","Connor","Dakota","Prudencio","Nicholas","Roger","Jose Francisco","Fred","Rickey","Guiomar","Mason","Preston","Ildefonso","Darren","Jimmy","Gavin","Donald","Juan","Ambrosio","Joe","Devin","Jim","Jordán","Lonnie","Carl","Brent","Tom","Steve","Jose Miguel","Gabriel","Patrick","Alexander","Nicodemo","William","Sam","Dustin","Domingo","Bernardino","Fernando","Dennis","Clifford","Isidro","Billy","Gregory","Larry","Carlos","Collin","Bryan","Leroy","Antonio","Herberto","Gilbert","Sean","Adelardo","Ramiro","Seth","Esteban","Craig","Wyatt","Rick","Carlito","Leslie","Hugo","Duilio","Juan Antonio","Alejandro","Brendan","Pedro","Steven","Jeremy","Bruce","Owen","Curtis","Ernest","Nicolás","Samuel","Reece","Bernard","Randy","Ignacio","Eusebio","Zachary","Allen","Colton","Agapito","Howard","Ricardo","Garrett","Micheal","Feliciano","Teo","Daryl","Bonifacio","Segismundo","Adam","Gordon","Gastón","Ian","Nazaret","Dani","Peter","Mohamed","Kenneth","Max","Gerónimo","Eliseo","Alberto","Quique","Ruy","Rodrigo","Jose Antonio","Martin","Trinidad","Aaron","Phillip","Alejo","Lupe","Miguel Ángel","Dan","Sergio","Geoffrey","Barry","Edelmiro","Emiliano","Kevin","Joshua","Jackson","Anastasio","Franklin","Eleuterio","Leon","Wálter","Chase","Kristopher","Leigh","María","Dale","Derek","Harold","Grant","Erik","Duane","Troy","Jesus","Brian","Shane","Shaun","Maximiliano","Vasco","Maximiano","Danny","Garry","Mariano","Wesley","Richard","Mario","Benjamín","Roy","Reyes","Luis Ángel","Warren","Terry","Eustaquio","Luciano","Paul","Gonzalo","Carmelo","Caleb","Jason","Óscar","Elijah","Stuart","Mathew","Willie","Emilio","Amado","Hayden","Darryl","Johnny","Jay","Wayne","Albino","Vernon","Jaime","Neil","Mitchell","Karl","Ryan","Néstor","Abel","Xavier","Darin","Angelino"],"female":["Joyce","Graciana","Terri","Sheri","Lauren","Tanya","Blanca","Georgia","Shari","Jenny","Kendra","Heather","Janice","Jacinta","Joan","Jeanette","Helen","Kara","Laura","Andrea","Gail","Rebekah","Melanie","Belen","Wanda","Pascuala","Cheryl","Rosalina","Loretta","Leah","Lorraine","Tracie","Toni","Jackie","Mallory","Lorenza","Alma","Kelly","Belinda","Hannah","Encarnacion","Purificación","Teófila","Liliana","Stephanie","Eufemia","Estela","Deborah","Rose","Emelina","Kayla","Wendy","Robin","Rocío","Jody","Carrie","Ramona","Tami","Allison","Beth","Genoveva","Dionisia","Gillian","Theresa","Donna","Patricia","Ellen","Raquel","Paz","Connie","Darlene","Abigail","Michele","Tammie","Luisina","Delia","Constanza","Maureen","Diana","Melissa","Alicia","Teresa","Rachel","Audrey","Rosa","Natasha","Nicola","Monica","Jill","Vicki","Coral","Nadia","Charlene","Amber","Shawna","Daniela","Kristen","Annette","Alondra","Rebecca","Debra","Elaine","Antonia","Carol","Miranda","Brenda","Meagan","Brianna","Judith","Brooke","Ariel","Eusebia","Ruth","Mary","Nydia","Doris","Cheyenne","Holly","Latasha","Rhonda","Irene","Madison","Sonia","Katrina","Chelsey","Encarna","Sylvia","Joy","Leyre","Tara","Molly","Tonya","Jayne","Azahar","Manola","April","Loida","Anna","Emperatriz","Priscilla","Jessica","Glenda","Diamond","Ana","Javiera","Martha","Samantha","Aimee","Noemí","Kimberly","Destiny","Margarita","Concepción","Kelli","Merche","Haley","Karen","Faith","Sabina","Alison","Flavia","Lucy","Linda","Nieves","Pamela","Carolyn","Marisa","Carolina","Hailey","Gabrielle","Kerry","Emilia","Megan","Bonnie","Sophie","Jemma","Elizabeth","Casey","Gisela","Delfina","Christine","Ainara","Katie","Breanna","Apolonia","Evangelina","Rita","Diane","Betty","Suzanne","Brittany","Michelle","Geraldine","Socorro","Odalys","Yesenia","Jennifer","Eulalia","Stacy","Ashlee"],"family":["Berg","Hernandes","Chávez","Erickson","Maldonado","Mora","Lowe","Cruz","Bell","Terrazas","Guzman","Mota","Stokes","Garner","Copeland","Rice","Santana","Villanueva","Hinton","Villalpando","Fowler","Odonnell","York","Turner","Lynn","Romo","Hewitt","Leonard","Craig","Chambers","de León","Dominguez","Frías","Connolly","Bolton","Watts","Velázquez","Dorsey","Miramontes","Vaughan","Cabán","Bradley","Páez","Shaffer","Juarez","Sampson","Livingston","Hughes","Sanderson","Bennett","Méndez","Sotelo","Wilcox","Stout","Ware","Griffin","Espinosa","Delgado","Alejandro","Harris","Archer","Caraballo","Stanton","Pantoja","Pope","Reese","Sepúlveda","Anderson","Farmer","Perkins","Luevano","Almanza","Colon","Sheppard","Zavala","Moreno","McLean","Holmes","Fraser","Jurado","Howell","Ramos","Osborn","Magaña","Perry","Lopez","Huynh","Reyna","Norris","Quiroz","Massey","Cordero","Berry","Sánchez","Ross","Callahan","Wu","Schwartz","Wilkins","Abbott","Glover","Hurst","Nunez","Tafoya","Santos","Gaitán","Fernandez","Wood","Figueroa","Llamas","Toledo","Short","Frey","Rowe","Friedman","Scott","Ojeda","Ceja","Conrad","Covarrubias","Irwin","Hoffman","Cuellar","Ozuna","Pacheco","Cardenas","Young","Arguello","Orellana","Guerra","Sáenz","Tyler","Jaimes","Murphy","Zamudio","Cain","Barragán","Nicholson","Brito","King","Valadez","Pace","Gardner","Mcmillan","Hunt","Botello","Mccullough","Jordan","Camarillo","Conway","Jackson","Melendez","Butcher","Lee","Naylor","Ramsey","Potts","Hogan","Murray","Vaughn","Barrientos","Ocasio","Madrid","Hubbard","Delacruz","Singleton","Waters","Pearson","Bibi","Lyons","Bryant","Cortez","Santiago","Marshall","Sullivan","Newman","Meza","Rivero","Chapman","Humphrey","Sharp","Rangel","Ali","Brewer","Galván","Parsons","Aguilar","Brennan","Stevens","Valencia","Allan","Matthews","Peralta","Foster","Lucio","de la Garza","Fajardo","Carson","Rees","Coronado"]},"arabic-gulf":{"label":"Arabic Gulf","locales":["ar_SA","ar_AE","ar_BH"],"male":["Javier","Chris","عبّاس","مكّي","مرتجي","شكيب","ساجد","Luis","جابر","Gerald","قاسم","Stuart","نوّار","زاكي","Jared","Preston","Jeff","Zachary","خلوصي","وسيل","Alvin","Darryl","فادي","ناصر الدّين","Kyle","Blake","Leonard","حسن","رشدي","Christopher","رستم","Dean","طائل","نجم الدّين","Wesley","عدلي","حاتم","حسنين","فداء","Shannon","عائد","Cristian","عبد الرّحيم","شامخ","صعب","عاتب","رجاء","فاتح","زكي","Walter","Reginald","صبيح","Glen","مُتيّم","كليم","فتحي","Brad","غازي","محفوظ","هلال","سليمان","Damon","Allen","Devon","Francis","نشأت","رابح","Mason","Colton","رباح","ظاعن","Timothy","Alexis","Dylan","Jeffery","سنام","Raymond","كاشف","عرفان","Glenn","علاء الدّين","Chad","حنبل","ياسر","Frederick","مرادي","مَجدي","نجوان","Gavin","عتيق","عثمان","Travis","توفيق","ترف","لؤي","Kenneth","Ricky","صباح","Bobby","يمام","كبير","Micheal","Cameron","وائل","تقيّ الدّين","Randall","مصطفى","Darius","Matthew","Jake","وجيه","Kent","Tracy","حسيب","هيمان","عربي","Tristan","رفيق","Stanley","سرحان","Jim","سهيل","Alec","Roy","Noah","صنديد","راشد","Nicholas","تحسين","Darin","Randy","Howard","نصور","Paul","طلعت","مُسعف","Johnathan","رضوان","صائب","Brandon","Dale","Colin","كنان","Benjamin","Austin","حمّاد","حبّاب","عاطف","طموح","مازن","Eugene","معمّر","Andrew","Shawn","ثاقب","Gene","راوي","Manuel","راضي","رازي","Todd","صدقي","فاضل","Caleb","كاسر","Rick","حقّي","Karl","Eddie","Alex","William","عبد الجليل","Arthur","Tim","Melvin","عبد الحيّ","عذب","واثق","Joseph","Brett","Mathew","Marc","ظافر","Rickey","فدائي","Bryan","Henry","نذير","Terrence","Samuel","لمّاح","فيصل","Barry","لهفان","عبد القادر","Wyatt","معارف","رحيب","لبيد","Jimmy"],"female":["Jean","عتاب","Patricia","ترف","Jillian","Diana","أحلام","Aimee","ايمان","Miranda","Janet","Karina","Valerie","Robin","Veronica","جهراء","ريناد","Kristi","Julia","جمان","ريتاج","باهرة","Maria","وصاف","افتكار","Shari","Bonnie","ليساء","روبين","كرمة","بدرالدّجى","Adrienne","Lynn","لانا","ضحى","ربى","عالية","Kari","Cristina","أزهار","ميرال","Morgan","ريان","نشوة","جوريّة","هند","ليم","Hailey","Sonya","Rachael","جوين","لوليا","ميار","Deanna","Doris","Caroline","لارا","Kristie","Loretta","Terry","Crystal","Kathryn","ديمه","Diane","Jennifer","لتين","حياة","ريف","Sheryl","ناهد","جوان","Jasmine","هاجر","Donna","Melody","ريمان","بلقيس","فردوس","Makayla","مايا","Connie","Pamela","Paige","هايدي","Mandy","Gail","بيسان","ماذى","Rose","ميرا","Alison","Kelly","Laura","دانة","نغم","Karen","Lisa","فداء","Darlene","غوى","جلنار","جنى","بهجة","يارا","أروى","رواء","Tracie","Shawna","Kaylee","Jordan","Tiffany","Tanya","Jody","ريتال","ابتهال","Christine","سجا","بتلاء","نوره","ترانيم","Jocelyn","Stacy","Kara","شهد","Kellie","Christina","Meredith","ريم","Katrina","سبأ","Linda","جود","إباء","سلسبيل","أريج","Yvonne","بشرى","لوجين","Candice","أناهيد","زكية","ياسمين","Frances","Faith","Tammie","بلسم","Shelley","هيا","Victoria","Ellen","أجوان","Beth","Rita","روبا","Carrie","Carmen","ميلاء","Tami","Diamond","Marie","Deborah","Gloria","مريم","اعتماد","Cheryl","باسمة","Bianca","ناديه","سلاف","Julie","Pam","جيلان","Kerri","دعاء","Abigail","Shelia","بلماء","Kristy","بلند","خاشعة","سديم","Jamie","بتول","لينا","بهية","بارعة","ابتسام","جالا","Nancy","آلاء","Karla","حلا","جوانا","تاليا","إلينا","ريما","Brenda","Kathleen","ابتهاج","Marisa"],"family":["Hodges","Howard","Porter","آل مقطة","Park","Koch","الخرافي","بقشان","Villa","آل محمد بن علي بن جماز","Andrade","بن لادن","آل صفوان","آل خضير","آل عواض","آل معيض","Mcgrath","Mahoney","آل العسكري","العجلان","Cochran","آل قصير","Webb","Mercado","المهيدب","المهنا","الحكير","Crawford","أبا الخيل","العليان","حنبولي","Chase","Valdez","Herman","May","المشاولة","آل سلطان","الشايع","Castaneda","Wyatt","Pearson","Kent","Mullins","آل رفيع","العقيل","Solis","أبو داوود","Travis","آل عايض","Henderson","آل الشيخ","Huber","Holden","Tate","آل حسين","المغاولة","آل عطفة","كانو","Smith","آل بن لافي","Rocha","Campos","آل علي","الجابر","آل سعود","آل جعفر","الراشد","مهنا","الجفالي","حجار","Costa","Arnold","الدباغ","شربتلي","آل بن ظافر","Martin","Lang","الحجار","فصيل","Francis","Dougherty","Pratt","Perez","Singleton","Carpenter","Whitehead","Jensen","Cortez","Wilkerson","Horn","Price","Avery","Pollard","Foster","Valentine","Bray","Hooper","Wolf","Salazar","Hartman","Anderson","Burns","Bennett","Barber","Bauer","Mcdowell","Kidd","Salas","Duarte","Gibbs","Raymond","Saunders","Murray","Leblanc","Carey","Holland","Schaefer","Montgomery","Harrington","Valenzuela","Frazier","Galloway","Conway","Meyers","Bailey","Scott","Oneill","Rowe","Joyce","Li","Glass","Hays","Carrillo","Bond","Phillips","Cervantes","Meyer","Waller","Watson","Mathis","Banks","Preston","Griffith","Escobar","Lamb","Yoder","Greer","Braun","Poole","Wong","Rivera","Kelley","Mora","Best","Eaton","Jacobson","Ponce","Odom","Warren","Owens","Peck","Prince","Dennis","Mccarthy","Gregory","Humphrey","Hanson","Mcgee","Bradford","Mcconnell","Abbott","Dillon","Brown","Bullock","Davidson","Stokes","Ware","Duke","Mosley","Patton","Watkins","Zhang","Munoz","Mitchell","Waters","Walsh","Sampson","Petersen","Durham","Farley","Powell","Hogan","Gallegos","Cabrera","Calderon","Mccarty","Lyons","French","Morrow","Bates"]},"brazilian":{"label":"Brazilian Portuguese","locales":["pt_BR"],"male":["Luigi","Ravy","Marcelo","Noah","João Vitor","Kevin","Augusto","Otto","José Miguel","Anthony","Ravi","Dante","Kaique","Bryan","Ravi Lucca","Renan","Pedro Henrique","Francisco","Lucas","Samuel","Danilo","Levi","Davi","João Gabriel","Marcos Vinicius","Luiz Fernando","Guilherme","Raul","Gael","Calebe","João","Yan","Igor","Thiago","Davi Luiz","Gabriel","Diego","Vinicius","João Miguel","Vitor Gabriel","Eduardo","José","Bruno","Leandro","Ryan","Apollo","Yuri","Benicio","Henry Gabriel","Arthur Miguel","Oliver","Gael Henrique","Theodoro","Lucca","Benjamim","Vitor","Bento","Ian","Valentim","Nicolas","Davi Miguel","Brayan","João Guilherme","Vicente","Caleb","Henrique","Anthony Gabriel","Matheus","Bernardo","Felipe","Rhavi","Benjamin","Gustavo","Antony","Antônio","Mathias","Luiz Henrique","Rodrigo","Arthur Gabriel","Erick","Rafael","Joaquim","Fernando","Miguel","Luiz Miguel","Arthur","Rael","João Lucas","Theo","Vitor Hugo","Luiz Otávio","Yago","Pedro Lucas","Asafe","Enrico","Isaac","Luan","Heitor","Emanuel","Isaque","José Pedro","Alexandre","Matteo","Murilo","Josué","Gustavo Henrique","Thales","Carlos Eduardo","Mateus","Juan","Breno","Lucas Gabriel","Lorenzo","Cauê","Paulo","Dom","Luiz Felipe","Davi Lucas","Luiz Gustavo","Davi Lucca","João Pedro","Diogo","Liam","João Felipe","Pietro","Cauã","Otávio","Pedro Miguel","André","Henry","Leonardo","Pedro","Caio"],"female":["Jade","Manuela","Alice","Manuella","Bella","Sofia","Isabella","Luiza","Eloá","Rafaela","Helena","Laís","Vitória","Maria Isis","Mariah","Marina","Eduarda","Agatha","Maria Luísa","Nicole","Giovanna","Melina","Alana","Bianca","Ana Carolina","Natália","Maria Alice","Maria Laura","Allana","Cecilia","Aurora","Lunna","Fernanda","Maria Flor","Clarice","Hadassa","Juliana","Maria Liz","Ana Vitória","Esther","Kamilly","Stella","Ester","Elisa","Heloisa","Maysa","Ana Liz","Alexia","Gabriela","Alícia","Daniela","Brenda","Laura","Emilly","Evelyn","Ana","Maria Julia","Isis","Eloah","Mirella","Maria Cecília","Zoe","Lavínia","Nina","Isabel","Beatriz","Ana Lívia","Marcela","Stephany","Maria","Maria Helena","Carolina","Liz","Letícia","Mariana","Maria Eduarda","Gabrielly","Valentina","Julia","Maria Luiza","Mariane","Ana Beatriz","Maria Fernanda","Milena","Luísa","Yasmin","Sabrina","Maria Sophia","Sophia","Catarina","Maitê","Pietra","Antonella","Olivia","Emanuella","Ana Laura","Bruna","Bárbara","Rebeca","Aylla","Ana Julia","Hellena","Sophie","Emanuelly","Caroline","Ana Cecília","Anna Liz","Maria Vitória","Luana","Isabelly","Isadora","Raquel","Camila","Joana","Isabela","Ayla","Lívia","Ana Sophia","Lara","Amanda","Larissa","Lorena","Sara","Melissa","Ana Luiza","Luara"],"family":["Barros","Alves","Nunes","Silveira","Lima","Cavalcante","Montenegro","Costa","Silva","Fonseca","Moreira","Viana","Abreu","Cavalcanti","da Mata","Castro","Barbosa","Guerra","Ramos","Leão","Cirino","da Mota","Sampaio","Oliveira","Pinto","Sousa","Correia","Camargo","Cunha","Jesus","Carvalho","Lopes","da Paz","Moraes","da Cunha","da Rosa","Mendes","Souza","Ferreira","Novaes","Sales","Siqueira","Andrade","Gomes","Freitas","Melo","Dias","Peixoto","Araújo","Ribeiro","Almeida","Cardoso","Azevedo","Nogueira","Fogaça","da Luz","Casa Grande","das Neves","da Costa","Gonçalves","Fernandes","Farias","da Cruz","Monteiro","Garcia","Costela","Porto","Rios","Macedo","Brito","Borges","Cassiano","Marques","Vargas","da Rocha","Mendonça","Rocha","Machado","Vieira","Câmara","Pimenta","Vasconcelos","Moura","Pereira","Novais","Santos","Teixeira","Sá","Pacheco","Pires","Nascimento","Caldeira","Rezende","Duarte","da Conceição","Campos","Pastor","Aparecida","Aragão","Rodrigues","Martins","Albuquerque"]},"british":{"label":"British English","locales":["en_GB"],"male":["Lee","Dale","Josh","Andrew","Harry","Alan","Charles","Ben","Karl","Rhys","Louis","Dylan","Duncan","Dominic","Alex","Cameron","Robin","Garry","John","Russell","Gordon","Leonard","Jacob","Jake","Mohamed","Glen","Donald","Christopher","Francis","Vincent","Phillip","Gary","Eric","Christian","Aaron","Jeffrey","Gregory","Martin","Kevin","Barry","Glenn","Leslie","Nicholas","Joshua","Leigh","Toby","Tony","Roy","Jason","Owen","Ross","Anthony","Leon","Carl","Douglas","Danny","Shane","Trevor","Hugh","Peter","Maurice","Mathew","Lewis","Stuart","Jeremy","Stanley","Gerard","Sean","Terry","Joel","Julian","Mohammed","Dennis","Clifford","Steven","Benjamin","Brett","Reece","Richard","Bernard","Timothy","Elliot","Darren","Mohammad","Gavin","Jordan","Philip","Shaun","Neil","Gerald","Mark","Simon","Kieran","Terence","Stephen","Frank","Nigel","Ricky","Albert","Billy","Wayne","Norman","Craig","Clive","Henry","Declan","Malcolm","Roger","Paul","Tom","Oliver","Frederick","Edward","Joseph","Mitchell","William","Callum","Arthur","Antony","Kenneth","Bryan","Bruce","Joe","Elliott","Raymond","Colin","Kyle","Graeme","Brian","Ian","Justin","Jay","Guy","Stewart","Sam","Matthew","Jamie","Jack","Allan","Liam","Max","Howard","Robert","Alexander","Scott","Marc","Luke","Iain","Jonathan","Bradley","Abdul","Denis","Ronald","Patrick","Charlie","Dean","George","Conor","Derek","Ashley","Geoffrey","Damien","Adam","Lawrence","Connor","Graham","Ryan","Brandon","Martyn","Samuel","Keith"],"female":["Judith","Victoria","Sophie","Donna","Shannon","Kirsty","Hayley","Nicole","Marian","Teresa","Maria","Louise","Harriet","Angela","Kathryn","Melanie","Valerie","Cheryl","Helen","Jill","Danielle","Nicola","Rosie","Annette","Ashleigh","Brenda","Amy","Dorothy","Kim","Elaine","Andrea","Joanne","Debra","Frances","Irene","Maureen","Sian","Beth","Clare","Jacqueline","Denise","Barbara","Stacey","Kate","Jessica","Ruth","Chloe","Leanne","Ellie","Lisa","Jodie","Aimee","Joan","Sheila","Julia","Carol","Carole","Fiona","Francesca","Jasmine","Molly","Pauline","Bethan","Jenna","Julie","Abigail","Patricia","Amelia","Janet","Rachel","Christine","June","Tracey","Wendy","Samantha","Elizabeth","Amanda","Georgina","Hannah","Rachael","Katy","Jemma","Susan","Kimberley","Paula","Bethany","Marilyn","Stephanie","Anna","Lorraine","Hazel","Sylvia","Heather","Tracy","Rita","Margaret","Diane","Karen","Kerry","Natasha","Pamela","Rebecca","Ann","Beverley","Lynne","Kayleigh","Lynn","Sandra","Laura","Katie","Kathleen","Georgia","Tina","Jennifer","Vanessa","Shirley","Holly","Alison","Alice","Marie","Abbie","Carolyn","Geraldine","Gillian","Gail","Jane","Marion","Lindsey","Leah","Suzanne","Josephine","Zoe","Gemma","Katherine","Olivia","Jayne","Charlene","Joyce","Michelle","Grace","Kelly","Sharon","Chelsea","Hilary","Linda","Eileen","Dawn","Amber","Mandy","Melissa","Jade","Janice","Joanna","Deborah","Alexandra","Lauren","Sally","Yvonne","Sara","Jean","Carly","Natalie","Paige","Caroline","Megan","Anne","Hollie","Diana","Lynda","Naomi","Mary","Lucy","Rosemary","Lesley"],"family":["O'Neill","Kemp","Steele","Wheeler","Cox","Bull","Tyler","Ryan","Khan","Ali","Poole","Hart","Naylor","Barnett","Iqbal","Hussain","Goddard","Singh","Warner","Hardy","Kirk","Banks","Gardner","Bolton","Brennan","Bevan","Wall","Giles","Mills","Stephenson","Chandler","Williams","Manning","Webb","Andrews","Connor","Potter","Spencer","Kelly","Dodd","Stanley","Pearce","Atkins","Short","Arnold","Nelson","Pritchard","Barker","Fleming","Todd","Saunders","Kay","Fuller","Wells","Taylor","Dixon","Osborne","Williamson","Chamberlain","Hammond","Metcalfe","Higgins","Grant","Price","Stevenson","Hope","Allan","Adams","Day","Burke","Sheppard","Woods","Davidson","Craig","Whitehead","Rhodes","Long","Russell","Nixon","Bell","Hicks","Green","Vaughan","Turner","Griffin","Archer","Norman","Nicholls","Thornton","Hancock","Mistry","Clark","Moore","Harrison","Stevens","Davis","Perry","Reynolds","Peters","Hamilton","Browne","Boyle","Dean","Finch","Dyer","Wallis","Douglas","Buckley","Murphy","Foster","Parkinson","Lawrence","Jarvis","Mann","Knowles","Miah","Warren","Gregory","Gallagher","Ford","Booth","White","Bartlett","Hutchinson","Parsons","Jordan","Fry","Bryant","Woodward","Willis","Little","Rogers","Patterson","Carter","Talbot","Byrne","Wallace","Clements","Kennedy","Graham","Faulkner","Sharp","Dennis","Simmons","Donnelly","Burton","Hill","Bruce","Brookes","Rees","Hodgson","Thomson","Davey","Chadwick","Bowen","Conway","Johnson","Carr","Barber","Morton","Webster","Howarth","Harvey","Daly","Payne","Pearson","Harding","Turnbull","Watson","Wilson","Johnston","Hall","Field","Stokes","Duncan","Doherty","Allen","Holloway","Richards","Hyde","Smart","Marshall","Whitehouse","Bibi","Rowe","North","Owens","Thompson","Barrett","Baxter","Howe","Daniels","Walker","Read","Goodwin","Pickering","Mahmood","Law","Gordon","Burrows"]},"chinese":{"label":"Chinese (Simplified)","locales":["zh_CN"],"male":["浩","帆","博","建华","勇","雷","岩","刚","龙","凯","鹏","强","利","明","宁","洋","波","涛","文","超","帅","楠","宇","佳","红霞","伟","建国","成","东","飞","亮","磊","建","兵","坤","林","华","俊","旭","建军","鑫","想","辉","杰","晨","杨","欢","阳","瑞","志强","峰","斌","平","彬","建平","军","健"],"female":["玉华","玉梅","静","雪","琴","桂英","玉英","玉","燕","红梅","丽娟","秀梅","欣","倩","红","晶","雪梅","秀荣","丽华","桂芳","桂兰","畅","英","琳","婷婷","丽丽","兰英","敏","玲","桂珍","萍","金凤","云","丹","梅","凤兰","海燕","芳","婷","淑兰","凤英","艳","秀云","玉兰","丽","小红","玉珍","莉","秀兰","霞","桂花","秀芳","璐","秀华","淑英","淑华","颖","荣","莹","瑜","春梅","淑珍","秀英","秀珍","洁","冬梅","柳","慧","桂香","娟","桂荣","娜","桂芝","丹丹"],"family":["祖","凌","银","隋","房","蒲","靳","栗","范","林","玉","盛","章","晏","车","邸","包","芦","成","荣","叶","郎","鄢","董","廖","原","黄","游","纪","吉","裘","臧","逯","祝","吕","伏","宋","邱","慕","植","冶","斯","普","姚","龚","缪","戎","张","严","粟","唐","穆","巫","丛","钟","云","闭","孔","那","和","闵","苟","赵","班","仇","傅","翟","楚","谷","伊","明","武","邬","栾","揭","勾","解","伍","任","漆","易","杨","卿","丰","练","苑","沙","褚","衡","霍","潘","符","来","施","申","奉","羊","师","谌","阙","阮","楼","辛","利","窦","卞","司","向","耿","江","阎","薄","劳","管","幸","艾","况","时","邝","党","荆","简","龙","曲","邹","戴","毕","浦","富","梅","周","宫","蒋","麦","顾","郁","关","权","屈","乌","邓","倪","鲁","束","甄","辜","韦","古","詹","王","敖","呼","修","麻","陈","初","席","秦","梁","邵","俞","贺","诸","景","全","虞","韩","盖","冷","萧","彭","莫","娄","汪","魏","郝","欧","安","厉","焦","雍","徐","苗","仲","齐","茅","鹿","单","史","柳","尧","居","赖","孟","万","胡","殷","茹","吴","蔺"]},"french":{"label":"French","locales":["fr_FR"],"male":["Gilles","Guy","Bertrand","Xavier","Éric","Arthur","Jules","Charles","Thibaut","Eugène","Sébastien","Robert","Philippe","Hugues","Aimé","Stéphane","William","Yves","Édouard","Emmanuel","Matthieu","Rémy","Alphonse","Richard","André","Thibault","Maurice","Gilbert","Roland","Marcel","Gabriel","Benoît","Étienne","Alfred","Émile","Lucas","Théodore","Denis","René","Alexandre","Grégoire","Léon","Franck","Jérôme","Jacques","Thierry","Timothée","Patrick","Guillaume","Auguste","Paul","Vincent","Noël","Alain","Tristan","Louis","François","Olivier","Gérard","Georges","Raymond","Benjamin","Roger","Frédéric","Michel","Nicolas","Julien","Augustin","Christophe","Marc","Honoré","Théophile","Henri","Pierre","Bernard","Laurent","Martin","Zacharie","Isaac","Luc","Antoine","Joseph","Jean"],"female":["Adélaïde","Dominique","Simone","Hortense","Stéphanie","Patricia","Émilie","Olivie","Chantal","Claude","Dorothée","Mathilde","Capucine","Célina","Océane","Anne","Céline","Margaret","Adrienne","Christine","Marcelle","Odette","Jacqueline","Cécile","Nath","Audrey","Alexandria","Jeanne","Michèle","Arnaude","Valentine","Monique","Laurence","Christiane","Marine","Victoire","Élisabeth","Martine","Bernadette","Noémi","Philippine","Anaïs","Diane","Aurore","Julie","Clémence","Danielle","Maggie","Frédérique","Alexandrie","Sylvie","Marthe","Isabelle","Sophie","Gabrielle","Margot","Emmanuelle","Laure","Aimée","Corinne","Véronique","Michelle","Astrid","Lucy","Marie","Paulette","Anastasie","Suzanne","Zoé","Amélie","Christelle","Maryse","Agnès","Lorraine","Susan","Pauline","Thérèse","Aurélie","Claudine","Françoise","Pénélope","Denise","Marguerite","Alice","Susanne","Agathe","Geneviève","Margaud","Joséphine","Alex","Margaux","Andrée","Renée","Valérie","Sabine","Antoinette","Brigitte","Jeannine","Colette","Constance","Élodie","Camille","Inès","Adèle","Henriette","Alix","Louise","Lucie","Manon","Virginie","Caroline","Luce","Édith","Nathalie","Madeleine","Nicole","Hélène","Anouk","Laetitia","Juliette","Marianne","Josette","Éléonore"],"family":["Marty","Marion","Fernandez","Colin","Allard","Blot","Germain","Martinez","Rémy","Leconte","Rousset","Faure","Diaz","Fleury","Schneider","Carpentier","Traore","Boulay","Lemoine","Colas","Monnier","Loiseau","Cohen","Renaud","Perret","Potier","Fournier","Legros","Renard","Ollivier","Lebrun","Mathieu","Briand","Grégoire","Labbé","Baron","Lejeune","Lebon","Alexandre","Noël","Andre","Bouchet","Benoit","Coste","Dupuis","Gros","Pascal","Lesage","Jacques","Martineau","Lemonnier","Giraud","Maurice","Wagner","Étienne","Lefèvre","Hoarau","Brunet","Fouquet","Camus","Michaud","Morin","Ferrand","Navarro","Lecoq","Bouvier","Martins","Gosselin","Ledoux","Parent","Delorme","Poulain","Delmas","Allain","Godard","Goncalves","Cordier","Marie","Pineau","Ramos","Mallet","Gonzalez","Besson","Legendre","Maillot","Delannoy","Verdier","Hamon","Roche","Pichon","Vallée","Prévost","De Sousa","Klein","Rousseau","Bazin","Collin","Costa","Brun","Royer","Lefort","Meunier","Le Roux","Barbe","Dufour","Chauvin","Menard","Philippe","Gillet","Regnier","Jean","Hoareau","Guillou","Brunel","Benard","Lecomte","Lopez","Moulin","Lemaître","Maillard","Huet","Laurent","Lamy","Voisin","Lévy","Dijoux","Rossi","Teixeira","Becker","Pinto","Gay","Normand","Perez","Millet","Laroche","Masson","Lefebvre","Faivre","Dos Santos","Boyer","Bernier","Julien","Louis","Blondel","Bernard","Guillon","Perrin","Jacob","Bailly","Cousin","Berthelot","Couturier","Carre","Bonnin","Caron","Descamps","Collet","Grenier","Roger","Valentin","Blanchard","Devaux","Raymond","Simon","Rodrigues","Lelièvre","Gilbert","Durand","Pruvost","Legrand","Hebert","Fischer","Alves","Guibert","Gauthier","Blanchet","Dumont","Petit","François","Joly","Blin","Nguyen","Thibault","Robert","Martel","Samson","Maréchal","Reynaud","Gilles","Marchand","Bertrand","Jacquot","Arnaud","Buisson","Dubois","Delaunay","Laporte","Poirier","Leleu","Ferreira"]},"german":{"label":"German","locales":["de_DE"],"male":["Apostolos","Sylvester","Abbas","Hasso","Volkhard","Maximilian","Hans-Hinrich","Markus","Samir","Nicolai","Halil","Ignatz","Eitel","Stavros","Dimitri","Dino","Anthony","Mark","Egbert","Hendrik","Ludger","Bernt","Ralf-Dieter","Vinko","Muzaffer","Benno","Guido","Friedbert","Diedrich","Valerij","Mikhail","Lorenz","Alexandre","Siegmund","Oscar","Walter","Hans-Ludwig","Tino","Ernst-Dieter","Jürgen","Stephen","Ivo","Erich","Horst","Hans-Josef","Nicolaus","Wilfried","Gerhardt","Gebhard","Nuri","Helfried","Alban","Nick","Vassilios","Nikolaj","Alex","Ivan","Hannes","Heinz","Gerald","Danny","Heinrich","Dagobert","Zeljko","Dragan","Cetin","Hasan","Reinald","Aleksej","Leonardo","Rainer","Ilias","Jan","Udo","Serge","Emanuel","Kilian","Vito","Berndt","Eckhart","Bodo","Ansgar","Eugen","Pierre","Balthasar","Vitus","Ramon","Czeslaw","Simon","Freddy","Istvan","Anselm","Ahmet","Vincenzo","Gordon","Jerzy","Paolo","Patrik","Janko","Hassan","Oswin","Rolf-Peter","Rigo","Nikolai","Helmuth","Sven","Franco","Igor","Rudolph","Arno","Veit","Heinz-Dieter","Volkmar","Gerwin","Frieder","Paulo","Jens","Celal","Enver","William","Matthäus","Hans Peter","Ekrem","Aloys","Hans-Heinrich","Mattias","Falk","Immo","Fritz","Meik","Severin","Wolfgang","Attila","Gottfried","Recep","Hans-Jürgen","Guiseppe","Karl-Hans","Max","Hans-Dietrich","Ewald","Guenter","Siegward","Julius","Julian","Hans-Georg","Senol","Hellmut","Harald","Pavel","Franjo","Gotthard","Holm","Klaus Peter","Ricardo","Willi","Nurettin","Dieter","Manfred","Hajo","Berend","Theodoros","Jonathan","Hans Josef","Timm","Augustin","Olaf","Ortwin","Gert","Bertold","Zlatko","Salvatore","Pero","Eckhard","Osman","Ben","Dirk","Karl-Wilhelm","Karl-Friedrich","Miodrag","Patrick","Konstantinos","Giorgio","Karlheinz","Florian","Ronny","Gottlieb","Karl-Josef","Heinz-Günther","Ismet","Sami","Arnd","Leon","Marian","Ernest","Eckart","Lambert","Hans-Wolfgang","Thilo","Henrik"],"female":["Edit","Swantje","Nadeshda","Emilie","Katharina","Sylvie","Kunigunde","Luise","Janine","Natalie","Margrit","Viktoria","Anna-Maria","Lucie","Oda","Gülsen","Adelinde","Theodora","Agatha","Wibke","Emmi","Wiebke","Claudia","Manuela","Delia","Sibylla","Kirstin","Jeannine","Ricarda","Irina","Aynur","Annelise","Laila","Angelika","Aurelia","Selma","Friedlinde","Marta","Editha","Isabel","Giuseppina","Karina","Traudel","Stefani","Janet","Ayten","Dragica","Britt","Cilli","Gesa","Friedl","Beatrix","Katrin","Magdalene","Isabella","Wilfriede","Bärbel","Christine","Amelie","Anne-Marie","Marlen","Hubertine","Almut","Patrizia","Heidrun","Notburga","Gerhild","Alina","Herma","Rosa","Babett","Rena","Janett","Gönül","Antonietta","Anita","Lisette","Gerda","Belinda","Gesine","Almuth","Marianne","Cathleen","Susana","Anne-Katrin","Kordula","Theresa","Trudi","Gertraut","Gerta","Elisa","Elizabeth","Hanna","Kathrin","Zenta","Martine","Norma","Kathy","Vera","Svenja","Nuray","Mareike","Gerti","Catrin","Lidija","Gundel","Karen","Melanie","Silke","Elfi","Kerstin","Francoise","Marie-Luise","Georgia","Etta","Ljubica","Hildegard","Ariane","Elif","Frauke","Aleksandra","Antonina","Rahel","Olga","Verena","Danica","Korinna","Anett","Apollonia","Mandy","Carmela","Ljudmila","Jeanette","Stefania","Margaretha","Cordula","Edelgard","Corina","Gisa","Tina","Petra","Giesela","Gerlinde","Caroline","Rosi","Joana","Jennifer","Heidelore","Zofia","Reingard","Tatjana","Danuta","Susanna","Geraldine","Madlen","Marleen","Barbara","Antonie","Gretchen","Resi","Cornelia","Alwine","Margot","Marion","Valentine","Anastasia","Kristiane","Adele","Daniela","Carla","Hildegunde","Dorothee","Sybilla","Christa-Maria","Josefa","Giovanna","Ann","Monika","Olivia","Kathi","Ludwina","Lilli","Silja","Leonore","Alwina","Hanne","Leonie","Daria","Gesche","Zehra","Leokadia","Anna-Luise","Elisabeth","Mina","Sybille","Viola","Veronique","Corinne","Susi","Annelene"],"family":["Briemer","Stadelmann","Nette","Langern","Freudenberger","Trub","Vogt","Kramer","Thies","Junck","Koch II","Hertrampf","Wulff","Dörr","Grein Groth","Fechner","Aumann","Stahr","Roskoth","Dippel","Nohlmans","Drub","Staude","Oestrovsky","Krebs","Anders","Hauffer","Stolze","Gotthard","Stey","Bien","Adolph","Schäfer","Dörschner","Kranz","Schlosser","Bloch","Hecker","Hövel","Jähn","Henschel","Heuser","Kraushaar","Heinrich","Henck","Pergande","Dussen van","Jopich","Scheibe","Gierschner","Zirme","Lorch","Fritsch","Jacobi Jäckel","Eberhardt","Bolzmann","Schmidt","Johann","Wieloch","Kambs","Trubin","Ditschlerin","Hermann","Weimer","Losekann","Weitzel","Sauer","Hornich","Hartung","Franke","Harloff","Pruschke","Girschner","Fliegner","Stoll","Putz","Schaaf","Bender","Steuer","Kohl","Barth","Söding","Jessel","Gerlach","Paffrath","Gumprich","Reuter","Etzold","Drewes","Noack","Weihmann","Scheuermann","Kuhl","Schmiedt","Mälzer","Butte","Christoph","Beier","Reising","Wilmsen","Kaul","Heß","Gröttner","Sager","Klotz","Sorgatz","Scheel","Roht","Fischer","Lange","Wernecke","Kostolzin","Ziegert","Gunpf","Mosemann","Schüler","Salz","Pohl","Margraf","Schinke","Austermühle","Walter","Junk","Gutknecht","Dobes","Heser","Holsten","Schmidtke","Kraus","Kallert","Rogge","Keudel","Jacob","Haering","Faust","Blümel","Wohlgemut","Gude","Wagenknecht","Junken","Pieper","Etzler","Stiffel","Jockel","Ring","Bruder","Matthäi","Winkler","Kreusel","Scholtz","Sölzer","Werner","Hänel","Rust","Hölzenbecher","Becker","Stumpf","Bolander","Häring","Wesack","Bohlander","Täsche","Wende","Heidrich","Ehlert","Schomber","Meister","Hesse","Zimmer","Weinhage","Mielcarek","Seifert","Holzapfel","Stroh","Geißler","Rosenow","Bärer","Mitschke","Geisler","Karz","Süßebier","Schottin","Herrmann","Hettner","Seip","Reinhardt","Röhricht","Beer","Hamann","Hornig","Weiß","Kusch","Hiller","Wulf","Ebert","Berger","Ernst","Zänker","Bolnbach","Kobelt"]},"indian":{"label":"Indian English","locales":["en_IN"],"male":["Ekbal","Chakradev","Krish","Maanas","Dev","Lakshit","Qasim","Wriddhish","Manan","Rushil","Warjas","Ronith","Alexander","Aarnav","Siddharth","Teerth","Guneet","Jagdish","Pratyush","Isaac","Rohan","Logan","Laban","Anay","Aryan","Abhiram","Aarush","Finn","Onkar","Jeremiah","Naveen","Charan","Chakradhar","Ryan","Praneel","Ayushman","Fitan","Advaith","Brijesh","Anmol","Chatura","Zayan","Hemang","Jai","Chandran","Gunbir","Tejas","Azaan","Imaran","Wahab","George","Hardik","Amol","Naksh","Theodore","Onveer","Peter","Advay","Xavier","Jacob","Ranbir","Ekaraj","Raghav","Zashil","Darpan","Owen","Jeet","Samesh","Benjamin","Mitesh","Wridesh","Gavin","Anthony","Manthan","Warinder","Liam","Ayaan","Kabir","Balvan","Oliver","Sathvik","Yug","Zaid","Gabriel","Aadi","Ekavir","Wazir","Rayaan","Chandresh","Ekapad","Kalpit","Gaurang","Balendra","Jatin","Noah","Quincy","Harrison","Maanav","Gaurav","Vihaan","Gautam","Omkaar","Madhav","Jairaj","Udarsh","Faris","Dalbir","Caleb","Vincent","Samar","Dakshesh","Ansh","Frado","Mason","Saksham","Yash","Harsh","Om","Arjun","Karan","Girik","Jackson","Baljiwan","Tristan","Hritik","Harshil","Jagat","Falan","Max","Ojas","Henry","Anirudh","Balhaar","Ishaan","Aarav","Udant","Samarth","Timothy","Robert","Samaksh","Abdul","Ayush","Elijah","Harish","Viraj","Yuvraj","Dominic","Sai","Tanish","Upkaar","Gopal","Rudra","Mohammed","Qadim","Azad","Charles","Wyatt","Reyansh","Fiyaz","Shaurya","Oscar","Rishi","Chanakya","Lohit","Chatresh","Tanay","Yagnesh","Nihal","Avi","Nicholas","Agastya","Jason","Ekalinga","Nitesh","Orinder","Hitesh","Pranav","Hredhaan","Nathaniel","Devansh","Tarak","Neel","Indrajit","Qarin","Parth","Jack","Ishwar","Simon","Pranit","Banjeet","Bachittar","Atharv","Ekansh","Christopher","Daksh","Umang","Faqid","Sarthak","Aditya","Yatin"],"female":["Bimala","Krishna","Zansi","Chanchal","Yashodhara","Aarna","Aachal","Ria","Ubika","Madhavi","Nisha","Avni","Rajeshri","Keya","Tripti","Irya","Harinakshi","Kashvi","Pahal","Zarna","Meghana","Reva","Ekanta","Upasna","Pallavi","Nirja","Indira","Janani","Lajita","Vedika","Yauvani","Veda","Osha","Anvi","Ekaja","Yashica","Indali","Kritika","Damyanti","Adweta","Gautami","Bhanumati","Unnati","Sachi","Garima","Ridhi","Anjali","Chameli","Sudiksha","Vasatika","Hemangini","Warhi","Manya","Megha","Vansha","Yashoda","Gaurika","Ekta","Meera","Nikita","Chaitaly","Alka","Lavanya","Lopa","Urmi","Nidra","Daksha","Janaki","Ishani","Urvashi","Ishita","Aishani","Idika","Omaja","Inaya","Ishanvi","Ikshita","Kavya","Sara","Triveni","Jhalak","Anika","Vritti","Vrinda","Jyoti","Chasmum","Rajata","Upma","Udyati","Gaurangi","Chavvi","Riya","Devika","Vidhi","Falak","Eesha","Prisha","Kamya","Tamanna","Suhani","Kala","Raksha","Aarini","Xalak","Yochana","Watika","Lipika","Ganga","Vedhika","Chandani","Bhavya","Panini","Zilmil","Forum","Darika","Dipta","Vanya","Yadavi","Advika","Divya","Bhavna","Pooja","Warda","Varsha","Yachana","Saumya","Chaman","Vamakshi","Kamala","Zaitra","Xiti","Aahana","Hamsini","Urvi","Odika","Abha","Bishakha","Lakshmi","Neelima","Isha","Deepa","Janya","Eshana","Harini","Amrita","Anamika","Charita","Ekantika","Harita","Wishi","Yutika","Rachana","Chaaya","Ucchal","Ira","Zinal","Shivani","Turvi","Hemal","Urishilla","Dayamai","Yamini","Lekha","Niharika","Eta","Chakrika","Ati","Bhavani","Neha","Jeevika","Ekani","Leena","Adya","Jalsa","Amaira","Sanaya","Mitali","Dalaja","Eiravati","Hiral","Tanmayi","Widisha","Nilima","Mohini","Yasti","Oni","Ladli","Jagrati","Saanvi","Leela","Gauri","Pavani","Mugdha","Mekhala","Damini","Anusha","Dayita","Mahika","Sneha","Diya"],"family":["Loyal","Tara","Dara","Sankaran","Walia","Wason","Khalsa","Gaba","Sibal","Kala","Sekhon","Hayre","Sandhu","Kadakia","Tripathi","Khosla","Contractor","Ravi","Batta","Bumb","Bath","Jhaveri","Narain","Mann","Chad","Madan","Chanda","Char","Kapur","Suresh","Karpe","Gokhale","Koshy","Walla","Amble","Barad","Luthra","Hora","Gade","Iyer","Bajwa","Kumer","Nayar","Bahri","Chadha","Prakash","Saran","Date","Kalita","Raghavan","Gara","Raj","Suri","Dewan","Soman","Pandey","Gill","Gala","Chaudhry","Verma","Patel","Bansal","Pathak","Bera","Bhat","Babu","Varughese","Chander","Manda","Panchal","Narayan","Khanna","Kurian","Ray","Oza","Ranganathan","Deshmukh","Dugal","Ganesan","Kapoor","Sani","Maharaj","Badami","Sood","Issac","Pant","Bail","Kuruvilla","Mahajan","Pillay","Shere","Pandit","Mandal","Lala","Basak","Vohra","Soni","Khatri","Vyas","Cherian","Mohan","Parsa","Vala","Nori","Natt","Shenoy","Lad","Ravel","Shetty","Venkatesh","Kulkarni","Sarma","Chaudhari","Rau","Konda","Bali","Thaman","Dash","Vasa","Parmar","Bahl","Lall","Chauhan","Hans","Anne","Sabharwal","Kant","Joshi","Dhawan","Wagle","Dugar","Mishra","Saraf","Thaker","Nayak","Zachariah","Magar","Rout","Rattan","Sethi","Mane","Dhingra","Raman","Bawa","Master","Jani","Sahni","Dayal","Chana","Merchant","Sankar","Aggarwal","Handa","Gulati","Savant","Dua","Garde","Kar","Ramesh","More","Ahluwalia","Balan","Choudhary","Parmer","Narayanan","Peri","Mand","Nagi","Pingle","Jha","Sathe","Jaggi","Gera","Raja","Pai","Bhasin","Nadig","Borde","Balay","Mander","Uppal","Tella","Jayaraman","Cheema","Palan","Samra","Kamdar","Varma","Tandon","Warrior","Som","Subramaniam","Kothari","Atwal","Murty","Sanghvi","Mukherjee","Vig","Nagarajan","Chaudhuri"]},"italian":{"label":"Italian","locales":["it_IT"],"male":["Damiano","Liberto","Alfio","Costantino","Gianni","Pietro","Ernesto","Giustino","Flavio","Renzo","Ricciotti","Elmo","Gianpaolo","Patrizio","Lando","Amedeo","Alberto","Giampiero","Raffaellino","Mirko","Gioachino","Fabio","Livio","Virgilio","Vittorio","Marcello","Maurilio","Agnolo","Piersanti","Panfilo","Michelangelo","Baldassare","Amadeo","Gianfrancesco","Giacomo","Vincentio","Lazzaro","Rodolfo","Gaspare","Laureano","Alberico","Santino","Paride","Graziano","Sergius","Silvestro","Raimondo","Rolando","Rembrandt","Gioacchino","Ivan","Adamo","Antonio","Arnulfo","Saverio","Severino","Massimiliano","Raffaele","Nico","Tiziano","Cipriano","Donato","Gianpietro","Ranieri","Piermaria","Lodovico","Massimo","Bruno","Raffaello","Roman","Fredo","Alderano","Giacobbe","Antonello","Coriolano","Sante","Rosario","Fedele","Luigi","Benedetto","Annibale","Giorgio","Ciro","Filippo","Lamberto","Ennio","Nino","Silvio","Giovanni","Gian","Fabrizio","Maurizio","Giancarlo","Cirillo","Nicolò","Vincenzo","Armando","Niccolò","Leonardo","Ugo","Azeglio","Alessandro","Claudio","Arsenio","Mattia","Giuliano","Bartolomeo","Dionigi","Milo","Osvaldo","Benito","Donatello","Salvatore","Marco","Puccio","Ludovico","Mirco","Pasquale","Oreste","Dante","Beppe","Simone","Manuel","Marcantonio","Gianfranco","Ermanno","Baccio","Micheletto","Dario","Fulvio","Danilo","Aldo","Amico","Greco","Ansaldo","Piergiorgio","Corrado","Hugo","Nicola","Pomponio","Calogero","Gianluigi","Durante","Nanni","Arturo","Arnaldo","Valerio","Delfino","Enzio","Ronaldo","Pompeo","Telemaco","Franco","Romeo","Romolo","Ivo","Ugolino","Alphons","Gianmarco","Dino","Giosuè","Michele","Augusto","Roberto","Girolamo","Gioele","Gabriele","Pier","Benvenuto","Eraldo","Torquato","Geronimo","Sabatino","Atenulf","Adelmo","Mariano","Pierluigi","Venancio","Emilio","Cesare","Calcedonio","Piero","Goffredo","Domenico","Federico","Pierpaolo","Salvi","Stefano","Tullio","Leone","Enrico","Sebastiano","Alfredo","Ruggiero","Carmelo","Fausto","Ettore","Adriano","Fiorenzo","Bernardo"],"female":["Matilda","Giada","Donna","Tina","Sandra","Etta","Adriana","Liana","Lucia","Barbara","Eugenia","Valeria","Marta","Lilla","Vittoria","Pina","Mercedes","Graziella","Luciana","Sole","Francesca","Elvira","Allegra","Anita","Antonia","Rossana","Flora","Nadia","Melania","Rosalia","Tatiana","Tiziana","Lara","Nicoletta","Alina","Rosa","Evangelista","Giuseppina","Aurora","Natalia","Antonina","Federica","Priscilla","Angelica","Ilaria","Silvia","Luisa","Diana","Ninetta","Lisa","Giorgia","Rosina","Nina","Paloma","Valentina","Paulina","Annunziata","Melissa","Ornella","Serena","Rosaria","Fabia","Beatrice","Margherita","Giovanna","Annamaria","Jolanda","Germana","Carolina","Carla","Martina","Patrizia","Clelia","Eliana","Luigina","Alessandra","Viridiana","Concetta","Victoria","Irma","Morena","Cristina","Laura","Teresa","Pierina","Adelasia","Lucrezia","Ida","Alessia","Ramona","Sophia","Virginia","Stella","Giuliana","Sonia","Liliana","Zaira","Marissa","Isabella","Susanna","Fiamma","Adele","Vanessa","Annalisa","Eleanora","Greca","Lolita","Dina","Loredana","Cecilia","Angelina","Vincenza","Gianna","Dolores","Romina","Griselda","Nedda","Tonia","Maria","Simonetta","Maura","Letizia","Marisa","Rita","Licia","Donatella","Marina","Chiara","Berenice","Lina","Veronica","Marcella","Fabrizia","Bianca","Imelda","Raffaella","Giulietta","Antonella","Giulia","Paoletta","Camilla","Sylvia","Gloria","Fernanda","Elisa","Stefani","Stefania","Gelsomina","Iolanda","Flavia","Loretta","Annetta","Claudia","Milena","Monica","Paola","Romana","Caterina","Gabriella","Amanda","Gemma","Amalia","Roberta","Lauretta","Michela","Lidia","Antonietta","Serafina","Erika","Cassandra","Olga","Bettina","Ludovica","Renata","Filippa","Melina","Livia","Mariana","Fortunata","Daria","Isa"],"family":["Trussardi","Lombardo","Bellocchio","Jovinelli","Verdone","Balbi","Stradivari","Notarbartolo","Falloppio","Tropea","Tomasetti","Amato","Rosselli","Grimani","Serraglio","Albertini","Zanichelli","Agnesi","Abbagnale","Passalacqua","Sonnino","Canali","Soffici","Favata","Natta","Pizzo","Caffarelli","Petruzzi","Spinola","Chittolini","Bresciani","Galvani","Gaito","Jilani","Iannotti","Cuzzocrea","Vigliotti","Bonomo","Romiti","Raurica","Mocenigo","Comolli","Bazzi","Paolucci","Pastine","Cibin","Calvo","Giacometti","Gozzano","Sagnelli","Antonetti","Lattuada","Gargallo","Ginese","Pedersoli","Tasso","Mondaini","Mancini","Sibilia","Troisi","Terragni","Sagese","Caironi","Scotto","Carfagna","Vidoni","Scaduto","Ossani","Vittadello","Cavalcanti","Rossellini","Lussu","Gioberti","Medici","Rossi","Gagliardi","Scandone","Foletti","Modigliani","Vattimo","Columbo","Mezzetta","Letta","Adinolfi","Gagliano","Dalla","Micca","Iadanza","Crispi","Necci","Ortese","Dellucci","Finetti","Panzera","Lopresti","Montanelli","Tamborini","Cipolla","Argan","Asprucci","Donatoni","Romano","Rosiello","Marsili","Pincherle","Maggioli","Marrone","Gangemi","Sandi","Majorana","Rismondo","Bembo","Tafuri","Abatantuono","Murri","Cavanna","Greggio","Bertolucci","Serlupi","Pizzetti","Salata","Roth","Dallapé","Sagredo","Contrafatto","Geraci","Moccia","Zanzi","Dossetti","Parmitano","Nugnes","Filippini","Ciampi","Gullotta","Cociarelli","Casalodi","Jacuzzi","Merisi","Ficino","Tartaglia","Prada","Gabbana","Cocci","Querini","Zoppetti","Bergoglio","Curatoli","Bombieri","Pedroni","Ferrara","Tutino","Bertoni","Chiaramonte","Brancaccio","Loredan","Franceschi","Babbo","Sordi","Gregorio","Marazzi","Ferrabosco","Santorio","Castioni","Fermi","Bernini","Prodi","Mozart","Mattarella","Pozzecco","Lamborghini","Panicucci","Ferrazzi","Argenti","Micheletti","Emo","Sgalambro","Turchetta","Tozzi","Ramazzotti","Sanguineti","Nicolini","Cilea","Satta","Galeati","Nicolucci","Fabrizi","Vento","Murialdo","Zeffirelli","Pietrangeli","Gucci","Paoletti","Mercalli","Bernardini","Tolentino","Guarato","Cagnin","Marini","Ferrari","Soranzo"]},"mexican":{"label":"Mexican Spanish","locales":["es_MX"],"male":["Federico","Santos","Eustaquio","Ulises","Bruno","Zacarías","Evaristo","Berto","Flavio","Patricio","Ruy","Paco","Jose Manuel","Fabián","Fulgencio","Octavio","Ariel","Bonifacio","Joel","Jordán","Domingo","Aristides","José María","Maxi","Sigfrido","Dan","Duilio","Cebrián","Ernesto","Onofre","Jose Ignacio","Maximino","Porfirio","Tadeo","Máximo","Horacio","Artemio","Vasco","Cipriano","Jose","Ceferino","Kike","Hermenegildo","Albert","Américo","Natanael","Vito","Plinio","Alcides","Raúl","Carlito","Juan José","Venceslás","Silvio","Eladio","Ramón","Adalberto","Lucho","Eusebio","Sancho","Ismael","Manu","Fabio","Lope","Macario","Amando","Yago","Rosario","Jose Francisco","Carmelo","Alberto","Desiderio","Juan Carlos","Guadalupe","Agapito","Guiomar","Ignacio","Mariano","Trinidad","Abraham","Renato","Samuel","Juan Manuel","Eleuterio","Ángel","Valerio","Severino","Severo","Calisto","Glauco","Florentino","Mohamed","Haroldo","Joaquín","Rufino","Toño","Jordi","Carlos","Herberto","Felipe","Cristian","Gonzalo","Conrado","Celestino","Eligio","Edu","Germán","Godofredo","Francisco Javier","Rómulo","Eloy","Leonel","Ale","Isidoro","Arturo","Humberto","Apolinar","Alex","Simón","Anacleto","Rolando","Fortunato","Victorino","Baudelio","Leoncio","Melchor","Emiliano","Aureliano","Heliodoro","Dimas","Espiridión","Heriberto","Rogelio","Fito","Fermín","René","Pedro","Reinaldo","Herminio","Juanito","Javi","Valentín","Manuel","Ovidio","Jesús","Amor","Cándido","Isaías","Lucio","Xavier","Andrés","Benjamín","Fausto","Lupe","Eliseo","Moisés","Guillermo","Marco","Florencio","Rodrigo","Josep","Ciriaco","Gilberto","Miguel Ángel","Pablo","Juan Luis","Augusto","Leonardo","Marc","Martin","Aurelio","Roberto","Eutropio","Teodoro","Sandalio","Borja","Che","Enrique","Noé","Elpidio","Hilario","Juan Francisco","Remigio","Nando","Isaac","Eduardo","Curro","Custodio","Faustino","Cosme","Abilio","Hernán","Goyo","Pío","Alonso","Ibán","Lalo","Luis Miguel","Amado","Tiburcio"],"female":["Delfina","Emperatriz","Victoria","Aura","Adriana","Joaquina","Nydia","Rosalina","Teresa","Úrsula","Lucila","Mireia","Estrella","Pili","Luisa","Gisela","Flavia","Asunción","Ale","Lidia","Jordana","Tomasa","Ariadna","Olalla","Sandra","Antonia","Susana","Obdulia","Merche","Oriana","Feliciana","Haydée","Débora","Griselda","Selena","Maite","Albina","María Fernanda","Candelas","Febe","Natividad","Candelaria","Paloma","Marta","Perla","Íngrid","Encarna","Vera","María Belén","Constanza","Anna","Noemí","Graciana","Esperanza","Rosa María","Bienvenida","Ximena","Adelina","María Manuela","Máxima","Ainoa","Macaria","Saturnina","Laura","Bibiana","Patricia","Soledad","Felicia","Florentina","Anastasia","Paca","Azahar","Jacinta","Azucena","Ariel","Ileana","Adela","Salud","Fidela","Hilda","Tecla","Narcisa","Alejandra","José","Melania","Ruth","Fabiola","Edelmira","Emilia","Odalys","Anabel","Yésica","Nilda","Blanca","Leonor","Valentina","Encarnita","Marisa","Teresita","Zaida","Crescencia","Nicolasa","Sofía","Carmela","Gema","Malena","Reyes","Susanita","Lilia","Otilia","Martirio","Clementina","Jenny","Coral","Elvira","Chita","María Cristina","Chelo","Violeta","Paola","Yolanda","Nerea","Mar","Rosario","Pepita","Marisela","Adelaida","Jovita","Ofelia","Rosalía","María Dolores","Rafaela","Macarena","Gloria","Gabriela","Cecilia","Vilma","Charo","Noelia","Dolores","Luz","Felicidad","Ana Belén","Marianela","Irma","Dulce","Montserrat","Arcelia","Cristina","Fanny","Ignacia","Xiomara","Reina","Cándida","Juanita","Carla","Nuria","Daniela","Ana Sofía","Pilar","Vicenta","Inés","Mónica","Manola","Azahara","Elodia","Caridad","Tatiana","Dionisia","Maricruz","Ramona","Silvia","Roxana","Ámbar","Paula","Celestina","Rosalinda","Pastora","Reyna","Áurea","Cruz","Rita","Imelda","Evangelina","Irene","Maristela","Evelia","Delia","Flora","Teófila","Estefanía","María Carmen","Rosaura","Genoveva","Tania","Ana","Iris","Bernarda","Cayetana","Juliana"],"family":["Vázquez","Urrutia","Botello","Chavarría","Canales","Sosa","Noriega","Montañez","Serrato","Escalante","Castro","Meza","Escobedo","Nevárez","Irizarry","Rosales","Aguayo","Granados","de la Garza","Almanza","Quiroz","Godínez","Balderas","Gómez","Castañeda","Leal","Garrido","Curiel","Carrasco","Rangel","Rodrígez","Ocasio","Lucero","Loya","Rivero","Gaona","Jáquez","Ortiz","Pérez","Arce","Miranda","Maestas","Briseño","Mejía","González","Adame","Orellana","Riojas","Zaragoza","Llamas","Guzmán","Patiño","Hidalgo","Guerra","Olmos","Ibarra","Amaya","Sarabia","Arroyo","Barela","Espinosa","Tirado","Carrera","Matos","Verdugo","Aparicio","Longoria","Gil","Velasco","Hurtado","Calderón","Ramírez","Nieto","Marrero","Barajas","Bustamante","Aguirre","Correa","Muñiz","Viera","Solorzano","Almonte","Núñez","Narváez","Villareal","Guevara","Jasso","Téllez","Gonzales","Griego","Tórrez","Rascón","Molina","Bahena","Elizondo","Orozco","Pacheco","Rico","Quesada","Huerta","Vigil","Ordóñez","Merino","Valadez","Negrón","Salcedo","Zavala","Rivas","Perea","Cantú","Valladares","Paz","Alfaro","Alarcón","Barreto","Cervántez","Murillo","Fernández","Cordero","Solano","Espino","Rodarte","Contreras","Iglesias","Cepeda","Armas","Gamez","Lovato","Cabrera","Suárez","Peres","León","Alcaraz","Mateo","Moya","Romo","Raya","Dávila","Haro","Collazo","Reyes","Véliz","Treviño","Sanches","Figueroa","Zúñiga","Farías","Peralta","Lebrón","Juárez","Santillán","Gollum","Cervantes","Zambrano","García","Ybarra","Vélez","Alba","Alejandro","Fonseca","Flórez","Valverde","Cano","Rosado","Paredes","Olivera","Rael","Duarte","Alcántar","Villalpando","Amador","Ureña","Hernádez","Polanco","Rolón","Chávez","Sauceda","Terrazas","Romero","Nazario","Saucedo","Enríquez","Ornelas","Bonilla","Palomo","Saavedra","Valdés","Santiago","Fierro","Cedillo","Cavazos","Aguilar","Sierra","del Río","Montaño","Chapa","Alonzo","Valentín","Ponce","Olvera"]},"polish":{"label":"Polish","locales":["pl_PL"],"male":["Nataniel","Ernest","Maurycy","Olgierd","Szymon","Natan","Wiktor","Józef","Aleks","Franciszek","Maksymilian","Dariusz","Miłosz","Jerzy","Stanisław","Maciej","Leonard","Tadeusz","Alex","Arkadiusz","Adam","Cyprian","Jan","Leon","Aleksander","Maks","Bruno","Tobiasz","Marek","Andrzej","Rafał","Nikodem","Robert","Mateusz","Eryk","Kajetan","Tomasz","Hubert","Kamil","Tymon","Olaf","Dominik","Witold","Norbert","Juliusz","Krystian","Tymoteusz","Grzegorz","Piotr","Mikołaj","Ignacy","Przemysław","Kornel","Fryderyk","Cezary","Gustaw","Oliwier","Albert","Stefan","Jędrzej","Kacper","Gabriel","Jakub","Antoni","Konrad","Dawid","Marcel","Bartek","Krzysztof","Wojciech","Ksawery","Oskar","Ryszard","Karol","Jacek","Patryk","Mariusz","Alan","Fabian","Marcin","Mieszko","Julian","Kazimierz","Konstanty","Radosław","Paweł","Filip","Łukasz","Emil","Artur","Igor","Iwo","Michał","Błażej","Borys","Jeremi"],"female":["Klara","Rozalia","Julita","Marcelina","Krystyna","Dorota","Sara","Inga","Julianna","Janina","Olga","Ida","Róża","Kalina","Agnieszka","Sonia","Kamila","Blanka","Marika","Urszula","Monika","Apolonia","Ewa","Bianka","Aurelia","Karina","Malwina","Aniela","Anna Maria","Roksana","Adrianna","Dagmara","Natasza","Anastazja","Eliza","Justyna","Ada","Nela","Sandra","Kaja","Melania","Sylwia","Elżbieta","Tola","Angelika","Marianna","Nicole","Lidia","Liwia","Ewelina","Kornelia","Gaja","Anita"],"family":["Cal","Mirga","Kostek","Pastor","Wawrzeńczyk","Rodzeń","Piksa","Łapaj","Wichary","Tomaszewski","Kulon","Wac","Smętek","Bartocha","Brudny","Kość","Gniewek","Drózd","Woronko","Picheta","Dworniczak","Morawiak","Rzońca","Tabak","Szajek","Zatoń","Sulich","Chmielak","Toś","Osojca","Mroczko","Pera","Smagacz","Andrearczyk","Smoter","Fabiszak","Zaniewicz","Łaszczyk","Fidler","Podpora","Stachelek","Szlufik","Bruś","Pacholik","Apanowicz","Rosada","Dąbrowicz","Moryc","Nawój","Hanzel","Biesaga","Zielke","Lichoń","Grzejszczak","Golisz","Plewnia","Gnyp","Ochab","Ryguła","Bieniak","Janasik","Pacocha","Kałwa","Odrzywołek","Minta","Zapora","Bogumił","Rusiniak","Glazer","Hołubowicz","Ostręga","Pyza","Potyrała","Siemieniec","Matynia","Czenczek","Lademann","Sip","Hendzel","Jałowiec","Stój","Bączkiewicz","Plaskota","Macek","Muskała","Mazurkiewicz","Pawłowski","Garbacik","Szok","Wilczyński","Wudarczyk","Krakowczyk","Borczyk","Kolonko","Morka","Pytko","Celuch","Górnisiewicz","Wawrzonek","Rubacha","Kubisz","Małocha","Jambor","Sych","Gorzelańczyk","Schubert","Doruch","Twardy","Bąbol","Jakóbiak","Hankiewicz","Kuban","Janiga","Parda","Pal","Polewka","Wojtarowicz","Barczuk","Piekart","Orłowski","Parafiniuk","Szajna","Leoniuk","Aleksiejuk","Perka","Zysk","Drobniak","Figat","Łokietek","Gęgotek","Konsek","Boguś","Molga","Wasil","Sałuda","Chwała","Mądrzyk","Pazoła","Igras","Darłak","Szykuła","Drobek","Kruzel","Krzysztoszek","Szeszko","Ślipek","Sklorz","Witan","Słupik","Wandas","Zasępa","Rogacz","Saternus","Krzosek","Gajowiak","Helman","Mendyka","Bittner","Ciepła","Rubaj","Batóg","Gumienny","Kołton","Nikel","Wiciak","Kożuszek","Kasznia","Merchel","Pniak","Stachewicz","Paściak","Księżak","Fedyk","Senger","Marcinkowski","Ledzion","Wiraszka","Frelek","Kłósek","Pietrasiak","Mirocha","Gmurczyk","Stiller","Sroga","Kaszkowiak","Jamroz","Sawicki","Bartman","Poniedziałek","Dulik","Bukowski","Szumiło","Kazior","Leśna","Adamski","Ambrozik","Łuczyk","Jóźwiak","Wons","Milcarz"]},"portuguese":{"label":"Portuguese (Portugal)","locales":["pt_PT"],"male":["Hugo","Vítor","Miguel","Eduardo","Sérgio","Fernando","Edgar","Kevin","Carlos","Filipe","Xavier","Tiago","Lourenço","Isaac","Marco","Valentim","Renato","Kévim","Dinis","Gabriel","Sebastião","Rodrigo","Afonso","Santiago","Joel","Denis","William","Ismael","Paulo","Duarte","Micael","Ivo","Nuno","Benjamim","Noa","Márcio","Rúben","Marcos","Gil","César","José","Francisco","Cristiano","Joaquim","Matias","Tomé","Tomás","Mauro","André","Vasco","Pedro","Bernardo","António","Nelson","Ricardo","Gonçalo","Diego","Henrique","Emanuel","Jorge","Leonardo","Cláudio","Diogo","Wilson","Gaspar","Guilherme","Lucas","Ângelo","Martim","Artur","Sandro","Mateus","Ivan","Jaime","Frederico","Rafael","Samuel","João","Brian","Simão","Álvaro","Manuel","Alexandre","Lisandro","Bryan","Rui","Mário","Vicente","Leandro","Igor","Gustavo","Luís","Noah","Salvador","Luca","Fábio","Bruno"],"female":["Bruna","Mariana","Adriana","Andreia","Lúcia","Larissa","Camila","Mafalda","Petra","Teresa","Ângela","Pilar","Alícia","Filipa","Melissa","Luana","Vitória","Madalena","Íris","Soraia","Naiara","Renata","Ana","Yara","Carlota","Irina","Juliana","Patrícia","Victória","Inês","Anita","Francisca","Eduarda","Beatriz","Isabel","Jéssica","Erika","Carolina","Erica","Iara","Benedita","Rita","Alice","Nair","Tatiana","Joana","Alexandra","Violeta","Sofia","Leonor","Nicole","Raquel","Rafaela","Mélanie","Marta","Miriam","Margarida","Nádia","Núria","Luciana","Lorena","Vera","Gabriela","Ariana","Júlia","Kelly","Daniela","Bianca","Bárbara","Flor","Matilde","Lia","Sara","Salomé","Catarina","Maria","Carminho","Kyara","Helena","Caetana","Emília","Constança","Amélia","Laura","Isabela","Débora","Luísa","Valentina","Letícia","Lara","Yasmin","Ema","Fabiana","Diana"],"family":["Cardoso","Garcia","Morais","Macedo","Magalhães","Pinto","Reis","Freitas","Pinheiro","Henriques","Ribeiro","Nunes","Lourenço","Machado","Amaral","Moreira","Abreu","Guerreiro","Mendes","Rodrigues","Tavares","Pires","Baptista","Neves","Gaspar","Almeida","Teixeira","Figueiredo","Carvalho","Maia","Rocha","Castro","Gonçalves","Pereira","Barros","Vaz","Leal","Lima","Correia","Pacheco","Loureiro","Antunes","Andrade","Oliveira","Cruz","Carneiro","Pinho","Santos","Torres","Anjos","Azevedo","Branco","Fonseca","Faria","Mota","Melo","Martins","Paiva","Ferreira","Coelho","Sousa","Neto","Leite","Valente","Assunção","Gomes","Campos","Soares","Monteiro","Nascimento","Jesus","Costa","Fernandes","Lopes","Brito","Matias","Amorim","Vieira","Silva","Moura","Ramos","Sá","Barbosa","Marques","Borges","Cunha","Miranda","Matos","Nogueira","Domingues","Simões","Araújo","Batista","Vicente","Esteves","Alves"]},"russian":{"label":"Russian","locales":["ru_RU"],"male":["Дорофей","Мартын","Милен","Ярослав","Наум","Денис","Прокл","Фадей","Арефий","Наркис","Ипат","Степан","Рубен","Гремислав","Ярополк","Семен","Силантий","Радислав","Сильвестр","Самсон","Филарет","Никанор","Лаврентий","Автоном","Фома","Болеслав","Агафон","Михей","Михаил","Мина","Мефодий","Симон","Ладислав","Яков","Данила","Анатолий","Игнатий","Кирилл","Викентий","Артемий","Модест","Харлампий","Нестор","Лука","Тарас","Вадим","Евграф","Фока","Исидор","Иннокентий","Софон","Кондрат","Филипп","Стоян","Иван","Мстислав","Самуил","Мартьян","Корнил","Марк","Владилен","Парфен","Максим","Афиноген","Виктор","Доброслав","Епифан","Твердислав","Ким","Вышеслав","Якуб","Тихон","Валерий","Ян","Аскольд","Митофан","Аверкий","Казимир","Аггей","Мир","Валерьян","Ипатий","Влас","Борис","Авдей","Конон","Харитон","Леонтий","Валентин","Олимпий","Сократ","Милий","Софрон","Велимир","Ефим","Станислав","Артем","Захар","Аристарх","Любомир","Бронислав","Родион","Геннадий","Никон","Викторин","Евгений","Никита","Эрнест","Панкрат","Мирон","Всемил","Виссарион","Добромысл","Бажен","Егор","Олег","Лучезар","Фотий","Афанасий","Карл","Нифонт","Адриан","Эраст","Ювеналий","Ратмир","Каллистрат","Станимир","Елисей","Пахом","Радим","Соломон","Ермил","Лазарь","Руслан","Лукьян","Владислав","Панкратий","Панфил","Александр","Константин","Дмитрий","Назар","Василий","Виталий","Тит","Максимильян","Елизар","Аполлон","Святополк","Светозар","Ерофей","Флорентин","Парамон","Алексей","Севастьян","Аверьян","Герасим","Ладимир","Сидор","Ананий","Емельян","Лавр","Арсений","Федор","Пимен","Еремей","Савелий","Август","Аркадий","Всеслав","Федот","Всеволод","Зосима","Вячеслав","Зиновий","Ипполит","Аникей","Исай","Федосий","Богдан","Терентий","Юлий","Аким","Савватий","Феофан","Осип","Фортунат","Трофим","Авксентий","Вацлав","Христофор","Лонгин","Чеслав","Карп","Кузьма","Адам","Гурий","Ульян","Леонид","Януарий"],"female":["Агафья","Клавдия","Екатерина","Ксения","Марина","Лора","Фёкла","Алина","Нонна","София","Антонина","Феврония","Анжелика","Прасковья","Варвара","Елизавета","Лукия","Евгения","Ирина","Маргарита","Глафира","Алла","Лариса","Зинаида","Марфа","Жанна","Полина","Фаина","Нина","Наталья","Алевтина","Лидия","Элеонора","Людмила","Ия","Анастасия","Ираида","Ульяна","Синклитикия","Александра","Евфросиния","Юлия","Светлана","Октябрина","Виктория","Евпраксия","Майя","Олимпиада","Акулина","Ольга","Валентина","Пелагея","Милица","Наина","Анжела","Эмилия","Нинель","Таисия","Зоя","Ангелина","Любовь","Надежда","Агата","Галина","Елена","Анна","Валерия","Раиса","Мария","Кира","Вера","Иванна","Татьяна","Регина","Вероника","Евдокия","Тамара","Оксана","Дарья","Василиса"],"family":["Яковлев","Брагин","Козлова","Симонов","Третьякова","Фомичева","Елисеева","Карпова","Воробьев","Евсеев","Ильин","Соколов","Фомин","Ильина","Максимова","Кондратьева","Павлов","Абрамов","Хохлов","Быкова","Пестова","Константинов","Никонов","Мухин","Антонова","Федотова","Горбачев","Тарасов","Жданов","Кулагина","Михеева","Дорофеева","Веселова","Гурьев","Якушева","Селиверстов","Абрамова","Вишняков","Наумова","Попов","Александрова","Хохлова","Воробьева","Ефремова","Беляков","Кузьмина","Лыткин","Комарова","Котова","Воронов","Самсонова","Аксенова","Гришин","Мельников","Дмитриева","Шарова","Ковалева","Юдин","Ковалев","Громов","Ларионов","Зайцева","Прохорова","Гущина","Шашков","Чернова","Якушев","Овчинников","Матвеева","Белозерова","Гуляева","Фадеев","Казакова","Зиновьева","Сергеев","Харитонова","Гурьева","Марков","Петухов","Пестов","Калашникова","Никифоров","Стрелков","Кузьмин","Потапов","Калашников","Агафонова","Корнилов","Костина","Максимов","Степанов","Исаев","Большакова","Андреева","Лазарева","Корнилова","Лаврентьева","Ширяев","Смирнов","Горбунова","Кулагин","Александров","Ефремов","Ефимова","Шарапова","Князева","Федосеев","Лобанов","Медведева","Антонов","Лебедев","Тихонова","Блинова","Стрелкова","Калинина","Капустин","Богданова","Лукин","Лукина","Самойлова","Зиновьев","Тарасова","Гаврилов","Агафонов","Соловьева","Михайлова","Беляев","Симонова","Рыбаков","Шаров","Михайлов","Селезнев","Назаров","Емельянов","Крюков","Мельникова","Жданова","Макаров","Носова","Цветкова","Константинова","Филатов","Сергеева","Суворов","Шубина","Горшкова","Назарова","Владимиров","Зыков","Артемьев","Лихачев","Соболева","Третьяков","Степанова","Дементьева","Данилов","Носов","Русакова","Исаков","Терентьев","Федоров","Доронина","Комиссарова","Чернов","Громова","Куликов","Нестерова","Архипова","Селиверстова","Наумов","Новикова","Владимирова","Белозеров","Гордеев","Муравьева","Голубев","Мишина","Фомина","Афанасьев","Фомичев","Кононов","Орлов","Беспалов","Коновалова","Молчанов","Миронов","Давыдов","Горбунов","Семенов","Ефимов","Захарова","Фролов","Денисов","Гаврилова","Федорова","Никитин","Игнатьев","Рыбакова","Лаврентьев","Логинов"]},"spanish":{"label":"Spanish (Spain)","locales":["es_ES"],"male":["Américo","Diego","Hermenegildo","Teo","Pancho","Lope","Vicente","Dionisio","Albert","Loreto","Felipe","Ulises","Carlos","Ruy","Santos","Tiburcio","Jordi","Modesto","Baldomero","Leandro","Álvaro","Reynaldo","Gaspar","Jerónimo","Enrique","Xavier","Abilio","Dimas","Calisto","León","Nicanor","Juan Francisco","Juan Manuel","Isaías","Bonifacio","Arsenio","Maximiliano","Mario","Eric","Cruz","Alcides","Anacleto","Agustín","Espiridión","Joaquín","Duilio","Renato","Felix","Jordán","Amor","Amando","Jose Miguel","Cirino","Edu","Raúl","Telmo","Gerónimo","Claudio","Eliseo","Amado","Silvestre","Arturo","Nazario","Jose Luis","Blas","Zacarías","Kike","Bautista","Tristán","Rodolfo","Lucas","Matías","Pablo","René","Eligio","Lorenzo","José Mari","Leonardo","Teodosio","Fabio","Nico","Joan","María","Heraclio","Balduino","Juan Bautista","Efraín","Narciso","Reyes","Porfirio","Julio César","Fulgencio","Samu","Donato","Ricardo","Carlito","Rufino","Marcelino","Antonio","Lázaro","Desiderio","Hugo","Sancho","Jonatan","Manu","Rosendo","Guiomar","Victorino","Nilo","Jaime","Josep","Jacobo","Tito","Cecilio","Horacio","Rafael","Anselmo","Raimundo","Hernán","Dani","Vinicio","Rosario","Emiliano","Jose Manuel","Salvador","Amancio","Mateo","Ibán","Celso","Salomón","Lupe","Glauco","Calixto","Eutropio","Edelmiro","Eustaquio","Amaro","Jeremías","Graciano","Alfonso","Iván","Adalberto","Pelayo","Galo","Luis Ángel","Mauricio","Ovidio","Ciro","Cayetano","Marc","Jacinto","Edmundo","Marino","Gabriel","Fausto","Heliodoro","Benigno","Marcio","Fabián","Leocadio","Cornelio","Roberto","Adán","Buenaventura","Leopoldo","Saturnino","Javier","Luis","Jose Ignacio","Remigio","Anastasio","Régulo","Carmelo","Miguel Ángel","Silvio","Alejo","Severo","Borja","Jesús","Valerio","Jose Carlos","Quirino","Augusto","Chuy","Rogelio","Cebrián","Guillermo","Domingo","Poncio","Apolinar","Demetrio","Ariel","Toni","Juan","Esteban","Plácido","Eusebio","Ignacio","Humberto","Román"],"female":["Priscila","Georgina","Narcisa","Leandra","Nicolasa","Jimena","Inés","Perlita","Celia","Paula","Gloria","Odalis","Adela","Gertrudis","Manu","Maribel","Laura","Filomena","Luisa","Milagros","Luciana","Consuelo","Adoración","Dulce","Ana","Palmira","Isabel","Dionisia","Jessica","María Pilar","Salud","Caridad","Rufina","Trini","Emelina","Genoveva","Nereida","Marcela","Tania","Natividad","Leocadia","Casandra","Carolina","Malena","Angélica","Susanita","Candela","Saturnina","Judith","Amarilis","Pilar","Isidora","Tatiana","Maite","Aurora","Hilda","Roberta","Aurelia","Renata","Piedad","Pía","Maxi","Josefina","Benigna","Eliana","Visitación","Marisa","Viviana","Clarisa","Amanda","Dorita","Dora","Sabina","Julie","Ligia","Susana","Teófila","Morena","Bienvenida","Anunciación","Gisela","Rosalía","Alexandra","Irma","Mónica","Isaura","Nerea","Yaiza","Maricruz","Melisa","Ainara","Reyes","Isa","Evita","Benita","Lupita","Jennifer","Rosaura","Patricia","Gracia","Iris","Matilde","Maricela","Elvira","Montserrat","Delfina","Ariel","Noa","Isabela","Flavia","Carla","Mar","Primitiva","Rosenda","Lilia","Flora","Eloísa","Macaria","Rita","Etelvina","Consuela","Noelia","Ema","María Belén","Ainoa","Nayara","Valeria","Eulalia","María Manuela","Azucena","Calista","Emiliana","Leire","Candelaria","Abigaíl","Odalys","Elodia","Beatriz","Lara","Dolores","Brunilda","Armida","Concha","Amparo","Aránzazu","Juana","Carmina","Noemí","Eufemia","Vicenta","Javiera","Rosario","Dominga","Lupe","Mireia","Fernanda","Fidela","Ana Sofía","Arcelia","Cintia","Aitana","Jovita","Azeneth","María Del Carmen","Adelina","Mirta","Blanca","Chus","Nadia","Dalila","Amelia","Micaela","Felicia","Concepción","Dorotea","Albina","Nazaret","Charo","Luisina","Amaya","Camila","Rocío","Salomé","Gala","Pascuala","Lucía","Cándida","Áurea","María Fernanda","Feliciana","Clotilde","Guadalupe","Marcia","Lidia","Hortensia","Ámbar","Nidia","Pili","Trinidad","Dafne"],"family":["Calvo","Cerdá","Guitart","Ibarra","Montaña","Tejada","Rey","Rocamora","Roura","Ramos","Prieto","Castelló","Artigas","Cobos","Falcón","Puerta","Villena","Vera","Segura","Barros","Amador","Gascón","Hervás","Valbuena","Leon","Bejarano","Novoa","Espada","Antón","Mínguez","Morera","Ricart","Pazos","Manuel","Garcia","Arteaga","Cuervo","Beltran","Asenjo","Marí","Palau","Camacho","Reguera","Amat","Sanmartín","Sabater","Segovia","Sotelo","Velasco","Solano","Mas","Figueras","Miró","Plana","Feijoo","Verdugo","Zamora","Aliaga","Albero","Huertas","Suarez","Riquelme","Roig","Viana","Téllez","Chacón","Rodrigo","Niño","Bertrán","Abascal","Arellano","Trujillo","Bonet","Álvaro","Cortes","Dalmau","Cáceres","Escribano","Olivé","Torrents","Chamorro","Bilbao","Mendizábal","Solé","Velázquez","Mayol","Lerma","Campoy","Borja","Botella","Fonseca","Chaparro","Vigil","Arribas","Acuña","Oller","Redondo","Pineda","Cuéllar","Crespi","Sanmiguel","Reina","Amo","Villegas","Frías","Olivera","Vazquez","Garrido","Villaverde","Alcaraz","Reig","Dávila","Roma","Acosta","Zabala","Gonzalez","Pablo","Heredia","Martin","Girona","Granados","Blazquez","Tomas","Sacristán","Lloret","Ayala","Barrera","Sedano","Valls","Villar","Hoz","Franch","Herrera","Mir","Diego","Flor","Cánovas","Mariño","Paniagua","Guzman","Esteban","Barón","Benavides","Arco","Abril","Lucena","Bonilla","Cerezo","Nebot","Pardo","Castejón","Feliu","Ferrán","Torrijos","Mulet","Bustamante","Valdés","Figueroa","Segarra","Rosales","Bárcena","Cuesta","Hernandez","Juárez","Gilabert","Nieto","Amores","Colomer","Calvet","Isern","Guardia","Abellán","Uriarte","Osuna","Galan","Tello","Morante","Pol","Caparrós","Portillo","Uribe","Alfonso","Verdejo","Pinedo","Valentín","Mesa","Español","Bravo","Batalla","Posada","Tena","Garay","Rivero","Mateos","Villa","Prats","Galiano","Robles","Sosa","Rosa"]},"us-english":{"label":"US English","locales":["en_US"],"male":["Joe","Marc","Bruce","Dennis","Gene","Jesus","Louis","Brian","Peter","Gerald","Damon","Dean","Carlos","Colton","Clifford","Francisco","Jeffery","Parker","Chad","Daryl","Jonathon","Pedro","Martin","Willie","Kyle","Brett","Connor","Brad","Blake","Gabriel","Eddie","Xavier","Philip","Tracy","Raymond","Corey","Jason","Ricardo","Perry","Gary","Angel","Julian","Henry","Joseph","Dwayne","Terrance","Maurice","Jack","Patrick","Randall","Wayne","Tommy","Jon","Gregory","Larry","Kelly","Eduardo","Calvin","Cody","Jeffrey","Luis","Russell","Bill","Garrett","Trevor","Donald","Carl","Kerry","Jonathan","Mike","Erik","Samuel","Norman","Leonard","Alex","Nathaniel","Steve","Darren","Brendan","Wesley","Ronnie","Melvin","Bobby","Harold","Alfred","Bradley","Malik","Dan","Cesar","Joel","Benjamin","Lonnie","Gregg","Sergio","Shane","Jerry","Clayton","Christopher","Brady","Dillon","Spencer","Elijah","Bryan","Phillip","Isaac","Nicholas","Devin","Jim","Juan","Bernard","Lee","Greg","Jared","Don","Luke","Kevin","Stuart","Jermaine","Alexis","Riley","Ernest","Eugene","Todd","Dale","Derek","Tristan","Ruben","Jamie","Howard","Jeremiah","Ross","Jerome","Warren","Harry","Lawrence","Roy","Clinton","Tyrone","Alexander","Brent","Jeff","Johnny","Dustin","Chris","Casey","Colin","Alec","Steven","Shaun","Glenn","Rickey","Ricky","Jeremy","Caleb","Marco","Andrew","Craig","Zachary","Alan","Tom","Andres","Aaron","Leroy","Francis","Mark","Franklin","Dominic","Matthew","Earl","Danny","Brandon","Mario","Levi","Bob","Ivan","Drew","Albert","William","Timothy","Geoffrey","Darrell","Tony","Oscar","Alejandro","Collin","Max","Eric","Ray","Preston","Rick","Jimmy","Marvin","Frank","Gavin","Glen","Karl","Andre","Keith","Joshua","Devon"],"female":["Destiny","Tamara","Alexa","Tanya","Krista","Amber","Bonnie","Sheryl","Judy","Alexandria","Ruth","Angelica","Patricia","Kelly","Sonya","Linda","Sonia","Annette","Rebecca","Jamie","Ariana","Jackie","Virginia","Mary","Paige","Susan","Candice","Charlene","Vickie","Shirley","Stacy","Yvonne","Maria","Cheyenne","Madeline","Shelia","Sheena","Whitney","Brooke","Wanda","Diamond","Gina","Amanda","Katrina","Shannon","Barbara","Brenda","Karina","Lindsey","Carmen","Meagan","Frances","Michelle","Toni","Jeanette","Ebony","Christina","Danielle","Lauren","Sandra","Monica","Tami","Amy","Anita","Kayla","Bianca","Latoya","Angel","Jody","Melissa","Gabriela","Karla","Jenna","Stacey","Allison","Kaylee","Tracie","Laura","Donna","Katelyn","Leslie","Alyssa","Kristy","Stephanie","Jacqueline","Marissa","Jean","Nina","Denise","Mercedes","Jillian","Leah","Maureen","Jodi","Colleen","Sally","Diane","Cassandra","Chloe","Tricia","Tabitha","Pam","Peggy","Natalie","Terry","Shawna","Nancy","Ariel","Priscilla","Ashlee","Christie","April","Kristi","Mindy","Lisa","Madison","Aimee","Beth","Mckenzie","Joanna","Melody","Claudia","Doris","Tina","Carly","Breanna","Jennifer","Casey","Briana","Betty","Kari","Shelley","Desiree","Kelli","Kylie","Julia","Kara","Jasmine","Bridget","Sandy","Mandy","Tara","Brianna","Gwendolyn","Gail","Autumn","Cassie","Jaime","Cassidy","Misty","Jeanne","Tiffany","Marisa","Jade","Darlene","Adrienne","Vicki","Joann","Candace","Yvette","Penny","Krystal","Carrie","Mackenzie","Adriana","Loretta","Lindsay","Lori","Miranda","Jasmin","Helen","Cheryl","Molly","Victoria","Carla","Gabrielle","Glenda","Summer","Marie","Kelsey","Teresa","Haley","Becky","Marcia","Angela","Elaine","Caroline","Tammy","Cristina","Mariah","Kiara","Joan","Bailey","Ana","Nichole","Angie","Veronica","Felicia","Robyn","Kristine"],"family":["Yates","Harris","Strong","Serrano","Haney","Clarke","Klein","Lloyd","Gamble","Arias","Sellers","Owens","Salinas","Combs","Mcconnell","Blanchard","Rubio","Maynard","Harvey","Collins","Huynh","Nunez","Barrera","Mullins","Conner","Hurley","Griffin","Barnes","Cruz","Gomez","Pruitt","Mata","Villanueva","Mueller","Hughes","Calhoun","Woods","Weeks","Welch","Murillo","Trevino","Dunlap","Lindsey","Barton","Torres","Chan","Daugherty","Bryan","Beasley","Nolan","Escobar","Simon","Hunt","Noble","Clay","Cordova","Ross","Rodgers","Hudson","Johnston","Collier","Whitney","Vega","Browning","Zamora","Mcintyre","Andersen","Dominguez","Holmes","Miranda","Jennings","Cabrera","Yang","Valencia","Sanford","Parks","Reilly","Morton","Madden","Rich","Carey","Harrison","Li","Key","Stafford","Barker","Adams","Johnson","Orr","West","Roman","Moore","Cuevas","Frederick","Cline","Walter","Fields","Jacobson","Tate","Adkins","Preston","Henry","Maldonado","Barnett","Greer","Coleman","Burke","Ferrell","Long","Cummings","Vang","Braun","Glover","Macdonald","Rasmussen","Olsen","Irwin","Hancock","Mayo","Duffy","Perry","Schneider","Horn","Jones","Peters","Mann","Figueroa","Pacheco","Frey","Estes","Thompson","Schaefer","Kaiser","Gibson","Faulkner","Solomon","Jensen","Hutchinson","Mercado","Travis","Macias","Lopez","Burns","Gill","Gonzalez","Krause","Little","Scott","Munoz","Sheppard","Wong","Branch","Glenn","Carson","Summers","Thornton","Hurst","Mahoney","Schwartz","Whitaker","Page","Hoffman","Ortega","Benitez","Glass","Burton","Knight","Hernandez","King","Golden","Newton","Davidson","Weaver","Mack","Hart","Meadows","Bradshaw","Hooper","Kerr","Roy","Gross","Elliott","Hanson","Moss","Hammond","Manning","Mcneil","Snow","Anthony","Fernandez","Delgado","Wood","Morrow","Cook","Bartlett","Hendricks","Malone","Navarro","Mccall","Sawyer"]}}};
+    const NAME_CORRECTION_DEFAULT_STATE = {
+      mode: "off",
+      strategy: "random",
+      culture: "american",
+      seed: "",
+      customSources: { male: [], female: [], family: [] },
+      oneToOneCulture: "",
+      oneToOne: { male: {}, female: {}, family: {} },
+      session: {
+        configKey: "",
+        usedMale: [],
+        usedFemale: [],
+        usedFamily: [],
+        usedDestinations: [],
+        maleIndex: 0,
+        femaleIndex: 0,
+        familyIndex: 0,
+        maleCycles: 0,
+        femaleCycles: 0,
+        familyCycles: 0,
+        history: [],
+        lastApplied: []
+      }
+    };
 
     const LEGACY_SCHOOL_OF_MAGIC_DEFAULT_WORLD = {
       title: "College of Magic",
@@ -1947,6 +2131,7 @@
         betterMemoryManagement: false,
         temperature: 0.85
       },
+      nameCorrection: deepClone(NAME_CORRECTION_DEFAULT_STATE),
       world: {
         title: "",
         genre: "",
@@ -2003,6 +2188,731 @@
 
     const $ = (id) => document.getElementById(id);
     const $$ = (selector) => Array.from(document.querySelectorAll(selector));
+
+    function nameCorrectionEscapeRegExp(value = "") {
+      return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+
+    function nameCorrectionBoundaryPattern(body, flags = "giu") {
+      try {
+        return new RegExp(`(^|[^\\p{L}\\p{N}_])(${body})(?![\\p{L}\\p{N}_])`, flags);
+      } catch (_error) {
+        return new RegExp(`(^|[^A-Za-z0-9_])(${body})(?![A-Za-z0-9_])`, flags.replace("u", ""));
+      }
+    }
+
+    function nameCorrectionNormalizeSourceList(value) {
+      const entries = Array.isArray(value)
+        ? value
+        : String(value || "").split(/[\n,;]+/);
+      const seen = new Set();
+      const output = [];
+      entries.forEach(entry => {
+        const cleaned = String(entry || "").replace(/\s+/g, " ").trim();
+        if (!cleaned) return;
+        const key = cleaned.toLocaleLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        output.push(cleaned);
+      });
+      return output;
+    }
+
+    function nameCorrectionMergeSourceLists(base, custom, excluded = new Set()) {
+      const seen = new Set(excluded);
+      const output = [];
+      [...base, ...nameCorrectionNormalizeSourceList(custom)].forEach(name => {
+        const cleaned = String(name || "").replace(/\s+/g, " ").trim();
+        if (!cleaned) return;
+        const key = cleaned.toLocaleLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        output.push(cleaned);
+      });
+      return output;
+    }
+
+    function nameCorrectionSourceLists(nc) {
+      const male = nameCorrectionMergeSourceLists(NAME_CORRECTION_SOURCE_MALE, nc?.customSources?.male);
+      const maleKeys = new Set(male.map(name => name.toLocaleLowerCase()));
+      const female = nameCorrectionMergeSourceLists(NAME_CORRECTION_SOURCE_FEMALE, nc?.customSources?.female, maleKeys);
+      const family = nameCorrectionMergeSourceLists(NAME_CORRECTION_SOURCE_FAMILY, nc?.customSources?.family);
+      return { male, female, family };
+    }
+
+    function nameCorrectionBlockedSourceKeys(nc) {
+      const lists = nameCorrectionSourceLists(nc);
+      return new Set([...lists.male, ...lists.female, ...lists.family].map(name => name.toLocaleLowerCase()));
+    }
+
+    function nameCorrectionReplacementPool(nc, kind) {
+      const pool = NAME_CORRECTION_POOLS.cultures[nc.culture]?.[kind] || [];
+      const blocked = nameCorrectionBlockedSourceKeys(nc);
+      return pool.filter(name => !blocked.has(String(name).toLocaleLowerCase()));
+    }
+
+    function nameCorrectionBuildSourceCatalog(nc) {
+      const lists = nameCorrectionSourceLists(nc);
+      const givenGender = new Map([
+        ...lists.male.map(name => [name.toLocaleLowerCase(), "male"]),
+        ...lists.female.map(name => [name.toLocaleLowerCase(), "female"])
+      ]);
+      const givenLookup = new Map(
+        [...lists.male, ...lists.female].map(name => [name.toLocaleLowerCase(), name])
+      );
+      const familyLookup = new Map(
+        lists.family.map(name => [name.toLocaleLowerCase(), name])
+      );
+      const allSources = [...new Set([...lists.male, ...lists.female, ...lists.family])]
+        .sort((a, b) => b.length - a.length || a.localeCompare(b));
+      const givenAlternation = [...lists.male, ...lists.female]
+        .sort((a, b) => b.length - a.length || a.localeCompare(b))
+        .map(nameCorrectionEscapeRegExp).join("|");
+      const familyAlternation = [...lists.family]
+        .sort((a, b) => b.length - a.length || a.localeCompare(b))
+        .map(nameCorrectionEscapeRegExp).join("|");
+      const tokenPattern = allSources.length
+        ? nameCorrectionBoundaryPattern(allSources.map(nameCorrectionEscapeRegExp).join("|"))
+        : /$^/g;
+      let fullPattern = /$^/g;
+      if (givenAlternation && familyAlternation) {
+        try {
+          fullPattern = new RegExp(
+            `(^|[^\\p{L}\\p{N}_])(${givenAlternation})([\\s\\u00A0]+)(${familyAlternation})(?![\\p{L}\\p{N}_])`,
+            "giu"
+          );
+        } catch (_error) {
+          fullPattern = new RegExp(
+            `(^|[^A-Za-z0-9_])(${givenAlternation})([\\s\\u00A0]+)(${familyAlternation})(?![A-Za-z0-9_])`,
+            "gi"
+          );
+        }
+      }
+      return { ...lists, givenGender, givenLookup, familyLookup, tokenPattern, fullPattern };
+    }
+
+    function nameCorrectionHashSeed(text = "") {
+      let hash = 2166136261;
+      for (const char of String(text)) {
+        hash ^= char.codePointAt(0);
+        hash = Math.imul(hash, 16777619);
+      }
+      return hash >>> 0;
+    }
+
+    function nameCorrectionRandom(seed) {
+      let current = seed >>> 0;
+      return function random() {
+        current += 0x6D2B79F5;
+        let value = current;
+        value = Math.imul(value ^ (value >>> 15), value | 1);
+        value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+        return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    function nameCorrectionShuffle(values, seedText = "") {
+      const random = nameCorrectionRandom(nameCorrectionHashSeed(seedText));
+      const copy = [...values];
+      for (let index = copy.length - 1; index > 0; index -= 1) {
+        const swapIndex = Math.floor(random() * (index + 1));
+        [copy[index], copy[swapIndex]] = [copy[swapIndex], copy[index]];
+      }
+      return copy;
+    }
+
+    function newNameCorrectionSeed() {
+      const random = new Uint32Array(1);
+      if (globalThis.crypto?.getRandomValues) crypto.getRandomValues(random);
+      else random[0] = Math.floor(Math.random() * 0xFFFFFFFF);
+      return String(random[0]);
+    }
+
+    function defaultNameCorrectionSession() {
+      return deepClone(NAME_CORRECTION_DEFAULT_STATE.session);
+    }
+
+    function normalizeNameCorrectionState(target = state) {
+      if (!target || typeof target !== "object") return deepClone(NAME_CORRECTION_DEFAULT_STATE);
+      target.nameCorrection = mergeDefaults(deepClone(NAME_CORRECTION_DEFAULT_STATE), target.nameCorrection || {});
+      let nc = target.nameCorrection;
+      if (!["off", "dumb", "smart"].includes(nc.mode)) nc.mode = "off";
+      if (!["random", "one-to-one"].includes(nc.strategy)) nc.strategy = "random";
+      if (!NAME_CORRECTION_POOLS.cultures[nc.culture]) nc.culture = "american";
+      nc.seed = String(nc.seed || newNameCorrectionSeed());
+      nc.customSources ||= { male: [], female: [], family: [] };
+      nc.customSources.male = nameCorrectionNormalizeSourceList(nc.customSources.male);
+      nc.customSources.female = nameCorrectionNormalizeSourceList(nc.customSources.female);
+      nc.customSources.family = nameCorrectionNormalizeSourceList(nc.customSources.family);
+      nc.oneToOne ||= { male: {}, female: {}, family: {} };
+      nc.oneToOne.male = nc.oneToOne.male && typeof nc.oneToOne.male === "object" ? nc.oneToOne.male : {};
+      nc.oneToOne.female = nc.oneToOne.female && typeof nc.oneToOne.female === "object" ? nc.oneToOne.female : {};
+      nc.oneToOne.family = nc.oneToOne.family && typeof nc.oneToOne.family === "object" ? nc.oneToOne.family : {};
+      nc.session = mergeDefaults(defaultNameCorrectionSession(), nc.session || {});
+      ["usedMale", "usedFemale", "usedFamily", "usedDestinations", "history", "lastApplied"].forEach(key => {
+        if (!Array.isArray(nc.session[key])) nc.session[key] = [];
+      });
+      // Remove obsolete identity-based fields from saves created by the first name-correction build.
+      delete nc.session.identities;
+      delete nc.session.standaloneGiven;
+      delete nc.session.standaloneFamily;
+      // Backward-compatible migration: older saves tracked used destinations only by category.
+      // Random rotation now consults one global ledger so the same replacement token cannot
+      // be assigned to another source name before the applicable pool loops.
+      const migratedDestinations = new Set([
+        ...nc.session.usedDestinations,
+        ...nc.session.usedMale,
+        ...nc.session.usedFemale,
+        ...nc.session.usedFamily
+      ].map(item => String(item).toLocaleLowerCase()));
+      nc.session.usedDestinations = [...migratedDestinations];
+      if (nc.oneToOneCulture !== nc.culture) {
+        rerandomizeNameCorrectionOneToOne({ target, newSeed: !nc.seed, resetSession: true, save: false });
+        // rerandomizeNameCorrectionOneToOne replaces target.nameCorrection.
+        nc = target.nameCorrection;
+      } else if (!nameCorrectionOneToOneComplete(nc)) {
+        fillMissingNameCorrectionOneToOne(nc);
+      }
+      return nc;
+    }
+
+    function nameCorrectionOneToOneComplete(nc) {
+      const sources = nameCorrectionSourceLists(nc);
+      const blocked = nameCorrectionBlockedSourceKeys(nc);
+      const valid = (kind, name) => {
+        const replacement = String(nc.oneToOne?.[kind]?.[name] || "").trim();
+        if (!replacement) return false;
+        return !blocked.has(replacement.toLocaleLowerCase()) || !nameCorrectionReplacementPool(nc, kind).length;
+      };
+      return sources.male.every(name => valid("male", name))
+        && sources.female.every(name => valid("female", name))
+        && sources.family.every(name => valid("family", name));
+    }
+
+    function fillMissingNameCorrectionOneToOne(nc) {
+      const sources = nameCorrectionSourceLists(nc);
+      const blocked = nameCorrectionBlockedSourceKeys(nc);
+      ["male", "female", "family"].forEach(kind => {
+        nc.oneToOne[kind] ||= {};
+        const order = nameCorrectionShuffle(nameCorrectionReplacementPool(nc, kind), `${nc.seed} ${nc.culture} one-to-one ${kind}`);
+        if (!order.length) return;
+        const used = new Set();
+        sources[kind].forEach(source => {
+          const existing = String(nc.oneToOne[kind][source] || "").trim();
+          if (existing && !blocked.has(existing.toLocaleLowerCase())) used.add(existing.toLocaleLowerCase());
+        });
+        let cursor = 0;
+        sources[kind].forEach(source => {
+          const existing = String(nc.oneToOne[kind][source] || "").trim();
+          if (existing && !blocked.has(existing.toLocaleLowerCase())) return;
+          let replacement = "";
+          for (let tries = 0; tries < order.length; tries += 1) {
+            const candidate = order[cursor % order.length];
+            cursor += 1;
+            if (!used.has(candidate.toLocaleLowerCase())) {
+              replacement = candidate;
+              break;
+            }
+          }
+          if (!replacement) {
+            replacement = order[cursor % order.length];
+            cursor += 1;
+          }
+          nc.oneToOne[kind][source] = replacement;
+          used.add(replacement.toLocaleLowerCase());
+        });
+      });
+      nc.oneToOneCulture = nc.culture;
+    }
+
+    function resetNameCorrectionSession(options = {}) {
+      const nc = normalizeNameCorrectionState(options.target || state);
+      const history = options.keepHistory ? deepClone(nc.session.history || []) : [];
+      nc.session = defaultNameCorrectionSession();
+      nc.session.history = history;
+      nc.session.configKey = nameCorrectionConfigKey(nc);
+      if (options.save !== false && (options.target || state) === state) saveState();
+      renderNameCorrectionStatus();
+    }
+
+    function rerandomizeNameCorrectionOneToOne(options = {}) {
+      const target = options.target || state;
+      target.nameCorrection = mergeDefaults(deepClone(NAME_CORRECTION_DEFAULT_STATE), target.nameCorrection || {});
+      const nc = target.nameCorrection;
+      if (!NAME_CORRECTION_POOLS.cultures[nc.culture]) nc.culture = "american";
+      if (options.newSeed !== false || !nc.seed) nc.seed = newNameCorrectionSeed();
+      const makeMap = (sources, values, suffix) => {
+        const order = nameCorrectionShuffle(values, `${nc.seed}\u0000${nc.culture}\u0000one-to-one\u0000${suffix}`);
+        if (!order.length) return Object.fromEntries(sources.map(source => [source, source]));
+        return Object.fromEntries(sources.map((source, index) => [source, order[index % order.length]]));
+      };
+      const sources = nameCorrectionSourceLists(nc);
+      nc.oneToOne = {
+        male: makeMap(sources.male, nameCorrectionReplacementPool(nc, "male"), "male"),
+        female: makeMap(sources.female, nameCorrectionReplacementPool(nc, "female"), "female"),
+        family: makeMap(sources.family, nameCorrectionReplacementPool(nc, "family"), "family")
+      };
+      nc.oneToOneCulture = nc.culture;
+      if (options.resetSession !== false) {
+        nc.session = defaultNameCorrectionSession();
+        nc.session.configKey = nameCorrectionConfigKey(nc);
+      }
+      if (options.save !== false && target === state) saveState();
+      if (target === state) renderNameCorrectionDialog();
+      return nc.oneToOne;
+    }
+
+    function nameCorrectionConfigKey(nc = normalizeNameCorrectionState()) {
+      return JSON.stringify({
+        culture: nc.culture,
+        strategy: nc.strategy,
+        seed: nc.seed,
+        oneToOne: nc.strategy === "one-to-one" ? nc.oneToOne : null
+      });
+    }
+
+    function ensureNameCorrectionSessionConfiguration(nc) {
+      const key = nameCorrectionConfigKey(nc);
+      if (nc.session.configKey && nc.session.configKey !== key) nc.session = defaultNameCorrectionSession();
+      nc.session.configKey = key;
+    }
+
+    function nameCorrectionIsLowercaseWord(value = "") {
+      return value === value.toLocaleLowerCase() && value !== value.toLocaleUpperCase();
+    }
+
+    function nameCorrectionRenderCase(source, replacement) {
+      if (source === source.toLocaleUpperCase()) return replacement.toLocaleUpperCase();
+      if (nameCorrectionIsLowercaseWord(source)) return replacement.toLocaleLowerCase();
+      return replacement;
+    }
+
+    function nameCorrectionCollectStrings(value, output = []) {
+      if (typeof value === "string") output.push(value);
+      else if (Array.isArray(value)) value.forEach(item => nameCorrectionCollectStrings(item, output));
+      else if (value && typeof value === "object") Object.values(value).forEach(item => nameCorrectionCollectStrings(item, output));
+      return output;
+    }
+
+    function nameCorrectionExistingStoryText() {
+      const chunks = [
+        state.world?.backgroundStory, state.world?.character, state.world?.premise, state.world?.firstAction,
+        state.scratchpad,
+        ...(state.trackers || []).flatMap(t => [t.name, t.value]),
+        ...(state.turns || []).flatMap(turn => [turn.narration, turn.imagePrompt, ...(turn.choices || [])])
+      ];
+      return chunks.filter(Boolean).join("\n");
+    }
+
+    function nameCorrectionContainsWhole(text, value) {
+      return nameCorrectionBoundaryPattern(nameCorrectionEscapeRegExp(value), "iu").test(String(text || ""));
+    }
+
+    function markExistingDestinationNamesUsed(nc, value) {
+      const corpus = `${nameCorrectionExistingStoryText()}\n${nameCorrectionCollectStrings(value).join("\n")}`;
+      const globallyUsed = new Set((nc.session.usedDestinations || []).map(item => String(item).toLocaleLowerCase()));
+      const groups = [
+        ["usedMale", nameCorrectionReplacementPool(nc, "male")],
+        ["usedFemale", nameCorrectionReplacementPool(nc, "female")],
+        ["usedFamily", nameCorrectionReplacementPool(nc, "family")]
+      ];
+      groups.forEach(([key, values]) => {
+        const used = new Set((nc.session[key] || []).map(item => String(item).toLocaleLowerCase()));
+        values.forEach(candidate => {
+          if (!nameCorrectionContainsWhole(corpus, candidate)) return;
+          const normalized = candidate.toLocaleLowerCase();
+          used.add(normalized);
+          globallyUsed.add(normalized);
+        });
+        nc.session[key] = [...used];
+      });
+      nc.session.usedDestinations = [...globallyUsed];
+    }
+
+    function nameCorrectionPoolKindForGiven(sourceGiven, nc, catalog = null) {
+      const sourceCatalog = catalog || nameCorrectionBuildSourceCatalog(nc);
+      return sourceCatalog.givenGender.get(sourceGiven.toLocaleLowerCase()) === "female" ? "female" : "male";
+    }
+
+    function takeRotatingName(nc, kind) {
+      const pool = nameCorrectionReplacementPool(nc, kind);
+      if (!Array.isArray(pool) || !pool.length) return "";
+      const cap = kind[0].toUpperCase() + kind.slice(1);
+      const usedKey = `used${cap}`;
+      const indexKey = `${kind}Index`;
+      const cyclesKey = `${kind}Cycles`;
+      const categoryUsed = new Set((nc.session[usedKey] || []).map(item => String(item).toLocaleLowerCase()));
+      const globallyUsed = new Set((nc.session.usedDestinations || []).map(item => String(item).toLocaleLowerCase()));
+      const order = nameCorrectionShuffle(pool, `${nc.seed}\u0000${nc.culture}\u0000rotation\u0000${kind}`);
+      let selected = "";
+      for (let tries = 0; tries < order.length; tries += 1) {
+        const candidate = order[nc.session[indexKey] % order.length];
+        nc.session[indexKey] += 1;
+        if (!globallyUsed.has(candidate.toLocaleLowerCase())) {
+          selected = candidate;
+          break;
+        }
+      }
+      // Every compatible destination has appeared already. Loop through this category's
+      // deterministic order again while retaining the complete historical use ledger.
+      if (!selected) {
+        nc.session[cyclesKey] = Number(nc.session[cyclesKey] || 0) + 1;
+        selected = order[nc.session[indexKey] % order.length];
+        nc.session[indexKey] += 1;
+      }
+      const normalized = selected.toLocaleLowerCase();
+      categoryUsed.add(normalized);
+      globallyUsed.add(normalized);
+      nc.session[usedKey] = [...categoryUsed];
+      nc.session.usedDestinations = [...globallyUsed];
+      return selected;
+    }
+
+    function createNameCorrectionPassageContext(nc) {
+      return {
+        givenMappings: {},
+        familyMappings: {},
+        catalog: nameCorrectionBuildSourceCatalog(nc)
+      };
+    }
+
+    function getOrCreateNameCorrectionTokenReplacement(nc, kind, sourceCanonical, passageContext) {
+      const poolKind = kind === "family"
+        ? "family"
+        : nameCorrectionPoolKindForGiven(sourceCanonical, nc, passageContext.catalog);
+
+      if (nc.strategy === "one-to-one") {
+        return String(nc.oneToOne[poolKind]?.[sourceCanonical] || sourceCanonical);
+      }
+
+      // Random mode deliberately maps given names and family names independently. The two
+      // passage-local maps are shared by full-name and standalone matches, so a token remains
+      // consistent throughout one generated response without creating a combined identity.
+      const mappings = kind === "family" ? passageContext.familyMappings : passageContext.givenMappings;
+      if (!mappings[sourceCanonical]) {
+        mappings[sourceCanonical] = takeRotatingName(nc, poolKind) || sourceCanonical;
+      }
+      return mappings[sourceCanonical];
+    }
+
+    function addAppliedNameMapping(report, source, replacement, type) {
+      if (!source || !replacement || source === replacement) return;
+      report.occurrences += 1;
+      const key = `${source}\u0000${replacement}\u0000${type}`;
+      if (!report.mappingKeys.has(key)) {
+        report.mappingKeys.add(key);
+        report.mappings.push({ source, replacement, type });
+      }
+    }
+
+    function dumbCorrectNameString(sourceText, nc, report, passageContext) {
+      if (!sourceText) return sourceText;
+      const placeholders = [];
+      const catalog = passageContext.catalog;
+      let changed = String(sourceText).replace(catalog.fullPattern, (whole, prefix, givenRaw, separator, familyRaw) => {
+        if (nameCorrectionIsLowercaseWord(givenRaw) || nameCorrectionIsLowercaseWord(familyRaw)) return whole;
+        const sourceGiven = catalog.givenLookup.get(givenRaw.toLocaleLowerCase());
+        const sourceFamily = catalog.familyLookup.get(familyRaw.toLocaleLowerCase());
+        if (!sourceGiven || !sourceFamily) return whole;
+        const replacementGiven = getOrCreateNameCorrectionTokenReplacement(nc, "given", sourceGiven, passageContext);
+        const replacementFamily = getOrCreateNameCorrectionTokenReplacement(nc, "family", sourceFamily, passageContext);
+        const renderedGiven = nameCorrectionRenderCase(givenRaw, replacementGiven);
+        const renderedFamily = nameCorrectionRenderCase(familyRaw, replacementFamily);
+        const replacement = `${renderedGiven}${separator}${renderedFamily}`;
+        addAppliedNameMapping(report, givenRaw, renderedGiven, "given name");
+        addAppliedNameMapping(report, familyRaw, renderedFamily, "family name");
+        const placeholder = `\uE000IQNC${placeholders.length}\uE001`;
+        placeholders.push(replacement);
+        return prefix + placeholder;
+      });
+
+      changed = changed.replace(catalog.tokenPattern, (whole, prefix, sourceRaw) => {
+        if (nameCorrectionIsLowercaseWord(sourceRaw)) return whole;
+        const lookup = sourceRaw.toLocaleLowerCase();
+        const sourceGiven = catalog.givenLookup.get(lookup);
+        const sourceFamily = catalog.familyLookup.get(lookup);
+        const kind = sourceGiven ? "given" : sourceFamily ? "family" : "";
+        const canonical = sourceGiven || sourceFamily;
+        if (!kind || !canonical) return whole;
+        const replacement = getOrCreateNameCorrectionTokenReplacement(nc, kind, canonical, passageContext);
+        const rendered = nameCorrectionRenderCase(sourceRaw, replacement);
+        addAppliedNameMapping(report, sourceRaw, rendered, kind === "given" ? "given name" : "family name");
+        return prefix + rendered;
+      });
+
+      placeholders.forEach((replacement, index) => {
+        changed = changed.replace(`\uE000IQNC${index}\uE001`, replacement);
+      });
+      return changed;
+    }
+
+    function transformNameCorrectionStrings(value, transform) {
+      if (typeof value === "string") return transform(value);
+      if (Array.isArray(value)) return value.map(item => transformNameCorrectionStrings(item, transform));
+      if (value && typeof value === "object") {
+        return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, transformNameCorrectionStrings(item, transform)]));
+      }
+      return value;
+    }
+
+    function recordNameCorrectionHistory(nc, report) {
+      const now = nowIso();
+      report.mappings.forEach(mapping => {
+        const existing = nc.session.history.find(item => item.source === mapping.source && item.replacement === mapping.replacement && item.type === mapping.type);
+        if (existing) {
+          existing.uses = Number(existing.uses || 0) + 1;
+          existing.lastUsedAt = now;
+        } else {
+          nc.session.history.push({ ...mapping, uses: 1, firstUsedAt: now, lastUsedAt: now });
+        }
+      });
+      nc.session.lastApplied = report.mappings.map(item => ({ ...item }));
+    }
+
+    function copyOpenRouterMetadata(source, target) {
+      if (!source || !target || typeof source !== "object" || typeof target !== "object") return target;
+      ["__openrouterModel", "__openrouterRequestedModels", "__openrouterModelSelections"].forEach(key => {
+        if (!(key in source)) return;
+        try {
+          Object.defineProperty(target, key, { value: source[key], enumerable: false, configurable: true });
+        } catch (_error) {
+          target[key] = source[key];
+        }
+      });
+      return target;
+    }
+
+    function sameJsonShape(original, candidate) {
+      if (Array.isArray(original)) {
+        return Array.isArray(candidate) && original.length === candidate.length
+          && original.every((item, index) => sameJsonShape(item, candidate[index]));
+      }
+      if (original && typeof original === "object") {
+        if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return false;
+        const a = Object.keys(original).sort();
+        const b = Object.keys(candidate).sort();
+        return a.length === b.length && a.every((key, index) => key === b[index] && sameJsonShape(original[key], candidate[key]));
+      }
+      if (typeof original === "string") return typeof candidate === "string";
+      return Object.is(original, candidate);
+    }
+
+    function smartNameCorrectionSystemPrompt() {
+      return `You are a conservative name-consistency editor for structured choose-your-own-adventure output.
+Return ONLY valid JSON. Do not use markdown or comments.
+
+Required JSON shape:
+{
+  "corrected": <the same JSON value and exact structure as partway_corrected_value>
+}
+
+Rules:
+- Edit only string values. Preserve every object key, array length, number, boolean, and null exactly.
+- Make no general prose, style, plot, formatting, or content edits. Only repair name replacement consistency.
+- The local pass already made the listed source-to-replacement swaps. Correct missed references that clearly refer to the same people, including nicknames, affectionate or elongated forms, possessives, honorific forms, altered spellings, and initials.
+- Update first-name or surname initials only when context clearly ties them to a listed mapping.
+- Revert a local replacement when the original occurrence was clearly a normal word, title, role, place, object, or other non-name collision.
+- Do not apply mappings that were not actually listed for this text.
+- When uncertain, leave the partway-corrected wording unchanged.`;
+    }
+
+    function buildSmartNameCorrectionPrompt(original, corrected, report, context = "generated text") {
+      return JSON.stringify({
+        task: `Finish conservative name correction for ${context}.`,
+        mappings_actually_applied_in_this_text: report.mappings.map(item => ({
+          source_to_replace: item.source,
+          replacement_used: item.replacement,
+          mapping_type: item.type
+        })),
+        original_value: original,
+        partway_corrected_value: corrected,
+        output_requirement: "Return only JSON with corrected. It must have exactly the same structure as partway_corrected_value."
+      }, null, 2);
+    }
+
+    async function applyNameCorrectionToValue(value, options = {}) {
+      const nc = normalizeNameCorrectionState();
+      if (nc.mode === "off" || value == null) return value;
+      ensureNameCorrectionSessionConfiguration(nc);
+      markExistingDestinationNamesUsed(nc, value);
+      const report = { occurrences: 0, mappings: [], mappingKeys: new Set() };
+      const passageContext = createNameCorrectionPassageContext(nc);
+      const dumbCorrected = transformNameCorrectionStrings(value, text => dumbCorrectNameString(text, nc, report, passageContext));
+      recordNameCorrectionHistory(nc, report);
+      copyOpenRouterMetadata(value, dumbCorrected);
+      saveState();
+      renderNameCorrectionStatus();
+      if (nc.mode !== "smart" || !report.mappings.length) return dumbCorrected;
+
+      try {
+        if (busy) setBusy(true, "Correcting names");
+        const smartRaw = await callOpenRouterJson("smart name correction", buildOpenRouterInstructionMessages(
+          smartNameCorrectionSystemPrompt(),
+          buildSmartNameCorrectionPrompt(value, dumbCorrected, report, options.context || "generated text")
+        ), { temperature: 0, max_tokens: options.maxTokens || 4200, json_retries: 1, no_content_retries: 1 });
+        const candidate = smartRaw.corrected ?? smartRaw.corrected_value ?? smartRaw.result;
+        if (!sameJsonShape(dumbCorrected, candidate)) throw new Error("The smart correction response changed the JSON structure.");
+        return copyOpenRouterMetadata(value, candidate);
+      } catch (error) {
+        console.warn("Smart name correction failed; using dumb correction.", error);
+        toast(`Smart name correction failed, so the local correction was used: ${error?.message || error}`, 7000);
+        return dumbCorrected;
+      }
+    }
+
+    function populateNameCorrectionCultures() {
+      const select = $("nameCorrectionCulture");
+      if (!select || select.options.length) return;
+      Object.entries(NAME_CORRECTION_POOLS.cultures)
+        .sort(([aKey, a], [bKey, b]) => aKey === "american" ? -1 : bKey === "american" ? 1 : a.label.localeCompare(b.label))
+        .forEach(([key, culture]) => {
+          const option = document.createElement("option");
+          option.value = key;
+          option.textContent = culture.label;
+          select.appendChild(option);
+        });
+    }
+
+    function nameCorrectionCustomSourcesFromForm() {
+      return {
+        male: nameCorrectionNormalizeSourceList($("nameCorrectionCustomMale")?.value || ""),
+        female: nameCorrectionNormalizeSourceList($("nameCorrectionCustomFemale")?.value || ""),
+        family: nameCorrectionNormalizeSourceList($("nameCorrectionCustomFamily")?.value || "")
+      };
+    }
+
+    function syncCustomNameSourcesFromForm(options = {}) {
+      const nc = normalizeNameCorrectionState();
+      const next = nameCorrectionCustomSourcesFromForm();
+      const changed = JSON.stringify(nc.customSources) !== JSON.stringify(next);
+      if (!changed) return false;
+      nc.customSources = next;
+      fillMissingNameCorrectionOneToOne(nc);
+      if (options.save !== false) saveState();
+      renderNameCorrectionDialog();
+      return true;
+    }
+
+    function renderCustomNameSources(nc) {
+      const fields = {
+        male: $("nameCorrectionCustomMale"),
+        female: $("nameCorrectionCustomFemale"),
+        family: $("nameCorrectionCustomFamily")
+      };
+      Object.entries(fields).forEach(([kind, field]) => {
+        if (!field || document.activeElement === field) return;
+        field.value = (nc.customSources[kind] || []).join("\n");
+      });
+      const count = $("nameCorrectionCustomCount");
+      if (count) {
+        const male = nc.customSources.male.length;
+        const female = nc.customSources.female.length;
+        const family = nc.customSources.family.length;
+        count.textContent = `${male} male, ${female} female, and ${family} family additional source name${male + female + family === 1 ? "" : "s"}.`;
+      }
+    }
+
+    function renderNameMapRows(containerId, kind, sources) {
+      const container = $(containerId);
+      if (!container) return;
+      const nc = normalizeNameCorrectionState();
+      container.replaceChildren();
+      sources.forEach(source => {
+        const row = document.createElement("label");
+        row.className = "name-map-row";
+        const sourceEl = document.createElement("span");
+        sourceEl.className = "name-map-source";
+        sourceEl.textContent = source;
+        const arrow = document.createElement("span");
+        arrow.className = "name-map-arrow";
+        arrow.textContent = "→";
+        const input = document.createElement("input");
+        input.type = "text";
+        input.value = nc.oneToOne[kind]?.[source] || "";
+        input.dataset.nameMapKind = kind;
+        input.dataset.nameMapSource = source;
+        input.setAttribute("aria-label", `Replacement for ${source}`);
+        input.addEventListener("change", () => {
+          nc.oneToOne[kind][source] = input.value.trim() || source;
+          nc.oneToOneCulture = nc.culture;
+          resetNameCorrectionSession({ save: false });
+          saveState();
+          renderNameCorrectionStatus();
+        });
+        row.append(sourceEl, arrow, input);
+        container.appendChild(row);
+      });
+    }
+
+    function syncNameCorrectionStateToForm() {
+      const nc = normalizeNameCorrectionState();
+      populateNameCorrectionCultures();
+      const mode = document.querySelector(`input[name="nameCorrectionMode"][value="${nc.mode}"]`);
+      const strategy = document.querySelector(`input[name="nameCorrectionStrategy"][value="${nc.strategy}"]`);
+      if (mode) mode.checked = true;
+      if (strategy) strategy.checked = true;
+      if ($("nameCorrectionCulture")) $("nameCorrectionCulture").value = nc.culture;
+      renderNameCorrectionDialog();
+    }
+
+    function syncNameCorrectionFormToState(options = {}) {
+      const nc = normalizeNameCorrectionState();
+      const oldStrategy = nc.strategy;
+      nc.mode = document.querySelector('input[name="nameCorrectionMode"]:checked')?.value || nc.mode;
+      nc.strategy = document.querySelector('input[name="nameCorrectionStrategy"]:checked')?.value || nc.strategy;
+      const culture = $("nameCorrectionCulture")?.value;
+      if (culture && NAME_CORRECTION_POOLS.cultures[culture]) nc.culture = culture;
+      if (oldStrategy !== nc.strategy && options.resetSession !== false) resetNameCorrectionSession({ save: false });
+      if (options.save !== false) saveState();
+      renderNameCorrectionDialog();
+    }
+
+    function renderNameCorrectionStatus() {
+      const status = $("nameCorrectionStatus");
+      if (!status) return;
+      const nc = normalizeNameCorrectionState();
+      const historyCount = (nc.session.history || []).length;
+      const globallyUsedCount = new Set(nc.session.usedDestinations || []).size;
+      const pool = NAME_CORRECTION_POOLS.cultures[nc.culture];
+      const availablePoolSizes = {
+        male: nameCorrectionReplacementPool(nc, "male").length,
+        female: nameCorrectionReplacementPool(nc, "female").length,
+        family: nameCorrectionReplacementPool(nc, "family").length
+      };
+      const customSourceCount = nc.customSources.male.length + nc.customSources.female.length + nc.customSources.family.length;
+      if (nc.mode === "off") {
+        status.textContent = `Off. ${historyCount} saved mapping${historyCount === 1 ? "" : "s"} remain available if correction is re-enabled.`;
+        return;
+      }
+      const smartNote = nc.mode === "smart" ? "Smart mode adds one conservative Story LLM cleanup request after each local pass that makes a swap." : "Dumb mode uses only local browser code.";
+      const strategyNote = nc.strategy === "one-to-one"
+        ? `1-for-1 table active for ${pool.label}.`
+        : `Rotating pool active for ${pool.label}: ${globallyUsedCount} destination tokens used globally; male ${nc.session.usedMale.length}/${availablePoolSizes.male}, female ${nc.session.usedFemale.length}/${availablePoolSizes.female}, family ${nc.session.usedFamily.length}/${availablePoolSizes.family}. Given names and family names map independently within a response and rotate again in later responses.`;
+      const storageNote = nc.strategy === "one-to-one"
+        ? `Editable given-name and family-name mappings are stored independently; mapping-history entries: ${historyCount}.`
+        : `Random given-name and family-name mappings are passage-local; the saved global destination ledger and ${historyCount} mapping-history entries preserve no-reuse rotation.`;
+      status.textContent = `${smartNote}
+${strategyNote}
+Additional source names: ${customSourceCount}.
+${storageNote}`;
+    }
+
+    function renderNameCorrectionDialog() {
+      const nc = normalizeNameCorrectionState();
+      populateNameCorrectionCultures();
+      if ($("nameCorrectionCulture")) $("nameCorrectionCulture").value = nc.culture;
+      $("nameCorrectionRandomPanel")?.classList.toggle("hidden", nc.strategy !== "random");
+      $("nameCorrectionOneToOnePanel")?.classList.toggle("hidden", nc.strategy !== "one-to-one");
+      renderCustomNameSources(nc);
+      if (nc.strategy === "one-to-one") {
+        const sources = nameCorrectionSourceLists(nc);
+        renderNameMapRows("nameMapMale", "male", sources.male);
+        renderNameMapRows("nameMapFemale", "female", sources.female);
+        renderNameMapRows("nameMapFamily", "family", sources.family);
+      }
+      renderNameCorrectionStatus();
+    }
+
 
     function deepClone(value) { return JSON.parse(JSON.stringify(value)); }
     function nowIso() { return new Date().toISOString(); }
@@ -2505,6 +3415,7 @@
       }
       normalizeDefaultTriggerState();
       normalizePerTurnSnapshots();
+      normalizeNameCorrectionState();
       syncStateToForm();
       renderAll();
       dirtySinceFullExport = !!state.unsavedFullExport;
@@ -3574,6 +4485,17 @@
       closeDialog("modelSettingsDialog");
     }
 
+    function openNameCorrectionDialog() {
+      syncNameCorrectionStateToForm();
+      openDialog("nameCorrectionDialog", "nameCorrectionCulture");
+      renderNameCorrectionDialog();
+    }
+
+    function closeNameCorrectionDialog() {
+      syncNameCorrectionFormToState();
+      closeDialog("nameCorrectionDialog");
+    }
+
     function openWorldSetupDialog() {
       setModelSettingsGettingStartedMode(false);
       closeWorldSetupSubsections();
@@ -3835,6 +4757,7 @@
       if ($("suppressTriggers")) $("suppressTriggers").checked = !!state.world.suppressTriggers;
       $("scratchpad").value = getViewedScratchpad();
       setAddEventTriggerAppendEnabled();
+      syncNameCorrectionStateToForm();
       applyFreeModelUiState();
     }
 
@@ -4935,16 +5858,20 @@ Character option requirements:
         let characters = [];
         let validationError = null;
         for (let attempt = 0; attempt < 2; attempt += 1) {
-          const raw = await callOpenRouterJson("character select", buildOpenRouterInstructionMessages(
+          let raw = await callOpenRouterJson("character select", buildOpenRouterInstructionMessages(
             characterSelectSystemPrompt(),
             buildCharacterSelectPrompt(promptSource)
           ), characterSelectOptions);
-          characters = normalizeGeneratedCharacterOptions(raw);
-          if (characters.length < 4) {
+          const uncorrectedCharacters = normalizeGeneratedCharacterOptions(raw);
+          if (uncorrectedCharacters.length < 4) {
+            characters = uncorrectedCharacters;
             validationError = new Error(`The model returned only ${characters.length} usable character option${characters.length === 1 ? "" : "s"}. Try again or choose a stronger JSON model.`);
-          } else if (!hasRequiredCharacterSelectMix(characters)) {
+          } else if (!hasRequiredCharacterSelectMix(uncorrectedCharacters)) {
+            characters = uncorrectedCharacters;
             validationError = new Error("The model did not return exactly 2 men and 2 women. Try again or choose a stronger JSON model.");
           } else {
+            raw = await applyNameCorrectionToValue(raw, { context: "character generation", maxTokens: 4600 });
+            characters = normalizeGeneratedCharacterOptions(raw);
             validationError = null;
             break;
           }
@@ -5490,7 +6417,8 @@ ${beforeOnlyRule}
     function startSpeculativeStoryGeneration(action, rollResult = null, eventTriggerResults = []) {
       const controller = typeof AbortController === "function" ? new AbortController() : null;
       let settled = false;
-      const promise = callOpenRouterChat(action, rollResult, eventTriggerResults, controller ? { signal: controller.signal } : {})
+      const speculativeOptions = controller ? { signal: controller.signal, skipNameCorrection: true } : { skipNameCorrection: true };
+      const promise = callOpenRouterChat(action, rollResult, eventTriggerResults, speculativeOptions)
         .then(raw => {
           settled = true;
           return { ok: true, raw };
@@ -5506,7 +6434,7 @@ ${beforeOnlyRule}
         async unwrap() {
           const result = await promise;
           if (!result.ok) throw result.error;
-          return result.raw;
+          return applyNameCorrectionToValue(result.raw, { context: "the accepted speculative story response", maxTokens: 4400 });
         }
       };
     }
@@ -5550,10 +6478,11 @@ Rules:
     async function appendAfterResponseEventTriggerText(action, turn, activatedTriggers) {
       const immediateTriggers = (activatedTriggers || []).filter(item => item.addTextAfter);
       if (!turn || !immediateTriggers.length) return;
-      const raw = await callOpenRouterJson("event trigger after-response text", buildOpenRouterInstructionMessages(
+      let raw = await callOpenRouterJson("event trigger after-response text", buildOpenRouterInstructionMessages(
         eventTriggerExtensionSystemPrompt(),
         buildEventTriggerExtensionPrompt(action, turn, immediateTriggers)
       ), { temperature: Number(state.settings.temperature ?? 0.85), max_tokens: 1200, json_retries: 2, no_content_retries: 2 });
+      raw = await applyNameCorrectionToValue(raw, { context: "after-response trigger text", maxTokens: 2400 });
       const addition = maybeParagraphizeStoryText(String(raw.additional_text || raw.additionalText || raw.narration || raw.text || "").trim());
       if (addition) {
         turn.narration = `${String(turn.narration || "").trim()}
@@ -5611,10 +6540,13 @@ ${addition}`.trim();
     }
 
     async function callOpenRouterChat(action, rollResult = null, eventTriggerResults = [], options = {}) {
-      return callOpenRouterJson("story", buildOpenRouterInstructionMessages(
+      const { skipNameCorrection = false, ...requestOptions } = options || {};
+      const raw = await callOpenRouterJson("story", buildOpenRouterInstructionMessages(
         storySystemPrompt(),
         buildUserPrompt(action, rollResult, eventTriggerResults)
-      ), { temperature: Number(state.settings.temperature ?? 0.85), max_tokens: 2600, ...options });
+      ), { temperature: Number(state.settings.temperature ?? 0.85), max_tokens: 2600, ...requestOptions });
+      if (skipNameCorrection) return raw;
+      return applyNameCorrectionToValue(raw, { context: "the main story response", maxTokens: 4400 });
     }
 
     function imageModerationSignal(error) {
@@ -8201,6 +9133,7 @@ Rules:
             return;
           }
           state = cleanupDeprecatedState(mergeDefaults(deepClone(DEFAULT_STATE), imported));
+          normalizeNameCorrectionState();
           normalizeDefaultTriggerState();
           normalizeEventTriggerState(state);
           normalizePerTurnSnapshots();
@@ -8261,6 +9194,7 @@ Rules:
       });
       addClick("btnOpenWorldSetup", () => { closeMenu(); openWorldSetupDialog(); });
       addClick("btnOpenModelSettings", () => { closeMenu(); openModelSettingsDialog(); });
+      addClick("btnOpenNameCorrection", () => { closeMenu(); openNameCorrectionDialog(); });
       addClick("btnOpenEditState", () => { closeMenu(); openEditStateDialog(); });
       addClick("btnRestartGettingStarted", restartGettingStartedDialogue);
       addClick("btnOpenInfiniteWorldsImport", () => { closeMenu(); openInfiniteWorldsImportDialog(); });
@@ -8278,6 +9212,45 @@ Rules:
       addClick("btnInfiniteWorldImportStory", () => $("infiniteWorldImportStoryFile")?.click());
       addClick("btnCloseModelSettings", closeModelSettingsDialog);
       addClick("btnModelSettingsDone", closeModelSettingsDialog);
+      addClick("btnCloseNameCorrection", () => {
+        syncCustomNameSourcesFromForm();
+        closeNameCorrectionDialog();
+      });
+      addClick("btnNameCorrectionDone", () => {
+        syncCustomNameSourcesFromForm();
+        closeNameCorrectionDialog();
+      });
+      addClick("btnApplyCustomNameSources", () => {
+        const changed = syncCustomNameSourcesFromForm();
+        toast(changed ? "Additional source names updated." : "Additional source names are already up to date.");
+      });
+      $("nameCorrectionDialog")?.addEventListener("cancel", () => {
+        syncCustomNameSourcesFromForm();
+      });
+      addClick("btnRerandomizeNameMappings", () => {
+        rerandomizeNameCorrectionOneToOne({ newSeed: true, resetSession: true });
+        toast("Rerandomized the complete 1-for-1 name table.");
+      });
+      addClick("btnResetNameCorrectionHistory", () => {
+        if (!confirm("Reset all remembered rotating name mappings and usage history? Existing story text will not be changed.")) return;
+        resetNameCorrectionSession();
+        toast("Name-correction rotation history reset.");
+      });
+      document.querySelectorAll('input[name="nameCorrectionMode"]').forEach(input => input.addEventListener("change", () => {
+        syncCustomNameSourcesFromForm({ save: false });
+        syncNameCorrectionFormToState();
+      }));
+      document.querySelectorAll('input[name="nameCorrectionStrategy"]').forEach(input => input.addEventListener("change", () => {
+        syncCustomNameSourcesFromForm({ save: false });
+        syncNameCorrectionFormToState({ resetSession: true });
+      }));
+      $("nameCorrectionCulture")?.addEventListener("change", () => {
+        syncCustomNameSourcesFromForm({ save: false });
+        const nc = normalizeNameCorrectionState();
+        nc.culture = $("nameCorrectionCulture").value;
+        rerandomizeNameCorrectionOneToOne({ newSeed: true, resetSession: true });
+        toast("Changed the name culture and refreshed the 1-for-1 table.");
+      });
       const continueFromModelSettings = async () => {
         syncFormToState();
         closeDialog("modelSettingsDialog");

@@ -989,10 +989,39 @@
     }
     .custom-name-source-grid textarea { min-height: 118px; }
 
+    .name-source-list-groups {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .name-source-list-card {
+      min-width: 0;
+      padding: 11px;
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 14px;
+      background: rgba(255,255,255,.035);
+    }
+
+    .name-source-list-card h5 {
+      margin: 0 0 7px;
+      color: #fff;
+      font-size: .86rem;
+    }
+
+    .name-source-list {
+      margin: 0;
+      color: var(--muted);
+      font-size: .8rem;
+      line-height: 1.55;
+      overflow-wrap: anywhere;
+    }
+
     @media (max-width: 680px) {
       .name-correction-mode-grid,
       .name-correction-strategy-grid,
-      .custom-name-source-grid { grid-template-columns: 1fr; }
+      .custom-name-source-grid,
+      .name-source-list-groups { grid-template-columns: 1fr; }
       .name-map-row { grid-template-columns: minmax(90px, .8fr) auto minmax(120px, 1.2fr); }
     }
 
@@ -1470,6 +1499,30 @@
           <label>Replacement culture
             <select id="nameCorrectionCulture"></select>
           </label>
+        </div>
+
+        <div id="nameCorrectionBundledSourcesSection" class="stack">
+          <summary id="btnToggleNameCorrectionSources" class="setup-toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="nameCorrectionSourcesPanel">
+            <span class="setup-toggle-caret" aria-hidden="true">▸</span>
+            <span>Common LLM names being swapped out</span>
+          </summary>
+          <div id="nameCorrectionSourcesPanel" class="setup-section-body stack hidden">
+            <p class="mini">These bundled source names are checked in Random mode. Player-added names remain listed separately under Additional names to replace.</p>
+            <div class="name-source-list-groups">
+              <div class="name-source-list-card">
+                <h5>Male personal names <span id="nameCorrectionSourceMaleCount" class="dim"></span></h5>
+                <p id="nameCorrectionSourceMaleList" class="name-source-list"></p>
+              </div>
+              <div class="name-source-list-card">
+                <h5>Female personal names <span id="nameCorrectionSourceFemaleCount" class="dim"></span></h5>
+                <p id="nameCorrectionSourceFemaleList" class="name-source-list"></p>
+              </div>
+              <div class="name-source-list-card">
+                <h5>Surnames <span id="nameCorrectionSourceFamilyCount" class="dim"></span></h5>
+                <p id="nameCorrectionSourceFamilyList" class="name-source-list"></p>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="world-gen-box stack">
@@ -2812,6 +2865,20 @@ Rules:
       }
     }
 
+    function renderBundledNameCorrectionSources() {
+      const groups = [
+        ["Male", NAME_CORRECTION_SOURCE_MALE],
+        ["Female", NAME_CORRECTION_SOURCE_FEMALE],
+        ["Family", NAME_CORRECTION_SOURCE_FAMILY]
+      ];
+      groups.forEach(([label, sources]) => {
+        const list = $(`nameCorrectionSource${label}List`);
+        const count = $(`nameCorrectionSource${label}Count`);
+        if (list) list.textContent = sources.join(", ");
+        if (count) count.textContent = `(${sources.length})`;
+      });
+    }
+
     function renderNameMapRows(containerId, kind, sources) {
       const container = $(containerId);
       if (!container) return;
@@ -2903,6 +2970,10 @@ ${storageNote}`;
       if ($("nameCorrectionCulture")) $("nameCorrectionCulture").value = nc.culture;
       $("nameCorrectionRandomPanel")?.classList.toggle("hidden", nc.strategy !== "random");
       $("nameCorrectionOneToOnePanel")?.classList.toggle("hidden", nc.strategy !== "one-to-one");
+      const showBundledSources = nc.strategy !== "one-to-one";
+      $("nameCorrectionBundledSourcesSection")?.classList.toggle("hidden", !showBundledSources);
+      if (!showBundledSources) setSetupSectionOpen("nameCorrectionSourcesPanel", "btnToggleNameCorrectionSources", false);
+      renderBundledNameCorrectionSources();
       renderCustomNameSources(nc);
       if (nc.strategy === "one-to-one") {
         const sources = nameCorrectionSourceLists(nc);
@@ -4430,6 +4501,10 @@ ${storageNote}`;
       setSetupSectionOpen("rpgStatsPanel", "btnToggleRpgStats", false);
     }
 
+    function closeNameCorrectionSubsections() {
+      setSetupSectionOpen("nameCorrectionSourcesPanel", "btnToggleNameCorrectionSources", false);
+    }
+
     function closeDialog(id) {
       const dialog = $(id);
       if (dialog && dialog.open) dialog.close();
@@ -4487,8 +4562,10 @@ ${storageNote}`;
 
     function openNameCorrectionDialog() {
       syncNameCorrectionStateToForm();
+      closeNameCorrectionSubsections();
       openDialog("nameCorrectionDialog", "nameCorrectionCulture");
       renderNameCorrectionDialog();
+      closeNameCorrectionSubsections();
     }
 
     function closeNameCorrectionDialog() {
@@ -9343,6 +9420,7 @@ Rules:
       $("btnEditResponseSave")?.addEventListener("click", () => saveEditedResponse(transientUi.editingResponseTurnId, $("responseEditor")?.value || ""));
       addCtrlEnter("responseEditor", () => $("btnEditResponseSave")?.click());
       bindSetupSummary("btnToggleAdvancedStart", "advancedStartPanel");
+      bindSetupSummary("btnToggleNameCorrectionSources", "nameCorrectionSourcesPanel");
       bindSetupSummary("btnToggleDefaultTrackers", "defaultTrackersPanel");
       bindSetupSummary("btnToggleEventTriggers", "eventTriggersPanel");
       bindSetupSummary("btnToggleRpgStats", "rpgStatsPanel");

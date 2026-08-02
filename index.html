@@ -895,6 +895,117 @@
 
     .dialog-actions { justify-content: flex-end; }
 
+    dialog.message-popup-dialog {
+      width: min(680px, calc(100vw - 28px));
+      max-height: calc(100vh - 28px);
+      max-height: calc(100dvh - 28px);
+      overflow: hidden;
+    }
+
+    .message-popup-dialog .world-gen-card {
+      max-height: min(86vh, 760px);
+      max-height: min(86dvh, 760px);
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      overflow: hidden;
+    }
+
+    .message-popup-dialog .dialog-header h3 {
+      font-size: 1.25rem;
+    }
+
+    .message-popup-scroll {
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+      padding-right: 4px;
+      scroll-behavior: auto;
+    }
+
+    .message-popup-body {
+      display: grid;
+      gap: 12px;
+      white-space: pre-wrap;
+      line-height: 1.5;
+    }
+
+    .message-popup-body .world-gen-box {
+      white-space: normal;
+    }
+
+    .message-popup-body h4 {
+      margin: 0;
+      color: #fff;
+      font-size: 1rem;
+    }
+
+    .community-limit-hero {
+      background: linear-gradient(135deg, rgba(241,194,50,.11), rgba(201,156,255,.08));
+      border-color: rgba(241,194,50,.3);
+    }
+
+    .community-limit-hero strong {
+      color: var(--gold2);
+    }
+
+    .community-limit-steps {
+      margin: 0;
+      padding-left: 1.25rem;
+      display: grid;
+      gap: 8px;
+      color: var(--text);
+    }
+
+    .community-limit-links {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 9px;
+    }
+
+    .community-limit-links .buttonish {
+      width: 100%;
+      min-height: 44px;
+      text-align: center;
+      text-decoration: none;
+      line-height: 1.3;
+    }
+
+    .community-limit-inline-link {
+      font-weight: 750;
+      text-underline-offset: 3px;
+    }
+
+    .community-limit-callout {
+      border-color: rgba(201,156,255,.28);
+      background: linear-gradient(135deg, rgba(201,156,255,.09), rgba(116,228,255,.045));
+    }
+
+    .community-limit-fine-print {
+      color: var(--dim);
+      font-size: .8rem;
+      line-height: 1.5;
+    }
+
+    @media (max-width: 640px) {
+      dialog.message-popup-dialog {
+        width: calc(100vw - 20px);
+        max-height: calc(100dvh - 20px);
+      }
+
+      .message-popup-dialog .world-gen-card {
+        padding: 14px;
+        max-height: calc(100dvh - 20px);
+      }
+
+      .message-popup-dialog .dialog-actions button {
+        flex: 1 1 100%;
+      }
+
+      .community-limit-links {
+        grid-template-columns: 1fr;
+      }
+    }
+
 
     .world-hash-preview {
       display: grid;
@@ -1121,11 +1232,17 @@
 
   <dialog id="messagePopupDialog" class="world-gen-dialog message-popup-dialog">
     <form method="dialog" class="world-gen-card">
-      <div>
-        <h3 id="messagePopupTitle">Notice</h3>
-        <p id="messagePopupBody" class="mini" style="white-space:pre-wrap;"></p>
+      <div class="dialog-header">
+        <div>
+          <h3 id="messagePopupTitle" tabindex="-1">Notice</h3>
+          <p id="messagePopupSubtitle" class="mini hidden"></p>
+        </div>
       </div>
-      <div class="row wrap" style="justify-content:flex-end;">
+      <div id="messagePopupScroll" class="message-popup-scroll">
+        <div id="messagePopupBody" class="message-popup-body mini"></div>
+      </div>
+      <div class="row wrap dialog-actions">
+        <button id="btnMessagePopupModelSettings" class="accent hidden" type="button">Use My Own OpenRouter API Key</button>
         <button id="btnMessagePopupClose" class="primary" type="submit">OK</button>
       </div>
     </form>
@@ -2231,7 +2348,7 @@
       pendingWorldHashImport: null,
       pendingInfiniteWorldsJsonImport: null,
       pendingWorldHashImportResolver: null,
-      pendingWorldHashStartConfirmResolver: null
+      pendingWorldHashStartConfirmResolver: null,
     };
 
     let specialKeyCheckTimer = null;
@@ -3135,21 +3252,155 @@ ${storageNote}`;
       toast._t = setTimeout(() => el.classList.remove("show"), ms);
     }
 
+    const COMMUNITY_DAILY_LIMIT_POPUP_TITLE = "Community API Key Daily Limit Reached";
+
+    function communityDailyLimitPopupMessage() {
+      return `The Community API Key has reached its daily limit of 1,000 queries.
+
+The fun doesn't have to stop, though. You can use your own OpenRouter API key:
+
+1. Go to OpenRouter and create an account.
+2. In OpenRouter, create a new API key.
+3. In Infinite Quest, open Menu → Model Settings.
+4. Paste your new key into the “OpenRouter API key” box and choose the free models you want to use.
+
+A personal OpenRouter API key includes 50 free queries per day. That can be up to 50 story turns, but advanced features such as event triggers, trackers, RPG mechanics, world generation, and other helper calls can use additional queries during a turn.
+
+If you add $10 in credits to your OpenRouter account one time, your daily free-query allowance should rise to 1,000.
+
+You will also definitely want to enable Response Healing: in OpenRouter, open Plugins and turn on Response Healing. It automatically repairs malformed responses that could otherwise fail and waste some of your free usage.
+
+Infinite Quest is not affiliated with OpenRouter, and its creator does not make any money from OpenRouter or from your account or credit purchases. The goal is simply to make Infinite Quest the best version of itself, including a high-quality free mode that people can have fun using.`;
+    }
+
+    function parseOpenRouterErrorPayload(errorText = "") {
+      try {
+        const parsed = JSON.parse(String(errorText || ""));
+        return parsed && typeof parsed === "object" ? parsed : null;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function isOpenRouterDailyUsageLimitResponse(status, errorText = "") {
+      if (Number(status) !== 429) return false;
+      const parsed = parseOpenRouterErrorPayload(errorText);
+      const error = parsed?.error || parsed || {};
+      const metadata = error?.metadata || {};
+      const nestedHeaders = metadata?.headers || {};
+      const message = String(error?.message || errorText || "");
+      const limitSource = String(metadata?.limit_source || "");
+      const remedyHint = String(metadata?.remedy_hint || "");
+      const remaining = String(nestedHeaders["X-RateLimit-Remaining"] ?? nestedHeaders["x-ratelimit-remaining"] ?? "");
+
+      return limitSource === "openrouter_free_tier_daily"
+        || /free-models-per-day/i.test(message)
+        || /daily(?: free)?(?:-| )?(?:model|usage|query|request).*limit/i.test(message)
+        || (/daily reset/i.test(remedyHint) && remaining === "0");
+    }
+
+    function communityDailyLimitPopupHtml() {
+      return `
+        <div class="world-gen-box stack community-limit-hero">
+          <p><strong>The shared Community API Key has used all 1,000 of its free queries for today.</strong></p>
+          <p>The fun does not have to stop. You can continue by setting up a free OpenRouter account and using your own API key.</p>
+        </div>
+
+        <div class="world-gen-box stack">
+          <h4>Set up your own OpenRouter key for 50 Free Queries a Day (Up to 50 Free Turns)</h4>
+          <ol class="community-limit-steps">
+            <li><a class="community-limit-inline-link" href="https://openrouter.ai/sign-up" target="_blank" rel="noopener noreferrer">Create your free OpenRouter account</a>.</li>
+            <li><a class="community-limit-inline-link" href="https://openrouter.ai/settings/keys" target="_blank" rel="noopener noreferrer">Create a new OpenRouter API key</a>.</li>
+            <li>In Infinite Quest, open <strong>Menu → Model Settings</strong>.</li>
+            <li>Paste your key into the <strong>OpenRouter API key</strong> box and choose the free models you want to use.</li>
+          </ol>
+          <div class="community-limit-links">
+            <a class="buttonish accent" href="https://openrouter.ai/sign-up" target="_blank" rel="noopener noreferrer">Create OpenRouter Account ↗</a>
+            <a class="buttonish accent" href="https://openrouter.ai/settings/keys" target="_blank" rel="noopener noreferrer">Create API Key ↗</a>
+          </div>
+        </div>
+
+        <div class="world-gen-box stack community-limit-callout">
+          <h4>50 Free Queries a Day Can Mean Up to 50 Free Turns</h4>
+          <p>Your own OpenRouter API key includes 50 free queries per day. That can be up to 50 Infinite Quest turns when a turn uses only one query.</p>
+          <p>Advanced features such as event triggers, trackers, RPG mechanics, world generation, and other helper calls can use additional queries, so some turns may count as more than one query.</p>
+          <p>If you make a one-time purchase of $10 in OpenRouter credits, your daily free-query allowance should rise to 1,000.</p>
+          <div class="community-limit-links">
+            <a class="buttonish" href="https://openrouter.ai/settings/credits" target="_blank" rel="noopener noreferrer">Open OpenRouter Credits ↗</a>
+            <a class="buttonish" href="https://openrouter.ai/" target="_blank" rel="noopener noreferrer">Visit OpenRouter ↗</a>
+          </div>
+        </div>
+
+        <div class="world-gen-box stack">
+          <h4>Enable Response Healing</h4>
+          <p>You will definitely want to enable <strong>Response Healing</strong>. It can automatically repair malformed responses that might otherwise fail and waste some of your free usage.</p>
+          <a class="buttonish accent" href="https://openrouter.ai/settings/plugins" target="_blank" rel="noopener noreferrer">Open OpenRouter Plugins and Enable Response Healing ↗</a>
+        </div>
+
+        <p class="community-limit-fine-print">Infinite Quest is not affiliated with OpenRouter, and its creator does not make any money from OpenRouter, your account, or credit purchases. The goal is simply to make Infinite Quest the best version of itself, including a high-quality free mode that people can have fun using.</p>`;
+    }
+
+    function resetMessagePopupToTop(dialog) {
+      const scrollEl = $("messagePopupScroll");
+      const card = dialog?.querySelector(".world-gen-card");
+      const titleEl = $("messagePopupTitle");
+      const reset = () => {
+        if (dialog) dialog.scrollTop = 0;
+        if (card) card.scrollTop = 0;
+        if (scrollEl) scrollEl.scrollTop = 0;
+      };
+
+      reset();
+      requestAnimationFrame(() => {
+        reset();
+        try {
+          titleEl?.focus({ preventScroll: true });
+        } catch (_) {
+          titleEl?.focus();
+          reset();
+        }
+        requestAnimationFrame(reset);
+      });
+    }
+
+    function showCommunityDailyLimitPopup() {
+      // Show the notice for every qualifying response. If it is already open,
+      // showMessagePopup closes and immediately reopens it so mobile browsers
+      // also reset the dialog to the top for the newest 429 response.
+      showMessagePopup(COMMUNITY_DAILY_LIMIT_POPUP_TITLE, communityDailyLimitPopupMessage(), 30000);
+    }
+
     function showMessagePopup(title, message, fallbackMs = 9000) {
       const dialog = $("messagePopupDialog");
       const titleEl = $("messagePopupTitle");
+      const subtitleEl = $("messagePopupSubtitle");
       const bodyEl = $("messagePopupBody");
-      const safeTitle = String(title || "Notice");
+      const modelSettingsButton = $("btnMessagePopupModelSettings");
+      let safeTitle = String(title || "Notice");
       const safeMessage = String(message || "Something went wrong.");
+      const isCommunityDailyLimit = safeMessage.startsWith("The Community API Key has reached its daily limit of 1,000 queries.");
+      if (isCommunityDailyLimit) safeTitle = COMMUNITY_DAILY_LIMIT_POPUP_TITLE;
       if (!dialog || !titleEl || !bodyEl || typeof dialog.showModal !== "function") {
         toast(`${safeTitle}: ${safeMessage}`, fallbackMs);
         return;
       }
+
+      dialog.classList.toggle("community-daily-limit-dialog", isCommunityDailyLimit);
       titleEl.textContent = safeTitle;
-      bodyEl.textContent = safeMessage;
+      if (subtitleEl) {
+        subtitleEl.textContent = isCommunityDailyLimit
+          ? "Choose how you want Infinite Quest to connect to OpenRouter next."
+          : "";
+        subtitleEl.classList.toggle("hidden", !isCommunityDailyLimit);
+      }
+      if (modelSettingsButton) modelSettingsButton.classList.toggle("hidden", !isCommunityDailyLimit);
+      if (isCommunityDailyLimit) bodyEl.innerHTML = communityDailyLimitPopupHtml();
+      else bodyEl.textContent = safeMessage;
+
       try {
         if (dialog.open) dialog.close();
         dialog.showModal();
+        resetMessagePopupToTop(dialog);
       } catch (err) {
         toast(`${safeTitle}: ${safeMessage}`, fallbackMs);
       }
@@ -5473,6 +5724,7 @@ ${storageNote}`;
     }
 
     function explainWorldGenerationError(err) {
+      if (err?.isCommunityDailyLimitError) return communityDailyLimitPopupMessage();
       const message = err?.message || String(err || "Unknown error");
       if (err?.isModelJsonError) {
         return "The model answered with malformed JSON instead of a usable world setup. The app silently tried three additional generations before showing this message.\n\nWhat to try:\n• Press Generate and fill setup again.\n• Use a model with better JSON/structured-output support.\n• Shorten very long prompt details if the response seems to be getting cut off.";
@@ -5522,7 +5774,15 @@ ${storageNote}`;
       const res = await withLlmResponseWait(() => fetch("https://openrouter.ai/api/v1/chat/completions", fetchOptions));
       if (!res.ok) {
         const errText = await res.text();
-        throw new Error(`OpenRouter ${label} request failed (${res.status}): ${errText.slice(0, 900)}`);
+        const requestError = new Error(`OpenRouter ${label} request failed (${res.status}): ${errText.slice(0, 900)}`);
+        requestError.status = res.status;
+        requestError.openRouterErrorText = errText;
+        if (isCommunityApiKey(key) && isOpenRouterDailyUsageLimitResponse(res.status, errText)) {
+          requestError.isCommunityDailyLimitError = true;
+          requestError.userFacingMessage = communityDailyLimitPopupMessage();
+          showCommunityDailyLimitPopup();
+        }
+        throw requestError;
       }
       const data = await res.json();
       const content = data?.choices?.[0]?.message?.content;
@@ -5885,6 +6145,7 @@ Character option requirements:
     }
 
     function explainCharacterGenerationError(err) {
+      if (err?.isCommunityDailyLimitError) return communityDailyLimitPopupMessage();
       const message = err?.message || String(err || "Unknown error");
       if (err?.isModelJsonError) {
         return "The model answered with malformed JSON instead of usable character options. The app silently retried before showing this message. Try Generate Character Select again, or choose a model with stronger JSON support.";
@@ -6771,7 +7032,15 @@ Rewrite rules:
       }));
       if (!res.ok) {
         const errText = await res.text();
-        throw new Error(`OpenRouter image request failed (${res.status}): ${errText.slice(0, 900)}`);
+        const requestError = new Error(`OpenRouter image request failed (${res.status}): ${errText.slice(0, 900)}`);
+        requestError.status = res.status;
+        requestError.openRouterErrorText = errText;
+        if (isCommunityApiKey(key) && isOpenRouterDailyUsageLimitResponse(res.status, errText)) {
+          requestError.isCommunityDailyLimitError = true;
+          requestError.userFacingMessage = communityDailyLimitPopupMessage();
+          showCommunityDailyLimitPopup();
+        }
+        throw requestError;
       }
       const data = await res.json();
       const imageUrl = extractImageUrl(data);
@@ -6949,7 +7218,7 @@ Rewrite rules:
         clearGenerationTransition();
         renderAll();
         console.error(err);
-        toast(err.message || String(err), 9000);
+        if (!err?.isCommunityDailyLimitError) toast(err.message || String(err), 9000);
         setBusy(false);
       } finally {
         hideLlmWaitIndicator();
@@ -7063,7 +7332,9 @@ ${missingList}`,
       if (!background) return Promise.resolve(false);
       const dialog = $("messagePopupDialog");
       const titleEl = $("messagePopupTitle");
+      const subtitleEl = $("messagePopupSubtitle");
       const bodyEl = $("messagePopupBody");
+      const modelSettingsButton = $("btnMessagePopupModelSettings");
       if (!dialog || !titleEl || !bodyEl || typeof dialog.showModal !== "function") {
         alert(background);
         return Promise.resolve(true);
@@ -7071,6 +7342,12 @@ ${missingList}`,
       try {
         if (dialog.open) dialog.close();
       } catch (_) {}
+      dialog.classList.remove("community-daily-limit-dialog");
+      if (subtitleEl) {
+        subtitleEl.textContent = "";
+        subtitleEl.classList.add("hidden");
+      }
+      if (modelSettingsButton) modelSettingsButton.classList.add("hidden");
       return new Promise(resolve => {
         const done = () => {
           dialog.removeEventListener("close", done);
@@ -7081,6 +7358,7 @@ ${missingList}`,
         dialog.addEventListener("close", done, { once: true });
         try {
           dialog.showModal();
+          resetMessagePopupToTop(dialog);
         } catch (err) {
           dialog.removeEventListener("close", done);
           alert(background);
@@ -9271,6 +9549,10 @@ Rules:
       });
       addClick("btnOpenWorldSetup", () => { closeMenu(); openWorldSetupDialog(); });
       addClick("btnOpenModelSettings", () => { closeMenu(); openModelSettingsDialog(); });
+      addClick("btnMessagePopupModelSettings", () => {
+        closeDialog("messagePopupDialog");
+        openModelSettingsDialog();
+      });
       addClick("btnOpenNameCorrection", () => { closeMenu(); openNameCorrectionDialog(); });
       addClick("btnOpenEditState", () => { closeMenu(); openEditStateDialog(); });
       addClick("btnRestartGettingStarted", restartGettingStartedDialogue);

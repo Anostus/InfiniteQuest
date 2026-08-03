@@ -1243,6 +1243,7 @@
       </div>
       <div class="row wrap dialog-actions">
         <button id="btnMessagePopupModelSettings" class="accent hidden" type="button">Use My Own OpenRouter API Key</button>
+        <button id="btnMessagePopupKeepCommunity" class="primary hidden" type="submit">Keep Using Community API Key</button>
         <button id="btnMessagePopupClose" class="primary" type="submit">OK</button>
       </div>
     </form>
@@ -3253,6 +3254,8 @@ ${storageNote}`;
     }
 
     const COMMUNITY_DAILY_LIMIT_POPUP_TITLE = "Community API Key Daily Limit Reached";
+    const COMMUNITY_TURN_55_POPUP_TITLE = "You’ve Reached Turn 55!";
+    const COMMUNITY_TURN_55_POPUP_MESSAGE = "The Community API Key turn 55 reminder is ready.";
 
     function communityDailyLimitPopupMessage() {
       return `The Community API Key has reached its daily limit of 1,000 queries.
@@ -3340,6 +3343,46 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         <p class="community-limit-fine-print">Infinite Quest is not affiliated with OpenRouter, and its creator does not make any money from OpenRouter, your account, or credit purchases. The goal is simply to make Infinite Quest the best version of itself, including a high-quality free mode that people can have fun using.</p>`;
     }
 
+    function communityTurn55PopupHtml() {
+      return `
+        <div class="world-gen-box stack community-limit-hero">
+          <h4>Turn 55 — Keep the Adventure Going</h4>
+          <p><strong>You are absolutely free to keep playing with the Community API Key if you are having fun.</strong></p>
+          <p>This is only a friendly check-in so you know how the shared key works and what your other options are.</p>
+        </div>
+
+        <div class="world-gen-box stack community-limit-callout">
+          <h4>The Community API Key Is a Shared Resource</h4>
+          <p>The Community API Key only receives <strong>1,000 free queries per day for everyone using it combined</strong>. That can be up to 1,000 turns when each turn uses one query.</p>
+          <p>Advanced features such as event triggers, trackers, RPG mechanics, memory management, world generation, and other helper calls can use extra queries, so some turns use more than one query.</p>
+          <p>Please feel welcome to continue using it. Just keep in mind that every query comes from the same daily pool shared by the whole Infinite Quest community.</p>
+        </div>
+
+        <div class="world-gen-box stack">
+          <h4>Set up your own OpenRouter key for 50 Free Queries a Day (Up to 50 Free Turns)</h4>
+          <ol class="community-limit-steps">
+            <li><a class="community-limit-inline-link" href="https://openrouter.ai/sign-up" target="_blank" rel="noopener noreferrer">Create your free OpenRouter account</a>.</li>
+            <li><a class="community-limit-inline-link" href="https://openrouter.ai/settings/keys" target="_blank" rel="noopener noreferrer">Create a new OpenRouter API key</a>.</li>
+            <li>In Infinite Quest, open <strong>Menu → Model Settings</strong>.</li>
+            <li>Paste your key into the <strong>OpenRouter API key</strong> box and choose the free models you want to use.</li>
+          </ol>
+          <p>Your own key receives <strong>50 free queries per day</strong>, which can be up to 50 turns. A one-time purchase of <strong>$10 worth of OpenRouter credits</strong> should raise that allowance to 1,000 free queries per day.</p>
+          <div class="community-limit-links">
+            <a class="buttonish accent" href="https://openrouter.ai/sign-up" target="_blank" rel="noopener noreferrer">Create OpenRouter Account ↗</a>
+            <a class="buttonish accent" href="https://openrouter.ai/settings/keys" target="_blank" rel="noopener noreferrer">Create API Key ↗</a>
+            <a class="buttonish" href="https://openrouter.ai/settings/credits" target="_blank" rel="noopener noreferrer">Open OpenRouter Credits ↗</a>
+            <a class="buttonish" href="https://openrouter.ai/settings/plugins" target="_blank" rel="noopener noreferrer">Enable Response Healing ↗</a>
+          </div>
+        </div>
+
+        <div class="world-gen-box stack">
+          <h4>Response Healing Is Recommended</h4>
+          <p>When you use your own key, enable <strong>Response Healing</strong> in OpenRouter’s Plugins settings. It can repair malformed responses that might otherwise fail and waste some of your free usage.</p>
+        </div>
+
+        <p class="community-limit-fine-print">Infinite Quest is not affiliated with OpenRouter, and its creator does not make any money from OpenRouter, your account, or credit purchases. The goal is simply to make Infinite Quest the best version of itself, including a high-quality free mode that people can have fun using.</p>`;
+    }
+
     function resetMessagePopupToTop(dialog) {
       const scrollEl = $("messagePopupScroll");
       const card = dialog?.querySelector(".world-gen-card");
@@ -3370,31 +3413,41 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       showMessagePopup(COMMUNITY_DAILY_LIMIT_POPUP_TITLE, communityDailyLimitPopupMessage(), 30000);
     }
 
+    function showCommunityTurn55Popup() {
+      showMessagePopup(COMMUNITY_TURN_55_POPUP_TITLE, COMMUNITY_TURN_55_POPUP_MESSAGE, 30000);
+    }
+
     function showMessagePopup(title, message, fallbackMs = 9000) {
       const dialog = $("messagePopupDialog");
       const titleEl = $("messagePopupTitle");
       const subtitleEl = $("messagePopupSubtitle");
       const bodyEl = $("messagePopupBody");
       const modelSettingsButton = $("btnMessagePopupModelSettings");
+      const keepCommunityButton = $("btnMessagePopupKeepCommunity");
       let safeTitle = String(title || "Notice");
       const safeMessage = String(message || "Something went wrong.");
       const isCommunityDailyLimit = safeMessage.startsWith("The Community API Key has reached its daily limit of 1,000 queries.");
+      const isCommunityTurn55 = safeMessage === COMMUNITY_TURN_55_POPUP_MESSAGE;
+      const isCommunityNotice = isCommunityDailyLimit || isCommunityTurn55;
       if (isCommunityDailyLimit) safeTitle = COMMUNITY_DAILY_LIMIT_POPUP_TITLE;
+      if (isCommunityTurn55) safeTitle = COMMUNITY_TURN_55_POPUP_TITLE;
       if (!dialog || !titleEl || !bodyEl || typeof dialog.showModal !== "function") {
         toast(`${safeTitle}: ${safeMessage}`, fallbackMs);
         return;
       }
 
-      dialog.classList.toggle("community-daily-limit-dialog", isCommunityDailyLimit);
+      dialog.classList.toggle("community-daily-limit-dialog", isCommunityNotice);
       titleEl.textContent = safeTitle;
       if (subtitleEl) {
         subtitleEl.textContent = isCommunityDailyLimit
           ? "Choose how you want Infinite Quest to connect to OpenRouter next."
-          : "";
-        subtitleEl.classList.toggle("hidden", !isCommunityDailyLimit);
+          : (isCommunityTurn55 ? "A friendly note about the shared Community API Key." : "");
+        subtitleEl.classList.toggle("hidden", !isCommunityNotice);
       }
-      if (modelSettingsButton) modelSettingsButton.classList.toggle("hidden", !isCommunityDailyLimit);
+      if (modelSettingsButton) modelSettingsButton.classList.toggle("hidden", !isCommunityNotice);
+      if (keepCommunityButton) keepCommunityButton.classList.toggle("hidden", !isCommunityTurn55);
       if (isCommunityDailyLimit) bodyEl.innerHTML = communityDailyLimitPopupHtml();
+      else if (isCommunityTurn55) bodyEl.innerHTML = communityTurn55PopupHtml();
       else bodyEl.textContent = safeMessage;
 
       try {
@@ -7214,6 +7267,11 @@ Rewrite rules:
         if (state.settings.generateImages && turn.imagePrompt) {
           generateImageForTurnInBackground(turn, turn.imagePrompt);
         }
+
+        const reachedTurn55WithCommunityKey = isCommunityApiKey(state.settings.apiKey) && Number(turn.turnNumber) === 55;
+        if (reachedTurn55WithCommunityKey) {
+          showCommunityTurn55Popup();
+        }
       } catch (err) {
         clearGenerationTransition();
         renderAll();
@@ -7335,6 +7393,7 @@ ${missingList}`,
       const subtitleEl = $("messagePopupSubtitle");
       const bodyEl = $("messagePopupBody");
       const modelSettingsButton = $("btnMessagePopupModelSettings");
+      const keepCommunityButton = $("btnMessagePopupKeepCommunity");
       if (!dialog || !titleEl || !bodyEl || typeof dialog.showModal !== "function") {
         alert(background);
         return Promise.resolve(true);
@@ -7348,6 +7407,7 @@ ${missingList}`,
         subtitleEl.classList.add("hidden");
       }
       if (modelSettingsButton) modelSettingsButton.classList.add("hidden");
+      if (keepCommunityButton) keepCommunityButton.classList.add("hidden");
       return new Promise(resolve => {
         const done = () => {
           dialog.removeEventListener("close", done);
@@ -7369,7 +7429,12 @@ ${missingList}`,
 
     function takeAction(action) {
       if (!action || busy) return;
-      generateTurn(action.trim());
+      const trimmedAction = String(action).trim();
+      if (trimmedAction.includes("TEST55")) {
+        showCommunityTurn55Popup();
+        return;
+      }
+      generateTurn(trimmedAction);
     }
 
     function undoLatest() {

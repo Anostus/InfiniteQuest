@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Infinite Quest - AI Horde + SVG Image Modes</title>
+  <title>Infinite Quest - AI Horde + SVG Image Modes v8</title>
   <style>
     :root {
       --bg: #07131d;
@@ -1708,7 +1708,7 @@
                 <label class="checkline"><input id="aiHordeSlowWorkers" type="checkbox" /> Allow slower workers</label>
                 <label class="checkline"><input id="aiHordeValidatedBackends" type="checkbox" /> Require validated backends when supported</label>
                 <label class="checkline"><input id="aiHordeShared" type="checkbox" /> Allow generated image to be shared by AI Horde</label>
-                <label class="checkline"><input id="aiHordeAllowNsfw" type="checkbox" /> Allow NSFW-capable generation</label>
+                <label class="checkline"><input id="aiHordeAllowNsfw" type="checkbox" checked /> Allow NSFW-capable generation</label>
                 <div class="ai-horde-setting-grid">
                   <label>Worker list mode
                     <select id="aiHordeWorkerListMode">
@@ -2436,7 +2436,7 @@
       slowWorkers: true,
       validatedBackends: false,
       shared: false,
-      allowNsfw: false,
+      allowNsfw: true,
       workerListMode: "none",
       workerIds: ""
     });
@@ -4321,7 +4321,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         clean.roll.stakes = truncateText(clean.roll.stakes || "", 1200);
         if (clean.roll.assessment) clean.roll.assessment = compactRollForPrompt(clean.roll);
       }
-      if (clean.imageRequest && typeof clean.imageRequest === "object") {
+      if (clean.imageRequest && typeof clean.imageRequest === "object" && !String(clean.imageError || "").trim()) {
         clean.imageRequest = {
           provider: String(clean.imageRequest.provider || "aihorde"),
           id: truncateText(clean.imageRequest.id || "", 120),
@@ -4775,18 +4775,36 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
 
     function resolveAiHordeModelSelection({ excluded = [] } = {}) {
       const settings = aiHordeSettings();
+      const excludedNames = new Set((excluded || []).map(item => String(item || "").trim().toLowerCase()).filter(Boolean));
       const preferred = selectedAiHordeModelPreferenceName();
       if (preferred) {
+        const preferredExcluded = excludedNames.has(preferred.toLowerCase());
         const active = activeAiHordeModel(preferred);
-        if (active && Number(active.count || 0) > 0) return { requested: preferred, model: active.name, record: active, fallback: false, reason: "" };
+        if (!preferredExcluded && active && Number(active.count || 0) > 0) {
+          return { requested: preferred, model: active.name, record: active, fallback: false, reason: "" };
+        }
         const fallback = chooseRecommendedAiHordeModel(settings.modelPreference, [preferred, ...excluded]);
-        if (fallback) return { requested: preferred, model: fallback.name, record: fallback, fallback: true, reason: `The selected model “${preferred}” currently has no active workers, so this request will use “${fallback.name}” without changing your saved preference.` };
+        if (fallback) {
+          const reason = preferredExcluded
+            ? `The previous attempt with “${preferred}” could not be fulfilled, so this retry will use “${fallback.name}” without changing your saved preference.`
+            : `The selected model “${preferred}” currently has no active workers, so this request will use “${fallback.name}” without changing your saved preference.`;
+          return { requested: preferred, model: fallback.name, record: fallback, fallback: true, reason };
+        }
+        if (preferredExcluded) {
+          const curatedFallback = AI_HORDE_SAFE_MODEL_FALLBACKS.find(name => !excludedNames.has(name.toLowerCase()) && name.toLowerCase() !== preferred.toLowerCase());
+          if (curatedFallback) {
+            return { requested: preferred, model: curatedFallback, record: null, fallback: true, reason: `The previous attempt with “${preferred}” could not be fulfilled and the live model list has no alternate, so the curated fallback “${curatedFallback}” is being tried.` };
+          }
+          return { requested: preferred, model: "", record: null, fallback: true, reason: `No untried AI Horde model is currently available after “${preferred}” failed.` };
+        }
         return { requested: preferred, model: preferred, record: null, fallback: false, reason: `The selected model “${preferred}” is not currently reported by AI Horde. The request may wait indefinitely or fail.` };
       }
       const recommended = chooseRecommendedAiHordeModel(settings.modelPreference, excluded);
       if (recommended) return { requested: AI_HORDE_RECOMMENDED_MODEL, model: recommended.name, record: recommended, fallback: false, reason: "" };
-      const fallbackName = AI_HORDE_SAFE_MODEL_FALLBACKS.find(name => !excluded.some(item => String(item).toLowerCase() === name.toLowerCase())) || "stable_diffusion";
-      return { requested: AI_HORDE_RECOMMENDED_MODEL, model: fallbackName, record: null, fallback: true, reason: `The live AI Horde model list is unavailable, so the curated fallback model “${fallbackName}” is being tried.` };
+      const fallbackName = AI_HORDE_SAFE_MODEL_FALLBACKS.find(name => !excludedNames.has(name.toLowerCase())) || "";
+      return fallbackName
+        ? { requested: AI_HORDE_RECOMMENDED_MODEL, model: fallbackName, record: null, fallback: true, reason: `The live AI Horde model list is unavailable, so the curated fallback model “${fallbackName}” is being tried.` }
+        : { requested: AI_HORDE_RECOMMENDED_MODEL, model: "", record: null, fallback: true, reason: "No untried AI Horde model is currently available." };
     }
 
     function samplerSupportsKarras(sampler = "") {
@@ -5555,9 +5573,11 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       return ` style="aspect-ratio:${ratio.width} / ${ratio.height};"`;
     }
 
-    function latestCompletedImageTurn() {
-      for (let index = (state.turns || []).length - 1; index >= 0; index -= 1) {
-        const candidate = state.turns[index];
+    function latestCompletedImageTurn(maxIndex = (state.turns || []).length - 1) {
+      const turns = state.turns || [];
+      const startIndex = Math.min(turns.length - 1, Math.max(-1, Number.isFinite(Number(maxIndex)) ? Math.floor(Number(maxIndex)) : turns.length - 1));
+      for (let index = startIndex; index >= 0; index -= 1) {
+        const candidate = turns[index];
         if (candidate && isSafeDisplayImageUrl(candidate.imageUrl)) return candidate;
       }
       return null;
@@ -5566,7 +5586,9 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     function imageTurnToDisplay(targetTurn = null) {
       if (!isPollinationsImageMode()) return targetTurn;
       if (targetTurn && isSafeDisplayImageUrl(targetTurn.imageUrl)) return targetTurn;
-      return latestCompletedImageTurn();
+      if (!targetTurn) return latestCompletedImageTurn();
+      const targetIndex = (state.turns || []).findIndex(turn => turn === targetTurn || (turn?.id && turn.id === targetTurn.id));
+      return targetIndex >= 0 ? latestCompletedImageTurn(targetIndex) : null;
     }
 
     function pendingAiHordeImageTurns() {
@@ -9653,7 +9675,11 @@ SVG requirements:
       const maxAttempts = Number(options.maxAttempts || AI_HORDE_MAX_POLL_ATTEMPTS);
       const jobKey = String(jobId || "").trim();
       if (!jobKey) throw new Error("AI Horde job ID is missing.");
-      if (activeAiHordePollJobIds.has(jobKey)) return null;
+      if (activeAiHordePollJobIds.has(jobKey)) {
+        const pending = new Error("This AI Horde image request is already being polled.");
+        pending.pendingJob = true;
+        throw pending;
+      }
       activeAiHordePollJobIds.add(jobKey);
       try {
         let lastCheck = null;
@@ -9749,6 +9775,30 @@ SVG requirements:
       }
     }
 
+    function clearTerminalAiHordeRequestState(turn, { cancelRemote = true } = {}) {
+      if (!turn) return "";
+      const jobId = String(turn.imageRequest?.provider === "aihorde" ? (turn.imageRequest.id || "") : "").trim();
+      turn.imageRequest = null;
+      turn.imageGenerating = false;
+      turn.imageStatusText = "";
+      if (cancelRemote && jobId) void cancelAiHordeImageJob(jobId);
+      return jobId;
+    }
+
+    function cancelPendingAiHordeJobsForTurns(turns = []) {
+      const jobIds = new Set();
+      (Array.isArray(turns) ? turns : [turns]).forEach(turn => {
+        if (!turn) return;
+        const jobId = String(turn.imageRequest?.provider === "aihorde" ? (turn.imageRequest.id || "") : "").trim();
+        if (jobId) jobIds.add(jobId);
+        turn.imageRequest = null;
+        turn.imageGenerating = false;
+        turn.imageStatusText = "";
+      });
+      jobIds.forEach(jobId => void cancelAiHordeImageJob(jobId));
+      return jobIds.size;
+    }
+
     async function callPollinationsImage(prompt, options = {}) {
       const turn = options.turn || null;
       const existingJobId = String(turn?.imageRequest?.provider === "aihorde" ? (turn?.imageRequest?.id || "") : "").trim();
@@ -9801,6 +9851,7 @@ SVG requirements:
           toast("AI Horde post-processing failed. Retrying the same base generation without optional upscaling so the scene is not lost.", 8000);
           return callPollinationsImage(prompt, { ...options, overridePostProcessing: [], postProcessingFallbackAttempted: true });
         }
+        if (turn) clearTerminalAiHordeRequestState(turn);
         throw error;
       }
     }
@@ -10006,29 +10057,33 @@ SVG requirements:
       state.fullHistoryCompressedThroughTurn = snapshot.fullHistoryCompressedThroughTurn;
     }
 
-    function branchIfNeeded() {
+    function branchIfNeeded({ deferAiHordeCancellation = false } = {}) {
+      let removedTurns = [];
       if (state.viewIndex < state.turns.length - 1) {
         const ok = confirm("You are viewing an older turn. Taking an action here will branch the story and delete later turns. Continue?");
         if (!ok) return false;
+        removedTurns = state.turns.slice(state.viewIndex + 1);
         state.turns = state.turns.slice(0, state.viewIndex + 1);
+        if (!deferAiHordeCancellation) cancelPendingAiHordeJobsForTurns(removedTurns);
         if (Number(state.fullHistoryCompressedThroughTurn || 0) > state.turns.length) {
           state.fullHistory = null;
           state.fullHistoryCompressedThroughTurn = 0;
         }
         restoreStateAfterTurnIndex(state.viewIndex);
       }
-      return true;
+      return { pendingAiHordeCancellationTurns: deferAiHordeCancellation ? removedTurns : [] };
     }
 
     async function generateTurn(action) {
       syncFormToState();
       const branchRollbackState = captureBranchRollbackState();
-      if (!branchIfNeeded()) return;
       const waitingForManualRpgSelection = !isStorytellerMode()
         && isRpgEnabledForTurn()
         && !!state.settings.manualRpgSelection
         && !!state.turns.length
         && !!normalizeRpgStats(state.rpgStats).length;
+      const branchResult = branchIfNeeded({ deferAiHordeCancellation: waitingForManualRpgSelection });
+      if (!branchResult) return;
       if (!waitingForManualRpgSelection) showLlmWaitIndicator();
       showGenerationTransition(action);
       setBusy(true, waitingForManualRpgSelection
@@ -10045,6 +10100,7 @@ SVG requirements:
           toast("Action cancelled before the RPG roll.");
           return;
         }
+        cancelPendingAiHordeJobsForTurns(branchResult.pendingAiHordeCancellationTurns);
         if (waitingForManualRpgSelection) showLlmWaitIndicator();
         if (shouldUpdateFullHistoryBeforeNextTurn()) {
           setBusy(true, "Compressing memories");
@@ -10303,6 +10359,7 @@ ${missingList}`,
     function undoLatest() {
       if (!state.turns.length || busy) return;
       const removed = state.turns.pop();
+      cancelPendingAiHordeJobsForTurns([removed]);
       state.viewIndex = state.turns.length - 1;
       restoreStateAfterTurnIndex(state.viewIndex);
       markUnsavedForFullExport();
@@ -10312,8 +10369,13 @@ ${missingList}`,
     }
 
     async function resumePendingAiHordeJobs() {
-      const pendingTurns = (state.turns || []).filter(turn => turn && !turn.imageUrl && turn.imageRequest && turn.imageRequest.provider === "aihorde" && turn.imageRequest.id);
-      if (!pendingTurns.length) return;
+      const staleFailedTurns = (state.turns || []).filter(turn => turn && turn.imageError && turn.imageRequest?.provider === "aihorde");
+      if (staleFailedTurns.length) cancelPendingAiHordeJobsForTurns(staleFailedTurns);
+      const pendingTurns = (state.turns || []).filter(turn => turn && !turn.imageUrl && !turn.imageError && turn.imageRequest && turn.imageRequest.provider === "aihorde" && turn.imageRequest.id);
+      if (!pendingTurns.length) {
+        if (staleFailedTurns.length) saveState();
+        return;
+      }
       pendingTurns.forEach(turn => {
         turn.imageGenerating = true;
         if (!turn.imageStatusText) turn.imageStatusText = "Resuming AI Horde image retrieval...";
@@ -10348,8 +10410,10 @@ ${missingList}`,
 
     async function retryLatest() {
       if (!state.turns.length || busy) return;
-      const action = state.turns[state.turns.length - 1].action || firstActionForNewAdventure();
+      const removed = state.turns[state.turns.length - 1];
+      const action = removed.action || firstActionForNewAdventure();
       state.turns.pop();
+      cancelPendingAiHordeJobsForTurns([removed]);
       state.viewIndex = state.turns.length - 1;
       restoreStateAfterTurnIndex(state.viewIndex);
       markUnsavedForFullExport();

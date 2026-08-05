@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Infinite Quest - AI Horde + SVG Image Modes v8</title>
+  <title>Infinite Quest - AI Horde + SVG Placeholder Mode v9</title>
   <style>
     :root {
       --bg: #07131d;
@@ -941,6 +941,25 @@
       z-index: 3;
     }
 
+    .image-swap-actions {
+      position: absolute;
+      left: 12px;
+      top: 12px;
+      display: flex;
+      gap: 8px;
+      z-index: 4;
+    }
+
+    .image-swap-actions button {
+      min-height: 30px;
+      padding: 5px 9px;
+      border-radius: 10px;
+      font-size: .78rem;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 8px 18px rgba(0,0,0,.28);
+      background: rgba(7, 14, 24, .88);
+    }
+
     .image-actions button {
       backdrop-filter: blur(10px);
       box-shadow: 0 8px 18px rgba(0,0,0,.28);
@@ -1533,7 +1552,7 @@
           <p class="mini">This is a purely client-side app. Calls go directly from your browser to OpenRouter; no key is sent anywhere else by this file.</p>
 
           <label class="checkline"><input id="filterFreeOptions" type="checkbox" /> Filter for free options</label>
-          <p class="mini">When enabled, the story model list shows Curated Free Mix, <code>openrouter/free</code>, and models ending in <code>:free</code>; the image model list shows AI Horde and SVG mode. AI Horde is the default for first-time free mode, and the app remembers your latest choice between AI Horde and SVG mode. When fallback models are enabled, Curated Free Mix is removed from all story model dropdowns.</p>
+          <p class="mini">When enabled, the story model list shows Curated Free Mix, <code>openrouter/free</code>, and models ending in <code>:free</code>; the image model list shows AI Horde+SVG Placeholder, AI Horde, and SVG mode. AI Horde+SVG Placeholder is the default for first-time free mode. It requests both images together, shows the current turn SVG immediately when available, and automatically switches to the latest AI Horde image when that image was generated more recently. The app remembers an explicitly selected free image mode. When fallback models are enabled, Curated Free Mix is removed from all story model dropdowns.</p>
           <label class="checkline"><input id="addFallbackModels" type="checkbox" /> Add fallback models if this one fails due to rate limiting</label>
           <p class="mini">When enabled, OpenRouter receives the selected Story LLM first, followed by Fallback 1 and Fallback 2 as backup text models.</p>
           <div class="two-col">
@@ -1562,7 +1581,7 @@
           <label>Custom image model ID, optional
             <input id="imageModelCustom" placeholder="e.g. black-forest-labs/flux.2-klein-4b" />
           </label>
-          <p class="mini">SVG mode asks the selected Story LLM to return a standalone vector illustration. The SVG is validated, stripped of scripts and external resources, and displayed directly in the story. It uses one additional Story LLM request per image.</p>
+          <p class="mini">SVG mode asks the selected Story LLM to return a standalone vector illustration. The SVG is validated, stripped of scripts and external resources, and displayed directly in the story. AI Horde+SVG Placeholder launches that SVG request at the same time as the AI Horde request, then lets you swap between the latest available versions. SVG generation uses one additional Story LLM request per image.</p>
           <label>AI Horde API key, optional
             <input id="aiHordeApiKey" type="password" autocomplete="off" placeholder="Leave blank to use anonymous free access" />
           </label>
@@ -2393,6 +2412,8 @@
     const POLLINATIONS_IMAGE_MODEL_ALIASES = [POLLINATIONS_IMAGE_MODEL, "ai horde", "aihorde", "aihorde.net", "pollination.ai", "pollinations.ai"];
     const SVG_IMAGE_MODEL = "SVG mode";
     const SVG_IMAGE_MODEL_ALIASES = [SVG_IMAGE_MODEL, "svg", "svg image", "svg mode", "llm svg"];
+    const AI_HORDE_SVG_IMAGE_MODEL = "AI Horde+SVG Placeholder";
+    const AI_HORDE_SVG_IMAGE_MODEL_ALIASES = [AI_HORDE_SVG_IMAGE_MODEL, "ai horde + svg placeholder", "ai horde svg placeholder", "aihorde+svg", "horde+svg", "dual free image mode"];
     const AI_HORDE_ANONYMOUS_API_KEY = "0000000000";
     const AI_HORDE_CLIENT_AGENT = "Infinite Quest CYOA Engine:browser";
     const AI_HORDE_POLL_INTERVAL_MS = 4500;
@@ -2452,7 +2473,7 @@
     const SPECIAL_OPENROUTER_KEY_LENGTH = 73;
     const COMMUNITY_API_KEY_ROT13_PARTS = ["fx-be-i1-53855", "45nn757110o8no", "q764811p8ro18p", "6o0p87963rr1sn", "2sn8907715so5q", "819"];
     const DEFAULT_LLM_MODELS = [DEFAULT_LLM_MODEL, DEFAULT_FREE_LLM_MODEL, "anthropic/claude-sonnet-4.5", "google/gemini-2.5-pro", "openai/gpt-4o-mini"];
-    const DEFAULT_IMAGE_MODELS = [POLLINATIONS_IMAGE_MODEL, SVG_IMAGE_MODEL, DEFAULT_IMAGE_MODEL, "black-forest-labs/flux-1.1-pro", "google/gemini-2.5-flash-image"];
+    const DEFAULT_IMAGE_MODELS = [AI_HORDE_SVG_IMAGE_MODEL, POLLINATIONS_IMAGE_MODEL, SVG_IMAGE_MODEL, DEFAULT_IMAGE_MODEL, "black-forest-labs/flux-1.1-pro", "google/gemini-2.5-flash-image"];
     const DEFAULT_RPG_STATS = [
       { id: "might", name: "Might", value: 50, note: "Strength, endurance, intimidation, and force." },
       { id: "agility", name: "Agility", value: 50, note: "Speed, balance, stealth, and dodging." },
@@ -2828,7 +2849,7 @@
         aiHorde: deepClone(AI_HORDE_DEFAULT_SETTINGS),
         llmModel: DEFAULT_LLM_MODEL,
         imageModel: DEFAULT_IMAGE_MODEL,
-        lastFreeImageModel: POLLINATIONS_IMAGE_MODEL,
+        lastFreeImageModel: AI_HORDE_SVG_IMAGE_MODEL,
         imageAspectRatio: "3:2",
         imageSize: "1K",
         generateImages: true,
@@ -3769,7 +3790,7 @@ ${storageNote}`;
       if ($("imageModelCustom")) $("imageModelCustom").value = "";
       state.settings.apiKey = key;
       state.settings.llmModel = DEFAULT_FREE_LLM_MODEL;
-      state.settings.imageModel = POLLINATIONS_IMAGE_MODEL;
+      state.settings.imageModel = AI_HORDE_SVG_IMAGE_MODEL;
       state.settings.generateImages = true;
       state.settings.filterFreeOptions = true;
       coerceFreeModelSettings(true);
@@ -3783,8 +3804,8 @@ ${storageNote}`;
         transientUi.specialKeyLoadInProgress = true;
         try {
           toast(state.settings.addFallbackModels
-            ? "Special OpenRouter key detected. Using free OpenRouter models with AI Horde images; Curated Free Mix is disabled while fallback models are enabled."
-            : "Special OpenRouter key detected. Switching to Curated Free Mix with AI Horde images.");
+            ? "Special OpenRouter key detected. Using free OpenRouter models with simultaneous AI Horde and SVG placeholder images; Curated Free Mix is disabled while fallback models are enabled."
+            : "Special OpenRouter key detected. Switching to Curated Free Mix with simultaneous AI Horde and SVG placeholder images.");
           await loadModels();
           transientUi.specialKeyModelsLoadedForHash = checksum;
         } finally {
@@ -4091,21 +4112,24 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       return waitUntilUi(() => isTurnNarrationVisible(turn), 1800, 80);
     }
 
-    function isTurnImageVisible(turn) {
-      if (!turn || !turn.imageUrl) return false;
+        function isTurnImageVisible(turn) {
+      if (!turn) return false;
+      const asset = imageAssetToDisplay(turn);
+      if (!asset?.url) return false;
       const area = $("storyArea");
       const img = area?.querySelector("figure.image-wrap img");
       const currentTurn = state.turns[state.viewIndex];
       return !!img
         && currentTurn?.id === turn.id
-        && img.getAttribute("src") === turn.imageUrl
+        && img.getAttribute("src") === asset.url
         && img.complete
         && img.naturalWidth > 0;
     }
 
     async function waitForTurnImageDisplayed(turn) {
       await waitForNextPaint(2);
-      if (!turn?.imageUrl || !isSafeDisplayImageUrl(turn.imageUrl)) return true;
+      const asset = imageAssetToDisplay(turn);
+      if (!asset?.url || !isSafeDisplayImageUrl(asset.url)) return true;
       if (isTurnImageVisible(turn)) return true;
       return waitUntilUi(() => isTurnImageVisible(turn), 2600, 80);
     }
@@ -4358,6 +4382,19 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       })).filter(candidate => candidate.url && !isLargeImageUrl(candidate.url)).slice(0, 4);
       if (!clean.imageCandidates.length) delete clean.imageCandidates;
       clean.selectedImageCandidateIndex = Number.isFinite(Number(clean.selectedImageCandidateIndex)) ? Math.max(0, Math.floor(Number(clean.selectedImageCandidateIndex))) : null;
+      clean.imageProvider = truncateText(clean.imageProvider || "", 32);
+      clean.combinedImageMode = !!clean.combinedImageMode;
+      clean.combinedImagePreference = ["auto", "horde", "svg"].includes(String(clean.combinedImagePreference || "").toLowerCase()) ? String(clean.combinedImagePreference).toLowerCase() : "auto";
+      clean.aiHordeImageUrl = truncateText(clean.aiHordeImageUrl || "", MAX_AUTOSAVE_IMAGE_URL_CHARS);
+      clean.aiHordeImageGeneratedAt = Math.max(0, Number(clean.aiHordeImageGeneratedAt) || 0);
+      clean.aiHordeImageError = truncateText(clean.aiHordeImageError || "", 1200);
+      clean.svgPlaceholderGeneratedAt = Math.max(0, Number(clean.svgPlaceholderGeneratedAt) || 0);
+      clean.svgPlaceholderGenerating = false;
+      clean.svgPlaceholderError = truncateText(clean.svgPlaceholderError || "", 1200);
+      if (isLargeImageUrl(clean.svgPlaceholderUrl)) {
+        clean.svgPlaceholderUrl = "";
+        clean.svgPlaceholderNotAutosaved = true;
+      } else clean.svgPlaceholderUrl = truncateText(clean.svgPlaceholderUrl || "", MAX_AUTOSAVE_IMAGE_URL_CHARS);
       if (isLargeImageUrl(clean.imageUrl)) {
         clean.imageUrl = "";
         clean.imageNotAutosaved = true;
@@ -4519,7 +4556,8 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         delete target.settings.freeModelsWithPollinations;
         delete target.settings.showCuratedFreeMixUsage;
         if (target.settings.llmModel === LEGACY_DEFAULT_FREE_LLM_MODEL) target.settings.llmModel = DEFAULT_FREE_LLM_MODEL;
-        if (isPollinationsImageModel(target.settings.imageModel)) target.settings.imageModel = POLLINATIONS_IMAGE_MODEL;
+        target.settings.imageModel = normalizeImageModelId(target.settings.imageModel || "") || target.settings.imageModel;
+        target.settings.lastFreeImageModel = normalizeImageModelId(target.settings.lastFreeImageModel || "") || target.settings.lastFreeImageModel;
         normalizeAiHordeSettings(target.settings);
       }
       target.modelLists.aiHordeModels = Array.isArray(target.modelLists.aiHordeModels) ? target.modelLists.aiHordeModels.map(normalizeAiHordeActiveModel).filter(model => model.name) : [];
@@ -5140,7 +5178,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     }
 
     function updateAiHordeSettingsVisibility() {
-      const enabled = isPollinationsImageMode();
+      const enabled = isPollinationsImageMode() || isAiHordeSvgImageMode();
       $("aiHordeSettingsGroup")?.classList.toggle("hidden", !enabled);
       $("genericImageDimensionControls")?.classList.toggle("hidden", enabled);
       const key = $("aiHordeApiKey");
@@ -5583,12 +5621,210 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       return null;
     }
 
-    function imageTurnToDisplay(targetTurn = null) {
-      if (!isPollinationsImageMode()) return targetTurn;
-      if (targetTurn && isSafeDisplayImageUrl(targetTurn.imageUrl)) return targetTurn;
-      if (!targetTurn) return latestCompletedImageTurn();
-      const targetIndex = (state.turns || []).findIndex(turn => turn === targetTurn || (turn?.id && turn.id === targetTurn.id));
-      return targetIndex >= 0 ? latestCompletedImageTurn(targetIndex) : null;
+        function imageTurnToDisplay(targetTurn = null) {
+      return imageAssetToDisplay(targetTurn)?.turn || null;
+    }
+
+    function imageTimestamp(value, fallback = 0) {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric) && numeric > 0) return numeric;
+      const parsed = Date.parse(String(value || ""));
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+
+    function turnAiHordeImageUrl(turn = null) {
+      if (!turn) return "";
+      if (isSafeDisplayImageUrl(turn.aiHordeImageUrl)) return String(turn.aiHordeImageUrl);
+      const primaryUrl = String(turn.imageUrl || "");
+      const looksLikeSvg = /^data:image\/svg\+xml/i.test(primaryUrl);
+      const legacyAiHorde = turn.imageProvider === "aihorde"
+        || /AI Horde/i.test(String(turn.imageStatusText || ""))
+        || !!turn.imageCandidates?.length
+        || Number.isFinite(Number(turn.selectedImageCandidateIndex));
+      if ((turn.combinedImageMode || legacyAiHorde) && !looksLikeSvg && isSafeDisplayImageUrl(primaryUrl) && primaryUrl !== String(turn.svgPlaceholderUrl || "")) return primaryUrl;
+      return "";
+    }
+
+    function turnSvgPlaceholderUrl(turn = null) {
+      if (!turn) return "";
+      if (isSafeDisplayImageUrl(turn.svgPlaceholderUrl)) return String(turn.svgPlaceholderUrl);
+      const primaryUrl = String(turn.imageUrl || "");
+      const legacySvg = turn.imageProvider === "svg" || /^data:image\/svg\+xml/i.test(primaryUrl);
+      return legacySvg && isSafeDisplayImageUrl(primaryUrl) ? primaryUrl : "";
+    }
+
+    function imageAssetFromTurn(turn, kind = "primary") {
+      if (!turn) return null;
+      if (kind === "horde") {
+        const url = turnAiHordeImageUrl(turn);
+        if (!url) return null;
+        return {
+          kind: "horde",
+          turn,
+          url,
+          generatedAt: imageTimestamp(turn.aiHordeImageGeneratedAt, imageTimestamp(turn.createdAt)),
+          width: Number(turn.aiHordeImageWidth || turn.imageWidth) || 0,
+          height: Number(turn.aiHordeImageHeight || turn.imageHeight) || 0,
+          aspectRatio: String(turn.aiHordeImageAspectRatio || turn.imageAspectRatio || "")
+        };
+      }
+      if (kind === "svg") {
+        const url = turnSvgPlaceholderUrl(turn);
+        if (!url) return null;
+        return {
+          kind: "svg",
+          turn,
+          url,
+          generatedAt: imageTimestamp(turn.svgPlaceholderGeneratedAt, imageTimestamp(turn.createdAt)),
+          width: Number(turn.svgPlaceholderWidth || turn.imageWidth) || 0,
+          height: Number(turn.svgPlaceholderHeight || turn.imageHeight) || 0,
+          aspectRatio: String(turn.svgPlaceholderAspectRatio || turn.imageAspectRatio || "")
+        };
+      }
+      if (!isSafeDisplayImageUrl(turn.imageUrl)) return null;
+      return {
+        kind: "primary",
+        turn,
+        url: String(turn.imageUrl),
+        generatedAt: imageTimestamp(turn.imageGeneratedAt, imageTimestamp(turn.createdAt)),
+        width: Number(turn.imageWidth) || 0,
+        height: Number(turn.imageHeight) || 0,
+        aspectRatio: String(turn.imageAspectRatio || "")
+      };
+    }
+
+    function latestCompletedImageAsset(kind = "horde", maxIndex = (state.turns || []).length - 1) {
+      const turns = state.turns || [];
+      const startIndex = Math.min(turns.length - 1, Math.max(-1, Number.isFinite(Number(maxIndex)) ? Math.floor(Number(maxIndex)) : turns.length - 1));
+      for (let index = startIndex; index >= 0; index -= 1) {
+        const asset = imageAssetFromTurn(turns[index], kind);
+        if (asset) return asset;
+      }
+      return null;
+    }
+
+    function combinedImageAssetsForTurn(targetTurn = null) {
+      const turns = state.turns || [];
+      const targetIndex = targetTurn
+        ? turns.findIndex(turn => turn === targetTurn || (turn?.id && turn.id === targetTurn.id))
+        : turns.length - 1;
+      const maxIndex = targetIndex >= 0 ? targetIndex : turns.length - 1;
+      return {
+        horde: latestCompletedImageAsset("horde", maxIndex),
+        svg: latestCompletedImageAsset("svg", maxIndex)
+      };
+    }
+
+    function combinedImageAssetToDisplay(targetTurn = null) {
+      const assets = combinedImageAssetsForTurn(targetTurn);
+      const preference = String(targetTurn?.combinedImagePreference || "auto").toLowerCase();
+      if (preference === "horde" && assets.horde) return assets.horde;
+      if (preference === "svg" && assets.svg) return assets.svg;
+
+      // Automatic behavior is intentionally centered on the current turn's SVG.
+      // Until that placeholder exists, keep showing the latest Horde result. Once
+      // the current SVG arrives, show it unless a Horde image completed later.
+      const currentSvg = imageAssetFromTurn(targetTurn, "svg");
+      if (currentSvg) {
+        return assets.horde && assets.horde.generatedAt > currentSvg.generatedAt ? assets.horde : currentSvg;
+      }
+      return assets.horde || assets.svg;
+    }
+
+    function imageAssetToDisplay(targetTurn = null) {
+      if (isAiHordeSvgImageMode()) return combinedImageAssetToDisplay(targetTurn);
+      if (isPollinationsImageMode()) {
+        if (targetTurn && isSafeDisplayImageUrl(targetTurn.imageUrl)) return imageAssetFromTurn(targetTurn, "primary");
+        if (!targetTurn) return latestCompletedImageAsset("primary");
+        const targetIndex = (state.turns || []).findIndex(turn => turn === targetTurn || (turn?.id && turn.id === targetTurn.id));
+        return targetIndex >= 0 ? latestCompletedImageAsset("primary", targetIndex) : null;
+      }
+      return imageAssetFromTurn(targetTurn, "primary");
+    }
+
+    function imageAssetAspectStyle(asset = null, fallbackTurn = null) {
+      const width = Number(asset?.width);
+      const height = Number(asset?.height);
+      if (Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0) {
+        return ` style="aspect-ratio:${width} / ${height};"`;
+      }
+      if (asset?.aspectRatio) {
+        const parsed = parseImageAspectRatio(asset.aspectRatio);
+        if (parsed) return ` style="aspect-ratio:${parsed.width} / ${parsed.height};"`;
+      }
+      return imageWrapAspectStyle(fallbackTurn || asset?.turn || null);
+    }
+
+    function syncDisplayedImageDimensionsFromElement(asset, imageElement, imageWrap = null) {
+      if (!asset?.turn || !imageElement) return;
+      const width = Math.max(0, Number(imageElement.naturalWidth) || 0);
+      const height = Math.max(0, Number(imageElement.naturalHeight) || 0);
+      if (!width || !height) return;
+      if (imageWrap) imageWrap.style.aspectRatio = `${width} / ${height}`;
+      const turn = asset.turn;
+      if (asset.kind === "svg") {
+        turn.svgPlaceholderWidth = width;
+        turn.svgPlaceholderHeight = height;
+        turn.svgPlaceholderAspectRatio = `${width}:${height}`;
+      } else if (asset.kind === "horde") {
+        turn.aiHordeImageWidth = width;
+        turn.aiHordeImageHeight = height;
+        turn.aiHordeImageAspectRatio = `${width}:${height}`;
+        turn.imageWidth = width;
+        turn.imageHeight = height;
+        turn.imageAspectRatio = `${width}:${height}`;
+      } else {
+        turn.imageWidth = width;
+        turn.imageHeight = height;
+        turn.imageAspectRatio = `${width}:${height}`;
+      }
+      saveState();
+    }
+
+    function combinedImageCaption(displayAsset = null, targetTurn = null) {
+      const sourceText = displayAsset
+        ? `<strong>Showing ${displayAsset.kind === "horde" ? "AI Horde image" : "SVG placeholder"} from Turn ${escapeHtml(displayAsset.turn.turnNumber)}.</strong>`
+        : `<strong>No combined-mode image has completed yet.</strong>`;
+      const assets = combinedImageAssetsForTurn(targetTurn);
+      const available = [assets.horde ? "AI Horde" : "", assets.svg ? "SVG" : ""].filter(Boolean).join(" and ");
+      const svgStatus = targetTurn?.svgPlaceholderGenerating
+        ? " The current turn SVG placeholder is still generating."
+        : targetTurn?.svgPlaceholderError
+          ? ` The current turn SVG placeholder failed: ${escapeHtml(targetTurn.svgPlaceholderError)}`
+          : "";
+      const hordeStatus = aiHordeImageCaption(assets.horde?.turn || null, targetTurn);
+      return `${sourceText}${available ? ` Available sources: ${available}.` : ""}${svgStatus} ${hordeStatus}`.trim();
+    }
+
+    function toggleCombinedImageForTurn(turnId) {
+      const turn = (state.turns || []).find(item => item.id === turnId) || state.turns[state.viewIndex];
+      if (!turn) return;
+      const assets = combinedImageAssetsForTurn(turn);
+      if (!assets.horde || !assets.svg) return toast("Both an AI Horde image and an SVG placeholder must be available before swapping.");
+      const current = combinedImageAssetToDisplay(turn);
+      turn.combinedImagePreference = current?.kind === "horde" ? "svg" : "horde";
+      saveState();
+      renderAll();
+    }
+
+    function ownCombinedImageAssetToDisplay(turn = null) {
+      if (!turn) return null;
+      const horde = imageAssetFromTurn(turn, "horde");
+      const svg = imageAssetFromTurn(turn, "svg");
+      const preference = String(turn.combinedImagePreference || "auto").toLowerCase();
+      if (preference === "horde" && horde) return horde;
+      if (preference === "svg" && svg) return svg;
+      if (!horde) return svg;
+      if (!svg) return horde;
+      return horde.generatedAt > svg.generatedAt ? horde : svg;
+    }
+
+    function turnImageAssetForExport(turn = null) {
+      if (!turn) return null;
+      if (turn.combinedImageMode || turn.aiHordeImageUrl || turn.svgPlaceholderUrl) {
+        return ownCombinedImageAssetToDisplay(turn);
+      }
+      return imageAssetFromTurn(turn, "primary");
     }
 
     function pendingAiHordeImageTurns() {
@@ -5639,7 +5875,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     }
 
     function aiHordeImageCaption(displayTurn = null, targetTurn = null) {
-      if (!isPollinationsImageMode()) return "";
+      if (!isPollinationsImageMode() && !isAiHordeSvgImageMode()) return "";
       const shownText = displayTurn
         ? `<strong>Showing Turn ${escapeHtml(displayTurn.turnNumber)}’s completed image.</strong>`
         : `<strong>No AI Horde image has completed yet.</strong>`;
@@ -5698,13 +5934,22 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       return SVG_IMAGE_MODEL_ALIASES.some(alias => id === alias.toLowerCase());
     }
 
+    function isAiHordeSvgImageModel(modelId = "") {
+      const id = String(modelId || "").trim().toLowerCase();
+      return AI_HORDE_SVG_IMAGE_MODEL_ALIASES.some(alias => id === alias.toLowerCase());
+    }
+
+    function isAiHordeBackedImageModel(modelId = "") {
+      return isPollinationsImageModel(modelId) || isAiHordeSvgImageModel(modelId);
+    }
+
     function isFreeImageModel(modelId = "") {
-      return isPollinationsImageModel(modelId) || isSvgImageModel(modelId);
+      return isAiHordeSvgImageModel(modelId) || isPollinationsImageModel(modelId) || isSvgImageModel(modelId);
     }
 
     function preferredFreeImageModel() {
       const preferred = normalizeImageModelId(state.settings?.lastFreeImageModel || "");
-      return isFreeImageModel(preferred) ? preferred : POLLINATIONS_IMAGE_MODEL;
+      return isFreeImageModel(preferred) ? preferred : AI_HORDE_SVG_IMAGE_MODEL;
     }
 
     function rememberFreeImageModel(modelId = state.settings?.imageModel) {
@@ -5717,6 +5962,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
 
     function normalizeImageModelId(modelId = "") {
       const id = String(modelId || "").trim();
+      if (isAiHordeSvgImageModel(id)) return AI_HORDE_SVG_IMAGE_MODEL;
       if (isPollinationsImageModel(id)) return POLLINATIONS_IMAGE_MODEL;
       if (isSvgImageModel(id)) return SVG_IMAGE_MODEL;
       return id;
@@ -5807,6 +6053,10 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       return isSvgImageModel(state.settings?.imageModel);
     }
 
+    function isAiHordeSvgImageMode() {
+      return isAiHordeSvgImageModel(state.settings?.imageModel);
+    }
+
 
     function coerceFreeModelSettings(defaultToFree = false) {
       state.settings ||= {};
@@ -5814,7 +6064,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       // One-time compatibility with older saved browser states that stored two
       // separate free-mode flags. Current behavior is independent:
       // - free LLM model => paragraph formatting only
-      // - AI Horde or SVG image model => free image generation
+      // - AI Horde+SVG Placeholder, AI Horde, or SVG mode => free image generation
       const legacyPollinationsFree = !!state.settings.freeModelsWithPollinations;
       const legacyImagelessFree = !!state.settings.freeModelsOnly && !legacyPollinationsFree;
 
@@ -5826,8 +6076,8 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       }
       if (!state.settings.imageModel) state.settings.imageModel = DEFAULT_IMAGE_MODEL;
       state.settings.imageModel = normalizeImageModelId(state.settings.imageModel) || DEFAULT_IMAGE_MODEL;
-      state.settings.lastFreeImageModel = normalizeImageModelId(state.settings.lastFreeImageModel || POLLINATIONS_IMAGE_MODEL);
-      if (!isFreeImageModel(state.settings.lastFreeImageModel)) state.settings.lastFreeImageModel = POLLINATIONS_IMAGE_MODEL;
+      state.settings.lastFreeImageModel = normalizeImageModelId(state.settings.lastFreeImageModel || AI_HORDE_SVG_IMAGE_MODEL);
+      if (!isFreeImageModel(state.settings.lastFreeImageModel)) state.settings.lastFreeImageModel = AI_HORDE_SVG_IMAGE_MODEL;
 
       if (legacyPollinationsFree) {
         state.settings.imageModel = POLLINATIONS_IMAGE_MODEL;
@@ -5875,7 +6125,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
           state.settings.llmModel = selectedLlm;
         }
 
-        images = [POLLINATIONS_IMAGE_MODEL, SVG_IMAGE_MODEL];
+        images = [AI_HORDE_SVG_IMAGE_MODEL, POLLINATIONS_IMAGE_MODEL, SVG_IMAGE_MODEL];
         if (!isFreeImageModel(selectedImage)) selectedImage = preferredFreeImageModel();
         state.settings.imageModel = selectedImage;
         rememberFreeImageModel(selectedImage);
@@ -5962,6 +6212,8 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       const freeTextMode = isFreeTextModelMode();
       const pollinationsMode = isPollinationsImageMode();
       const svgMode = isSvgImageMode();
+      const combinedMode = isAiHordeSvgImageMode();
+      const aiHordeBackedMode = pollinationsMode || combinedMode;
       const filterFreeOptions = !!state.settings.filterFreeOptions;
 
       const imageToggle = $("generateImages");
@@ -5980,26 +6232,32 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         if (id === "aiHordeApiKey") {
           el.title = svgMode
             ? "AI Horde is not used in SVG mode."
-            : pollinationsMode
-              ? "Optional. Leave blank for anonymous free AI Horde access."
-              : "";
+            : combinedMode
+              ? "Optional. The combined mode uses AI Horde and SVG generation at the same time; leave blank for anonymous AI Horde access."
+              : pollinationsMode
+                ? "Optional. Leave blank for anonymous free AI Horde access."
+                : "";
         } else {
-          el.title = pollinationsMode
-            ? "AI Horde will be used whenever this image model is selected."
-            : svgMode
-              ? "SVG mode uses the selected Story LLM for each illustration."
-              : "";
+          el.title = combinedMode
+            ? "Starts AI Horde and SVG placeholder generation together for every image."
+            : pollinationsMode
+              ? "AI Horde will be used whenever this image model is selected."
+              : svgMode
+                ? "SVG mode uses the selected Story LLM for each illustration."
+                : "";
         }
       });
 
       const imageAspectRatio = $("imageAspectRatio");
       if (imageAspectRatio) {
         imageAspectRatio.disabled = false;
-        imageAspectRatio.title = pollinationsMode
-          ? "AI Horde uses this aspect ratio with its dedicated generation-resolution setting."
-          : svgMode
-            ? "SVG mode uses this aspect ratio and the selected image-size long edge."
-            : "";
+        imageAspectRatio.title = combinedMode
+          ? "The SVG placeholder follows the AI Horde aspect-ratio setting so swapping images does not reshape the page."
+          : pollinationsMode
+            ? "AI Horde uses this aspect ratio with its dedicated generation-resolution setting."
+            : svgMode
+              ? "SVG mode uses this aspect ratio and the selected image-size long edge."
+              : "";
       }
       updateAiHordeSettingsVisibility();
       const fallbackEnabled = !!state.settings.addFallbackModels;
@@ -6022,7 +6280,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       const customImage = $("imageModelCustom");
       if (customImage) {
         customImage.disabled = filterFreeOptions;
-        customImage.placeholder = filterFreeOptions ? "Filtered to AI Horde or SVG mode" : "e.g. black-forest-labs/flux.2-klein-4b";
+        customImage.placeholder = filterFreeOptions ? "Filtered to AI Horde+SVG Placeholder, AI Horde, or SVG mode" : "e.g. black-forest-labs/flux.2-klein-4b";
       }
     }
 
@@ -6696,7 +6954,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       ensureFallbackModelDefaults();
       state.settings.imageModel = selectedImage;
       if (isFreeImageModel(selectedImage)) state.settings.lastFreeImageModel = selectedImage;
-      const selectedAspectRatio = isPollinationsImageModel(selectedImage)
+      const selectedAspectRatio = isAiHordeBackedImageModel(selectedImage)
         ? String($("aiHordeAspectRatio")?.value || $("imageAspectRatio")?.value || "3:2")
         : String($("imageAspectRatio")?.value || "3:2");
       state.settings.imageAspectRatio = selectedAspectRatio;
@@ -6897,16 +7155,24 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         </div>`;
     }
 
-    function handleDisplayedTurnImageError(turn, imageElement) {
-      if (!turn || !isPollinationsImageMode()) return;
+    function handleDisplayedTurnImageError(asset, imageElement) {
+      const turn = asset?.turn;
+      if (!turn) return;
       const failedUrl = String(imageElement?.currentSrc || imageElement?.src || "");
-      if (failedUrl && String(turn.imageUrl || "") && failedUrl !== String(turn.imageUrl)) return;
-      turn.imageError = "The saved AI Horde image URL expired or could not be loaded. Regenerate the turn image to retrieve a fresh result.";
-      turn.imageUrl = "";
-      turn.selectedImageCandidateIndex = null;
+      if (failedUrl && asset.url && failedUrl !== String(asset.url)) return;
+      if (asset.kind === "svg") {
+        turn.svgPlaceholderError = "The saved SVG placeholder could not be loaded. Regenerate the turn images to create a new placeholder.";
+        turn.svgPlaceholderUrl = "";
+        toast(turn.svgPlaceholderError, 7500);
+      } else if (asset.kind === "horde" || isPollinationsImageMode()) {
+        turn.imageError = "The saved AI Horde image URL expired or could not be loaded. Regenerate the turn image to retrieve a fresh result.";
+        if (String(turn.aiHordeImageUrl || "") === String(asset.url || "")) turn.aiHordeImageUrl = "";
+        if (String(turn.imageUrl || "") === String(asset.url || "")) turn.imageUrl = "";
+        turn.selectedImageCandidateIndex = null;
+        toast(turn.imageError, 7500);
+      }
       renderAll();
       saveState();
-      toast(turn.imageError, 7500);
     }
 
     function renderStory() {
@@ -6914,15 +7180,18 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       if (transientUi.generatingTurn) {
         const pending = transientUi.pendingAction || (isStorytellerMode() ? "Directing the next turn..." : "Resolving your action...");
         const pendingInputLabel = isStorytellerMode() ? "Storyteller instructions" : "Player action";
-        const displayImageTurn = isPollinationsImageMode() ? latestCompletedImageTurn() : null;
+        const priorTurn = state.turns[state.turns.length - 1] || null;
+        const displayAsset = (isPollinationsImageMode() || isAiHordeSvgImageMode()) ? imageAssetToDisplay(priorTurn) : null;
         const imageWrapClass = "image-wrap aspect-ratio-locked";
-        const imageWrapStyle = imageWrapAspectStyle(displayImageTurn);
-        const imageHtml = displayImageTurn && isSafeDisplayImageUrl(displayImageTurn.imageUrl)
-          ? `<img src="${escapeHtml(displayImageTurn.imageUrl)}" alt="Scene illustration from turn ${escapeHtml(displayImageTurn.turnNumber)}" data-turn-image="true">`
+        const imageWrapStyle = imageAssetAspectStyle(displayAsset, displayAsset?.turn || priorTurn);
+        const imageHtml = displayAsset?.url
+          ? `<img src="${escapeHtml(displayAsset.url)}" alt="Scene illustration from turn ${escapeHtml(displayAsset.turn.turnNumber)}" data-turn-image="true">`
           : `<div class="image-loading"><div class="spinner"></div><div>No completed scene image yet.</div></div>`;
-        const captionHtml = isPollinationsImageMode()
-          ? `<figcaption class="image-caption" aria-live="polite">${aiHordeImageCaption(displayImageTurn, null)}</figcaption>`
-          : "";
+        const captionHtml = isAiHordeSvgImageMode()
+          ? `<figcaption class="image-caption" aria-live="polite">${combinedImageCaption(displayAsset, priorTurn)}</figcaption>`
+          : isPollinationsImageMode()
+            ? `<figcaption class="image-caption" aria-live="polite">${aiHordeImageCaption(displayAsset?.turn || null, null)}</figcaption>`
+            : "";
         area.innerHTML = `
           <div class="loading-card">
             <div class="turn-meta">
@@ -6949,11 +7218,11 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
           </div>`;
         const renderedTurnImage = area.querySelector('img[data-turn-image="true"]');
         const renderedImageWrap = renderedTurnImage?.closest(".image-wrap") || null;
-        if (renderedTurnImage && displayImageTurn) {
-          const syncDimensions = () => syncTurnImageDimensionsFromElement(displayImageTurn, renderedTurnImage, renderedImageWrap);
+        if (renderedTurnImage && displayAsset) {
+          const syncDimensions = () => syncDisplayedImageDimensionsFromElement(displayAsset, renderedTurnImage, renderedImageWrap);
           if (renderedTurnImage.complete && renderedTurnImage.naturalWidth) syncDimensions();
           else renderedTurnImage.addEventListener("load", syncDimensions, { once: true });
-          renderedTurnImage.addEventListener("error", () => handleDisplayedTurnImageError(displayImageTurn, renderedTurnImage), { once: true });
+          renderedTurnImage.addEventListener("error", () => handleDisplayedTurnImageError(displayAsset, renderedTurnImage), { once: true });
         }
         return;
       }
@@ -6970,24 +7239,40 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       }
       const turn = state.turns[state.viewIndex];
       const turnInputLabel = turnUsesStorytellerMode(turn) ? "Storyteller instructions" : "Player action";
-      const displayImageTurn = imageTurnToDisplay(turn);
+      const displayAsset = imageAssetToDisplay(turn);
       const imageWrapClass = "image-wrap aspect-ratio-locked";
-      const imageWrapStyle = imageWrapAspectStyle(displayImageTurn || turn);
-      const displayImageUrl = displayImageTurn?.imageUrl || "";
+      const imageWrapStyle = imageAssetAspectStyle(displayAsset, turn);
+      const displayImageUrl = displayAsset?.url || "";
+      const combinedGenerating = !!(turn.imageGenerating || turn.svgPlaceholderGenerating);
+      const combinedStatus = turn.svgPlaceholderGenerating && turn.imageGenerating
+        ? "Generating the SVG placeholder and AI Horde image together..."
+        : turn.svgPlaceholderGenerating
+          ? "Generating the SVG placeholder..."
+          : turn.imageGenerating
+            ? (turn.imageStatusText || "Generating the AI Horde image...")
+            : "";
+      const combinedErrors = [turn.svgPlaceholderError, turn.imageError].filter(Boolean).join(" ");
       const imageHtml = isSafeDisplayImageUrl(displayImageUrl)
-        ? `<img src="${escapeHtml(displayImageUrl)}" alt="Scene illustration from turn ${escapeHtml(displayImageTurn.turnNumber)}" data-turn-image="true">`
-        : `<div class="image-placeholder">${turn.imageCandidates?.length > 1 ? `${turn.imageCandidates.length} candidates are ready.<br><br>Choose one using the image action below.` : turn.imageGenerating ? `<span class="spinner"></span><br><br>${escapeHtml(turn.imageStatusText || "Generating next scene...")}` : turn.imageUrl ? escapeHtml(invalidImageUrlMessage(turn.imageUrl)) : turn.imageError ? "Image generation failed: " + escapeHtml(turn.imageError) : "No image for this turn yet."}<br><br><span class="mini">Prompt: ${escapeHtml(turn.imagePrompt || "")}</span></div>`;
+        ? `<img src="${escapeHtml(displayImageUrl)}" alt="${displayAsset?.kind === "svg" ? "SVG placeholder" : "Scene illustration"} from turn ${escapeHtml(displayAsset.turn.turnNumber)}" data-turn-image="true">`
+        : `<div class="image-placeholder">${turn.imageCandidates?.length > 1 ? `${turn.imageCandidates.length} candidates are ready.<br><br>Choose one using the image action below.` : combinedGenerating ? `<span class="spinner"></span><br><br>${escapeHtml(combinedStatus || "Generating next scene...")}` : turn.imageUrl ? escapeHtml(invalidImageUrlMessage(turn.imageUrl)) : combinedErrors ? "Image generation issue: " + escapeHtml(combinedErrors) : "No image for this turn yet."}<br><br><span class="mini">Prompt: ${escapeHtml(turn.imagePrompt || "")}</span></div>`;
       const rollHtml = renderRollCard(turn.roll);
       const modelResponseHtml = renderModelResponseCard(turn);
       const statsHtml = rpgStatsSummaryHtml();
+      const hasAnyTurnImage = !!(turn.imageUrl || turn.aiHordeImageUrl || turn.svgPlaceholderUrl || turn.imageCandidates?.length);
       const imageActionsHtml = `
             <div class="image-actions">
               ${turn.imageCandidates?.length > 1 ? `<button id="btnChooseImageCandidate" type="button" class="small primary">🖼️ Choose candidates</button>` : ""}
-              <button id="btnRegenImage" type="button" class="small accent">🖼️ ${turn.imageUrl || turn.imageCandidates?.length ? "Regenerate image" : "Generate image"}</button>
+              <button id="btnRegenImage" type="button" class="small accent">🖼️ ${hasAnyTurnImage ? "Regenerate images" : "Generate images"}</button>
             </div>`;
-      const captionHtml = isPollinationsImageMode()
-        ? `<figcaption class="image-caption" aria-live="polite">${aiHordeImageCaption(displayImageTurn, turn)}</figcaption>`
+      const combinedAssets = isAiHordeSvgImageMode() ? combinedImageAssetsForTurn(turn) : { horde: null, svg: null };
+      const swapActionsHtml = isAiHordeSvgImageMode() && combinedAssets.horde && combinedAssets.svg
+        ? `<div class="image-swap-actions"><button id="btnSwapCombinedImage" type="button" title="Swap between the latest AI Horde image and latest SVG placeholder">⇄ Show ${displayAsset?.kind === "horde" ? "SVG" : "AI Horde"}</button></div>`
         : "";
+      const captionHtml = isAiHordeSvgImageMode()
+        ? `<figcaption class="image-caption" aria-live="polite">${combinedImageCaption(displayAsset, turn)}</figcaption>`
+        : isPollinationsImageMode()
+          ? `<figcaption class="image-caption" aria-live="polite">${aiHordeImageCaption(displayAsset?.turn || null, turn)}</figcaption>`
+          : "";
 
       area.innerHTML = `
         <div class="turn-meta">
@@ -7002,7 +7287,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         <div class="scene">
           <article class="narration">${renderMarkdown(turn.narration)}</article>
           <figure class="image-column">
-            <div class="${imageWrapClass}"${imageWrapStyle}>${imageHtml}${imageActionsHtml}</div>
+            <div class="${imageWrapClass}"${imageWrapStyle}>${imageHtml}${swapActionsHtml}${imageActionsHtml}</div>
             ${captionHtml}
           </figure>
         </div>
@@ -7010,16 +7295,18 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       `;
       const renderedTurnImage = area.querySelector('img[data-turn-image="true"]');
       const renderedImageWrap = renderedTurnImage?.closest(".image-wrap") || null;
-      if (renderedTurnImage && displayImageTurn) {
-        const syncDimensions = () => syncTurnImageDimensionsFromElement(displayImageTurn, renderedTurnImage, renderedImageWrap);
+      if (renderedTurnImage && displayAsset) {
+        const syncDimensions = () => syncDisplayedImageDimensionsFromElement(displayAsset, renderedTurnImage, renderedImageWrap);
         if (renderedTurnImage.complete && renderedTurnImage.naturalWidth) syncDimensions();
         else renderedTurnImage.addEventListener("load", syncDimensions, { once: true });
-        renderedTurnImage.addEventListener("error", () => handleDisplayedTurnImageError(displayImageTurn, renderedTurnImage), { once: true });
+        renderedTurnImage.addEventListener("error", () => handleDisplayedTurnImageError(displayAsset, renderedTurnImage), { once: true });
       }
       const btnRegenImage = $("btnRegenImage");
       if (btnRegenImage) btnRegenImage.onclick = () => openImagePromptDialog(turn.id);
       const btnChooseImageCandidate = $("btnChooseImageCandidate");
       if (btnChooseImageCandidate) btnChooseImageCandidate.onclick = () => openAiHordeCandidateDialog(turn.id);
+      const btnSwapCombinedImage = $("btnSwapCombinedImage");
+      if (btnSwapCombinedImage) btnSwapCombinedImage.onclick = () => toggleCombinedImageForTurn(turn.id);
     }
 
     function renderChoices() {
@@ -7148,7 +7435,8 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       const finalPrompt = String(promptText || "").trim();
       if (!turn) return toast("Could not find that turn.");
       if (!finalPrompt) return toast("Image prompt cannot be empty.");
-      const previousImageUrl = turn.imageUrl || "";
+      const combinedMode = isAiHordeSvgImageMode();
+      const previousImageUrl = turnAiHordeImageUrl(turn) || turn.imageUrl || "";
       const previousHordeJobId = String(turn.imageRequest?.provider === "aihorde" ? (turn.imageRequest.id || "") : "").trim();
       if (previousHordeJobId) {
         await cancelAiHordeImageJob(previousHordeJobId, { quiet: false });
@@ -7157,30 +7445,44 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       showLlmWaitIndicator();
       turn.imagePrompt = finalPrompt;
       turn.imageUrl = "";
+      turn.aiHordeImageUrl = "";
+      turn.svgPlaceholderUrl = "";
       turn.imageCandidates = [];
       turn.selectedImageCandidateIndex = null;
       turn.imageError = "";
+      turn.aiHordeImageError = "";
+      turn.svgPlaceholderError = "";
+      turn.combinedImageMode = combinedMode;
+      turn.combinedImagePreference = "auto";
       turn.imageAspectRatio = state.settings.imageAspectRatio || turn.imageAspectRatio || "3:2";
       const requestedDimensions = configuredImageDimensions();
       turn.imageWidth = requestedDimensions.width;
       turn.imageHeight = requestedDimensions.height;
       turn.imageGenerating = true;
+      turn.svgPlaceholderGenerating = combinedMode;
       closeImagePromptDialog();
       renderAll();
       saveState();
-      setBusy(true, "Regenerating image");
+      setBusy(true, combinedMode ? "Regenerating AI Horde and SVG images" : "Regenerating image");
       try {
-        const result = await callOpenRouterImageWithPg13Retry(finalPrompt, { previousImageUrl, turn, background: false });
-        if (result.imageUrl) turn.imageUrl = result.imageUrl;
+        const result = await callOpenRouterImageWithPg13Retry(finalPrompt, { previousImageUrl, turn, background: false, combinedMode });
+        if (result.imageUrl && !result.usedCombined) turn.imageUrl = result.imageUrl;
         turn.imagePrompt = result.prompt;
-        turn.imageError = "";
+        if (!result.usedCombined || result.hordeSucceeded) turn.imageError = "";
         markUnsavedForFullExport();
-        toast(result.usedSvg ? "SVG illustration regenerated with the Story LLM." : result.candidateSelectionPending ? "AI Horde candidates are ready. Choose the image for this turn." : result.usedPollinations ? "Image regenerated with AI Horde." : result.usedPg13Rewrite ? "Image regenerated with a PG-13 prompt rewrite." : "Image regenerated.");
+        toast(result.usedCombined
+          ? result.hordePending
+            ? "SVG placeholder regenerated; the AI Horde image is still queued."
+            : result.hordeSucceeded && result.svgSucceeded
+              ? "SVG placeholder and AI Horde image regenerated."
+              : result.svgSucceeded
+                ? "SVG placeholder regenerated; AI Horde did not complete."
+                : "AI Horde image regenerated; the SVG placeholder did not complete."
+          : result.usedSvg ? "SVG illustration regenerated with the Story LLM." : result.candidateSelectionPending ? "AI Horde candidates are ready. Choose the image for this turn." : result.usedPollinations ? "Image regenerated with AI Horde." : result.usedPg13Rewrite ? "Image regenerated with a PG-13 prompt rewrite." : "Image regenerated.");
       } catch (err) {
         console.error(err);
         if (err?.pendingJob) {
           turn.imageGenerating = true;
-          turn.imageError = "";
           turn.imageStatusText = err.message;
           toast(err.message, 7500);
         } else {
@@ -7189,6 +7491,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         }
       } finally {
         if (!turn.imageRequest) turn.imageGenerating = false;
+        if (!combinedMode) turn.svgPlaceholderGenerating = false;
         renderAll();
         saveState();
         await waitForTurnImageDisplayed(turn);
@@ -7200,25 +7503,31 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     async function generateImageForTurnInBackground(turn, promptText = turn?.imagePrompt) {
       if (state.settings.generateImages === false) return;
       if (!turn || !promptText) return;
+      const combinedMode = isAiHordeSvgImageMode();
       showLlmWaitIndicator();
+      turn.combinedImageMode = combinedMode;
+      turn.combinedImagePreference = "auto";
       turn.imageGenerating = true;
+      turn.svgPlaceholderGenerating = combinedMode;
       turn.imageError = "";
+      turn.aiHordeImageError = "";
+      turn.svgPlaceholderError = "";
       renderAll();
       saveState();
       try {
-        const result = await callOpenRouterImageWithPg13Retry(promptText, { previousImageUrl: turn.imageUrl || "", turn, background: true });
+        const result = await callOpenRouterImageWithPg13Retry(promptText, { previousImageUrl: turnAiHordeImageUrl(turn) || turn.imageUrl || "", turn, background: true, combinedMode });
         if (!state.turns.some(t => t.id === turn.id)) return;
-        if (result.imageUrl) turn.imageUrl = result.imageUrl;
+        if (result.imageUrl && !result.usedCombined) turn.imageUrl = result.imageUrl;
         turn.imagePrompt = result.prompt;
-        turn.imageError = "";
+        if (!result.usedCombined || result.hordeSucceeded) turn.imageError = "";
         markUnsavedForFullExport();
         if (result.usedPg13Rewrite) toast("The image prompt was rewritten as PG-13 after moderation, then generated.", 5200);
+        if (result.usedCombined && result.svgSucceeded && result.hordePending) toast("The SVG placeholder is ready while the AI Horde image continues in the background.", 5200);
       } catch (imgErr) {
         console.error(imgErr);
         if (!state.turns.some(t => t.id === turn.id)) return;
         if (imgErr?.pendingJob) {
           turn.imageGenerating = true;
-          turn.imageError = "";
           turn.imageStatusText = imgErr.message;
           toast(imgErr.message, 7500);
         } else {
@@ -7228,6 +7537,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       } finally {
         if (state.turns.some(t => t.id === turn.id)) {
           if (!turn.imageRequest) turn.imageGenerating = false;
+          if (!combinedMode) turn.svgPlaceholderGenerating = false;
           renderAll();
           saveState();
           await waitForTurnImageDisplayed(turn);
@@ -9188,7 +9498,7 @@ SVG requirements:
     }
 
     function configuredImageDimensions() {
-      return isSvgImageMode() ? svgImageDimensions() : pollinationsImageDimensions();
+      return (isSvgImageMode() || isAiHordeSvgImageMode()) ? svgImageDimensions() : pollinationsImageDimensions();
     }
 
     async function callOpenRouterSvg(prompt, options = {}) {
@@ -9253,28 +9563,123 @@ SVG requirements:
       const imageUrl = svgMarkupToDataUrl(safeSvg);
       const imageInfo = await preloadImageInfo(imageUrl, "The Story LLM returned SVG, but the browser could not display it.");
       if (options.turn) {
-        options.turn.imageWidth = imageInfo.width || dimensions.width;
-        options.turn.imageHeight = imageInfo.height || dimensions.height;
-        options.turn.imageAspectRatio = `${options.turn.imageWidth}:${options.turn.imageHeight}`;
+        if (options.svgPlaceholder) {
+          options.turn.svgPlaceholderWidth = imageInfo.width || dimensions.width;
+          options.turn.svgPlaceholderHeight = imageInfo.height || dimensions.height;
+          options.turn.svgPlaceholderAspectRatio = `${options.turn.svgPlaceholderWidth}:${options.turn.svgPlaceholderHeight}`;
+        } else {
+          options.turn.imageWidth = imageInfo.width || dimensions.width;
+          options.turn.imageHeight = imageInfo.height || dimensions.height;
+          options.turn.imageAspectRatio = `${options.turn.imageWidth}:${options.turn.imageHeight}`;
+          options.turn.imageProvider = "svg";
+          options.turn.imageGeneratedAt = Date.now();
+        }
       }
       return imageUrl;
     }
 
+    async function callAiHordeSvgPlaceholderImage(prompt, options = {}) {
+      const turn = options.turn || null;
+      if (turn) {
+        turn.combinedImageMode = true;
+        turn.svgPlaceholderGenerating = true;
+        turn.svgPlaceholderError = "";
+        turn.aiHordeImageError = "";
+      }
+
+      // Both promises are created before either is awaited, so the AI Horde and
+      // SVG requests start together for the current turn.
+      const hordePromise = callPollinationsImage(prompt, { ...options, combinedMode: true })
+        .then(result => {
+          if (turn && state.turns.some(item => item.id === turn.id)) {
+            turn.aiHordeImageError = "";
+            turn.imageError = "";
+            renderAll();
+            saveState();
+          }
+          return result;
+        })
+        .catch(error => {
+          if (turn && !error?.pendingJob && !error?.superseded && state.turns.some(item => item.id === turn.id)) {
+            const message = normalizeAiHordeError(error);
+            turn.aiHordeImageError = message;
+            turn.imageError = message;
+            renderAll();
+            saveState();
+          }
+          throw error;
+        });
+
+      const svgPromise = callOpenRouterSvg(prompt, { ...options, svgPlaceholder: true })
+        .then(imageUrl => {
+          if (turn && state.turns.some(item => item.id === turn.id)) {
+            storeSvgPlaceholderOnTurn(turn, imageUrl);
+            renderAll();
+            saveState();
+          }
+          return imageUrl;
+        })
+        .catch(error => {
+          if (turn && state.turns.some(item => item.id === turn.id)) {
+            turn.svgPlaceholderError = String(error?.userFacingMessage || error?.message || error || "SVG placeholder generation failed.").trim();
+            renderAll();
+            saveState();
+          }
+          throw error;
+        })
+        .finally(() => {
+          if (turn && state.turns.some(item => item.id === turn.id)) {
+            turn.svgPlaceholderGenerating = false;
+            renderAll();
+            saveState();
+          }
+        });
+
+      const [hordeResult, svgResult] = await Promise.allSettled([hordePromise, svgPromise]);
+      const hordeSucceeded = hordeResult.status === "fulfilled";
+      const svgSucceeded = svgResult.status === "fulfilled";
+      const hordePending = hordeResult.status === "rejected" && !!hordeResult.reason?.pendingJob;
+      if (!hordeSucceeded && !svgSucceeded && !hordePending) {
+        const hordeMessage = String(hordeResult.reason?.message || hordeResult.reason || "AI Horde failed");
+        const svgMessage = String(svgResult.reason?.message || svgResult.reason || "SVG failed");
+        const combinedError = new Error(`Both image requests failed. AI Horde: ${hordeMessage} SVG: ${svgMessage}`);
+        combinedError.combinedImageError = true;
+        throw combinedError;
+      }
+      if (!hordeSucceeded && !svgSucceeded && hordePending) throw hordeResult.reason;
+      return {
+        imageUrl: hordeSucceeded ? (hordeResult.value?.imageUrl || "") : (svgSucceeded ? svgResult.value : ""),
+        candidates: hordeSucceeded ? (hordeResult.value?.candidates || []) : [],
+        candidateSelectionPending: !!(hordeSucceeded && hordeResult.value?.candidateSelectionPending),
+        prompt,
+        usedPg13Rewrite: false,
+        usedPollinations: hordeSucceeded,
+        usedSvg: svgSucceeded,
+        usedCombined: true,
+        hordeSucceeded,
+        svgSucceeded,
+        hordePending
+      };
+    }
+
     async function callOpenRouterImageWithPg13Retry(prompt, options = {}) {
+      if (isAiHordeSvgImageMode() || options.combinedMode) {
+        return callAiHordeSvgPlaceholderImage(prompt, options);
+      }
       if (isSvgImageMode()) {
-        return { imageUrl: await callOpenRouterSvg(prompt, options), prompt, usedPg13Rewrite: false, usedPollinations: false, usedSvg: true };
+        return { imageUrl: await callOpenRouterSvg(prompt, options), prompt, usedPg13Rewrite: false, usedPollinations: false, usedSvg: true, usedCombined: false };
       }
       if (isPollinationsImageMode()) {
         const hordeResult = await callPollinationsImage(prompt, options);
-        return { ...hordeResult, prompt, usedPg13Rewrite: false, usedPollinations: true, usedSvg: false };
+        return { ...hordeResult, prompt, usedPg13Rewrite: false, usedPollinations: true, usedSvg: false, usedCombined: false };
       }
       try {
-        return { imageUrl: await callOpenRouterImage(prompt), prompt, usedPg13Rewrite: false, usedPollinations: false, usedSvg: false };
+        return { imageUrl: await callOpenRouterImage(prompt), prompt, usedPg13Rewrite: false, usedPollinations: false, usedSvg: false, usedCombined: false };
       } catch (firstError) {
         if (!imageModerationSignal(firstError)) throw firstError;
         const pg13Prompt = await rewriteImagePromptPg13(prompt, firstError, options);
         try {
-          return { imageUrl: await callOpenRouterImage(pg13Prompt), prompt: pg13Prompt, usedPg13Rewrite: true, usedPollinations: false, usedSvg: false };
+          return { imageUrl: await callOpenRouterImage(pg13Prompt), prompt: pg13Prompt, usedPg13Rewrite: true, usedPollinations: false, usedSvg: false, usedCombined: false };
         } catch (secondError) {
           const combined = new Error(`Image generation was moderated. Tried a PG-13 rewrite, but the retry failed too: ${secondError.message || String(secondError)}`);
           combined.originalError = firstError;
@@ -9754,6 +10159,7 @@ SVG requirements:
     }
 
     function normalizeImageGenerationError(error, turn = null) {
+      if (error?.combinedImageError) return String(error?.message || error || "Combined image generation failed.").trim();
       if (turn?.imageRequest?.provider === "aihorde" || isPollinationsImageMode()) {
         return normalizeAiHordeError(error);
       }
@@ -9799,8 +10205,39 @@ SVG requirements:
       return jobIds.size;
     }
 
+    function storeAiHordeImageOnTurn(turn, candidate, { combinedMode = false } = {}) {
+      if (!turn || !candidate?.url) return;
+      const width = Number(candidate.width) || Number(turn.imageWidth) || 0;
+      const height = Number(candidate.height) || Number(turn.imageHeight) || 0;
+      const generatedAt = Date.now();
+      turn.imageUrl = candidate.url;
+      turn.imageWidth = width;
+      turn.imageHeight = height;
+      if (width && height) turn.imageAspectRatio = `${width}:${height}`;
+      turn.imageGeneratedAt = generatedAt;
+      turn.imageProvider = "aihorde";
+      if (combinedMode || turn.combinedImageMode) {
+        turn.combinedImageMode = true;
+        turn.aiHordeImageUrl = candidate.url;
+        turn.aiHordeImageGeneratedAt = generatedAt;
+        turn.aiHordeImageWidth = width;
+        turn.aiHordeImageHeight = height;
+        if (width && height) turn.aiHordeImageAspectRatio = `${width}:${height}`;
+        turn.aiHordeImageError = "";
+      }
+    }
+
+    function storeSvgPlaceholderOnTurn(turn, imageUrl) {
+      if (!turn || !imageUrl) return;
+      turn.combinedImageMode = true;
+      turn.svgPlaceholderUrl = imageUrl;
+      turn.svgPlaceholderGeneratedAt = Date.now();
+      turn.svgPlaceholderError = "";
+    }
+
     async function callPollinationsImage(prompt, options = {}) {
       const turn = options.turn || null;
+      const combinedMode = !!(options.combinedMode || turn?.combinedImageMode);
       const existingJobId = String(turn?.imageRequest?.provider === "aihorde" ? (turn?.imageRequest?.id || "") : "").trim();
       const job = existingJobId ? { id: existingJobId, request: null } : await submitAiHordeImageJob(prompt, options);
       try {
@@ -9812,23 +10249,23 @@ SVG requirements:
           turn.imageCandidates = resolved.candidates;
           if (resolved.candidates.length === 1) {
             const candidate = resolved.candidates[0];
-            turn.imageUrl = candidate.url;
-            turn.imageWidth = candidate.width;
-            turn.imageHeight = candidate.height;
-            turn.imageAspectRatio = `${candidate.width}:${candidate.height}`;
+            storeAiHordeImageOnTurn(turn, candidate, { combinedMode });
             turn.selectedImageCandidateIndex = 0;
             turn.imageStatusText = candidate.model ? `AI Horde completed this scene using ${candidate.model}.` : "AI Horde completed this scene.";
           } else {
             turn.imageUrl = "";
+            if (combinedMode) turn.aiHordeImageUrl = "";
             turn.selectedImageCandidateIndex = null;
             turn.imageStatusText = `${resolved.candidates.length} AI Horde candidates are ready. Choose one for Turn ${turn.turnNumber}.`;
             setTimeout(() => openAiHordeCandidateDialog(turn.id), 50);
           }
+          turn.imageError = "";
+          turn.aiHordeImageError = "";
           if (resolved.partial) toast(`AI Horde returned ${resolved.candidates.length} of ${resolved.requestedCount} requested candidates. The available result${resolved.candidates.length === 1 ? " is" : "s are"} preserved.`, 7500);
           renderAll();
           saveState();
         }
-        return { imageUrl: resolved.candidates.length > 1 ? "" : (turn?.imageUrl || resolved.candidates[0]?.url || ""), candidates: resolved.candidates, candidateSelectionPending: resolved.candidates.length > 1 };
+        return { imageUrl: resolved.candidates.length > 1 ? "" : (resolved.candidates[0]?.url || ""), candidates: resolved.candidates, candidateSelectionPending: resolved.candidates.length > 1 };
       } catch (error) {
         if (error?.pendingJob || error?.superseded) throw error;
         if (error?.noWorkers && !options.modelFallbackAttempted) {
@@ -9906,12 +10343,10 @@ SVG requirements:
       const turn = state.turns.find(item => item.id === transientUi.aiHordeCandidateTurnId);
       const candidate = turn?.imageCandidates?.[index];
       if (!turn || !candidate) return;
-      turn.imageUrl = candidate.url;
-      turn.imageWidth = candidate.width || turn.imageWidth;
-      turn.imageHeight = candidate.height || turn.imageHeight;
-      if (candidate.width && candidate.height) turn.imageAspectRatio = `${candidate.width}:${candidate.height}`;
+      storeAiHordeImageOnTurn(turn, candidate, { combinedMode: !!turn.combinedImageMode });
       turn.selectedImageCandidateIndex = index;
       turn.imageError = "";
+      turn.aiHordeImageError = "";
       turn.imageStatusText = candidate.model ? `Selected candidate ${index + 1}, generated with ${candidate.model}.` : `Selected AI Horde candidate ${index + 1}.`;
       markUnsavedForFullExport();
       saveState();
@@ -9996,6 +10431,16 @@ SVG requirements:
         imageUrl: "",
         imageError: "",
         imageGenerating: false,
+        imageProvider: "",
+        aiHordeImageUrl: "",
+        aiHordeImageGeneratedAt: 0,
+        aiHordeImageError: "",
+        svgPlaceholderUrl: "",
+        svgPlaceholderGeneratedAt: 0,
+        svgPlaceholderGenerating: false,
+        svgPlaceholderError: "",
+        combinedImageMode: isAiHordeSvgImageMode(),
+        combinedImagePreference: "auto",
         choices,
         roll,
         llmModelInfo: {
@@ -10371,7 +10816,7 @@ ${missingList}`,
     async function resumePendingAiHordeJobs() {
       const staleFailedTurns = (state.turns || []).filter(turn => turn && turn.imageError && turn.imageRequest?.provider === "aihorde");
       if (staleFailedTurns.length) cancelPendingAiHordeJobsForTurns(staleFailedTurns);
-      const pendingTurns = (state.turns || []).filter(turn => turn && !turn.imageUrl && !turn.imageError && turn.imageRequest && turn.imageRequest.provider === "aihorde" && turn.imageRequest.id);
+      const pendingTurns = (state.turns || []).filter(turn => turn && !turnAiHordeImageUrl(turn) && !turn.imageError && turn.imageRequest && turn.imageRequest.provider === "aihorde" && turn.imageRequest.id);
       if (!pendingTurns.length) {
         if (staleFailedTurns.length) saveState();
         return;
@@ -10381,10 +10826,11 @@ ${missingList}`,
         if (!turn.imageStatusText) turn.imageStatusText = "Resuming AI Horde image retrieval...";
         renderAll();
         saveState();
-        callPollinationsImage(turn.imagePrompt || "", { turn, background: true }).then(result => {
+        callPollinationsImage(turn.imagePrompt || "", { turn, background: true, combinedMode: !!turn.combinedImageMode }).then(result => {
           if (!state.turns.some(t => t.id === turn.id)) return;
-          if (result?.imageUrl) turn.imageUrl = result.imageUrl;
+          if (result?.imageUrl && !turn.imageUrl) turn.imageUrl = result.imageUrl;
           turn.imageError = "";
+          turn.aiHordeImageError = "";
           if (!turn.imageRequest) turn.imageGenerating = false;
           markUnsavedForFullExport();
           renderAll();
@@ -10399,6 +10845,7 @@ ${missingList}`,
             return;
           }
           turn.imageError = normalizeAiHordeError(err);
+          turn.aiHordeImageError = turn.imageError;
           turn.imageGenerating = false;
           turn.imageRequest = null;
           renderAll();
@@ -12177,15 +12624,21 @@ Rules:
 
     async function generateImageForImportedTurn(turn) {
       if (state.settings.generateImages === false || !turn?.imagePrompt) return;
+      const combinedMode = isAiHordeSvgImageMode();
+      turn.combinedImageMode = combinedMode;
+      turn.combinedImagePreference = "auto";
       turn.imageGenerating = true;
+      turn.svgPlaceholderGenerating = combinedMode;
       turn.imageError = "";
+      turn.aiHordeImageError = "";
+      turn.svgPlaceholderError = "";
       renderAll();
       saveState();
       try {
-        const result = await callOpenRouterImageWithPg13Retry(turn.imagePrompt, { previousImageUrl: turn.imageUrl || "", turn });
-        if (result.imageUrl) turn.imageUrl = result.imageUrl;
+        const result = await callOpenRouterImageWithPg13Retry(turn.imagePrompt, { previousImageUrl: turnAiHordeImageUrl(turn) || turn.imageUrl || "", turn, combinedMode });
+        if (result.imageUrl && !result.usedCombined) turn.imageUrl = result.imageUrl;
         turn.imagePrompt = result.prompt;
-        turn.imageError = "";
+        if (!result.usedCombined || result.hordeSucceeded) turn.imageError = "";
         markUnsavedForFullExport();
       } catch (err) {
         console.error(err);
@@ -12195,6 +12648,7 @@ Rules:
         } else turn.imageError = err?.message || String(err || "Image generation failed.");
       } finally {
         if (!turn.imageRequest) turn.imageGenerating = false;
+        if (!combinedMode) turn.svgPlaceholderGenerating = false;
         renderAll();
         saveState();
       }
@@ -12495,8 +12949,9 @@ Rules:
         let imageSrc = "";
         let imageNote = "";
 
-        if (turn.imageUrl && isSafeDisplayImageUrl(turn.imageUrl)) {
-          const result = await imageUrlToHtmlExportSrc(turn.imageUrl);
+        const exportAsset = turnImageAssetForExport(turn);
+        if (exportAsset?.url && isSafeDisplayImageUrl(exportAsset.url)) {
+          const result = await imageUrlToHtmlExportSrc(exportAsset.url);
           imageSrc = result.src || "";
           if (!result.embedded) {
             imageFailures.push({ turnNumber: turn.turnNumber, reason: result.reason || "The image host blocked browser-side embedding." });
@@ -12515,7 +12970,10 @@ Rules:
       if ($("scratchpad")) setViewedScratchpad($("scratchpad").value);
       syncInlineWorldEditorState();
       normalizePerTurnSnapshots();
-      const exportableImageCount = state.turns.filter(turn => turn.imageUrl && isSafeDisplayImageUrl(turn.imageUrl)).length;
+      const exportableImageCount = state.turns.filter(turn => {
+        const asset = turnImageAssetForExport(turn);
+        return !!asset?.url && isSafeDisplayImageUrl(asset.url);
+      }).length;
       if (exportableImageCount) toast(`Embedding ${exportableImageCount} image${exportableImageCount === 1 ? "" : "s"} into the HTML export...`, 5000);
 
       const { turns: turnsForExport, imageFailures } = await buildHtmlExportTurns();
@@ -12561,7 +13019,7 @@ Rules:
     let dirtySinceFullExport = false;
 
     function hasAdventureContentToSave() {
-      return state.turns.some(turn => turn.imageUrl || turn.imageGenerating || turn.imagePrompt || turn.narration) || !!state.scratchpad || !!state.trackers.length || fullHistoryHasContent();
+      return state.turns.some(turn => turn.imageUrl || turn.aiHordeImageUrl || turn.svgPlaceholderUrl || turn.imageGenerating || turn.svgPlaceholderGenerating || turn.imagePrompt || turn.narration) || !!state.scratchpad || !!state.trackers.length || fullHistoryHasContent();
     }
 
     function markUnsavedForFullExport() {

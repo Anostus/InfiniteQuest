@@ -1910,7 +1910,7 @@
             <div id="eventTriggersPanel" class="setup-section-body stack hidden">
               <label id="suppressTriggersLabel" class="checkline"><input id="suppressTriggers" type="checkbox" /> Suppress Triggers</label>
               <p class="mini">When enabled, custom event triggers stay saved but the app skips all trigger-check LLM prompts and behaves as though no event triggers exist.</p>
-              <p class="mini">Define special event triggers before or after the main story response. LLM-evaluated triggers use a separate model check; Keyword Triggers and Browser-evaluated Condition Triggers are checked locally in the browser without an extra LLM query. For a manually created Keyword Trigger, enter comma- or line-separated keywords in the condition box. Browser-evaluated Condition Triggers normally come from imported Infinite Worlds iwConditions; when creating one manually, the condition box must contain a valid Infinite Worlds condition-tree JSON object or array.</p>
+              <p class="mini">Define special event triggers before or after the main story response. LLM-evaluated triggers use a separate model check; Keyword Triggers and Browser-evaluated Condition Triggers are checked locally in the browser without an extra LLM query. The condition box is the single source of truth for every trigger. Selecting Keyword or Browser-evaluated mode automatically adds its browser-evaluation heading; switching modes removes the old heading without deleting the condition body. Keyword bodies are comma- or line-separated keywords. Browser-evaluated bodies are valid Infinite Worlds condition-tree JSON objects or arrays.</p>
               <div class="row wrap event-trigger-mode-row" role="radiogroup" aria-label="When to check this event trigger">
                 <label class="checkline"><input id="eventTriggerTimingBefore" type="radio" name="eventTriggerTiming" value="before" checked /> Check before the LLM's main story response</label>
                 <label class="checkline"><input id="eventTriggerTimingAfter" type="radio" name="eventTriggerTiming" value="after" /> Check after the LLM's main story response</label>
@@ -6355,12 +6355,73 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       return "llm";
     }
 
+    const KEYWORD_TRIGGER_CONDITION_SCAFFOLD = "Automatic keyword scan (evaluated by the app, no AI check): activates while any of these keywords appear in the player's action or the last few scenes:\n";
+    const IW_CONDITION_TRIGGER_CONDITION_SCAFFOLD = "Browser-evaluated Condition Trigger (evaluated by the app, no AI check): evaluates the Infinite Worlds condition-tree JSON below against current trackers, milestones, and the turn number:\n";
+    const KEYWORD_TRACKER_DIRECTIVE_PREFIX = "@tracker-keywords:";
+
+    function eventTriggerConditionScaffold(mode = "llm") {
+      const normalizedMode = normalizeEventTriggerEvaluationMode(mode);
+      if (normalizedMode === "keywords") return KEYWORD_TRIGGER_CONDITION_SCAFFOLD;
+      if (normalizedMode === "iw_conditions") return IW_CONDITION_TRIGGER_CONDITION_SCAFFOLD;
+      return "";
+    }
+
+    function stripEventTriggerConditionScaffold(text = "") {
+      const raw = String(text || "");
+      const trimmedStart = raw.trimStart();
+      for (const scaffold of [KEYWORD_TRIGGER_CONDITION_SCAFFOLD, IW_CONDITION_TRIGGER_CONDITION_SCAFFOLD]) {
+        const heading = scaffold.trimEnd();
+        if (trimmedStart.startsWith(scaffold)) return trimmedStart.slice(scaffold.length).trimStart();
+        if (trimmedStart.startsWith(heading)) return trimmedStart.slice(heading.length).trimStart();
+      }
+      return raw.trim();
+    }
+
+    function applyEventTriggerConditionScaffold(text = "", mode = "llm") {
+      const body = stripEventTriggerConditionScaffold(text);
+      const scaffold = eventTriggerConditionScaffold(mode);
+      return scaffold ? `${scaffold}${body}` : body;
+    }
+
+    function formatKeywordTriggerCondition(keywords = []) {
+      const body = [...new Set((Array.isArray(keywords) ? keywords : []).map(item => String(item || "").trim()).filter(Boolean))].join(", ");
+      return `${KEYWORD_TRIGGER_CONDITION_SCAFFOLD}${body}`.trimEnd();
+    }
+
+    function formatKeywordTrackerTriggerCondition(trackerId = "") {
+      const id = String(trackerId || "").trim();
+      return `${KEYWORD_TRIGGER_CONDITION_SCAFFOLD}${KEYWORD_TRACKER_DIRECTIVE_PREFIX} ${id}`.trimEnd();
+    }
+
+    function formatBrowserTriggerCondition(conditions) {
+      const body = conditions && typeof conditions === "object" ? JSON.stringify(conditions, null, 2) : "";
+      return `${IW_CONDITION_TRIGGER_CONDITION_SCAFFOLD}${body}`.trimEnd();
+    }
+
+    function parseEventTriggerKeywordSpec(text = "") {
+      const body = stripEventTriggerConditionScaffold(text);
+      const trackerIds = [];
+      const keywordLines = [];
+      String(body || "").split(/\r?\n/).forEach(line => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+        if (trimmed.toLowerCase().startsWith(KEYWORD_TRACKER_DIRECTIVE_PREFIX)) {
+          const id = trimmed.slice(KEYWORD_TRACKER_DIRECTIVE_PREFIX.length).trim();
+          if (id) trackerIds.push(id);
+          return;
+        }
+        keywordLines.push(line);
+      });
+      const keywords = [...new Set(keywordLines.join("\n").split(/[\n,]+/).map(item => item.trim()).filter(Boolean))];
+      return { keywords, trackerIds: [...new Set(trackerIds)] };
+    }
+
     function parseEventTriggerKeywordInput(text = "") {
-      return [...new Set(String(text || "").split(/[\n,]+/).map(item => item.trim()).filter(Boolean))];
+      return parseEventTriggerKeywordSpec(text).keywords;
     }
 
     function parseEventTriggerBrowserConditionInput(text = "") {
-      const raw = String(text || "").trim();
+      const raw = stripEventTriggerConditionScaffold(text);
       if (!raw || (!raw.startsWith("{") && !raw.startsWith("["))) return null;
       try {
         const parsed = JSON.parse(raw);
@@ -6379,18 +6440,30 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     function normalizeEventTriggers(triggers) {
       return (Array.isArray(triggers) ? triggers : []).map((trigger, idx) => {
         const timing = normalizeEventTriggerTiming(trigger.timing || trigger.checkTiming || trigger.check_timing || trigger.phase || trigger.whenChecked || trigger.when_checked || trigger.trigger_timing);
-        const condition = String(trigger.condition || trigger.when || trigger.when_should_trigger || trigger.activation_condition || trigger.activationCondition || trigger.triggerCondition || trigger.trigger_condition || "").trim();
+        const rawCondition = String(trigger.condition || trigger.when || trigger.when_should_trigger || trigger.activation_condition || trigger.activationCondition || trigger.triggerCondition || trigger.trigger_condition || "").trim();
         const effect = String(trigger.effect || trigger.what_happens || trigger.whatHappens || trigger.event_effect || trigger.eventEffect || trigger.instructions || trigger.result || "").trim();
         const addTextAfter = timing === "after" && !!(trigger.addTextAfter || trigger.add_text_after || trigger.additionalTextAfterResponse || trigger.additional_text_after_response || trigger.appendAfterResponse || trigger.append_after_response || trigger.appendAdditionalText || trigger.append_additional_text);
-        // Deterministic-evaluation extensions (used by imported Infinite Worlds worlds):
-        // - keywords / keywordSourceTrackerId: client-side keyword scan, no LLM check needed.
-        // - iwConditions: original Infinite Worlds trigger-condition tree, evaluated mechanically
-        //   against current trackers, milestones, and the turn number when possible.
-        // - repeat: whether a deterministic trigger may activate more than once.
-        const keywords = (Array.isArray(trigger.keywords) ? trigger.keywords : []).map(item => String(item || "").trim()).filter(Boolean);
-        const iwConditionsSource = trigger.iwConditions || trigger.iw_conditions || null;
-        const iwConditions = iwConditionsSource && typeof iwConditionsSource === "object" ? deepClone(iwConditionsSource) : null;
         const evaluationMode = normalizeEventTriggerEvaluationMode(trigger.evaluationMode || trigger.evaluation_mode || trigger.checkMode || trigger.check_mode, trigger);
+
+        // Backward-compatibility migration: old worlds stored deterministic data in hidden
+        // keywords / keywordSourceTrackerId / iwConditions fields while showing a separate
+        // human-readable condition. Convert those legacy fields into the condition box once.
+        // From this point forward the visible condition text is the only evaluation source.
+        const legacyKeywords = (Array.isArray(trigger.keywords) ? trigger.keywords : []).map(item => String(item || "").trim()).filter(Boolean);
+        const legacyKeywordTrackerId = String(trigger.keywordSourceTrackerId || trigger.keyword_source_tracker_id || "").trim();
+        const legacyIwConditions = trigger.iwConditions || trigger.iw_conditions || null;
+        let condition = rawCondition;
+        if (evaluationMode === "keywords") {
+          if (legacyKeywordTrackerId) condition = formatKeywordTrackerTriggerCondition(legacyKeywordTrackerId);
+          else if (legacyKeywords.length) condition = formatKeywordTriggerCondition(legacyKeywords);
+          else condition = applyEventTriggerConditionScaffold(rawCondition, "keywords");
+        } else if (evaluationMode === "iw_conditions") {
+          if (legacyIwConditions && typeof legacyIwConditions === "object") condition = formatBrowserTriggerCondition(deepClone(legacyIwConditions));
+          else condition = applyEventTriggerConditionScaffold(rawCondition, "iw_conditions");
+        } else {
+          condition = applyEventTriggerConditionScaffold(rawCondition, "llm");
+        }
+
         return {
           id: trigger.id || uid("event_trigger"),
           timing,
@@ -6398,12 +6471,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
           condition,
           effect,
           addTextAfter,
-          keywords,
-          keywordSourceTrackerId: String(trigger.keywordSourceTrackerId || trigger.keyword_source_tracker_id || "").trim(),
-          keywordsFromCondition: trigger.keywordsFromCondition === true || trigger.keywords_from_condition === true,
-          iwConditionsFromCondition: trigger.iwConditionsFromCondition === true || trigger.iw_conditions_from_condition === true,
           repeat: trigger.repeat === true || trigger.canTriggerMoreThanOnce === true || trigger.can_trigger_more_than_once === true,
-          iwConditions,
           createdAt: trigger.createdAt || trigger.created_at || nowIso(),
           updatedAt: trigger.updatedAt || trigger.updated_at || null,
           triggeredCount: clampNumber(trigger.triggeredCount ?? trigger.triggered_count ?? 0, 0, 999999, 0),
@@ -7741,6 +7809,19 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       if (label) label.classList.toggle("disabled", !isAfter);
     }
 
+    function selectedAddEventTriggerEvaluationMode() {
+      if ($("eventTriggerEvaluationKeywords")?.checked) return "keywords";
+      if ($("eventTriggerEvaluationIwConditions")?.checked) return "iw_conditions";
+      return "llm";
+    }
+
+    function syncAddEventTriggerConditionScaffold() {
+      const area = $("eventTriggerCondition");
+      if (!area) return;
+      const next = applyEventTriggerConditionScaffold(area.value, selectedAddEventTriggerEvaluationMode());
+      if (area.value !== next) area.value = next;
+    }
+
     function renderEventTriggers() {
       const list = $("eventTriggerList");
       if (!list) return;
@@ -7799,42 +7880,24 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     function updateEventTrigger(id, patch) {
       const trigger = state.eventTriggers.find(t => t.id === id);
       if (!trigger) return;
-      const targetEvaluationMode = normalizeEventTriggerEvaluationMode(patch?.evaluationMode ?? trigger.evaluationMode, trigger);
-      if (patch?.evaluationMode === "iw_conditions" && !trigger.iwConditions) {
-        const parsed = parseEventTriggerBrowserConditionInput(trigger.condition);
-        if (!parsed) {
-          toast("Browser-evaluated mode needs imported iwConditions or valid condition-tree JSON in the condition box.", 7000);
-          renderEventTriggers();
-          return;
-        }
-        trigger.iwConditions = parsed;
-        trigger.iwConditionsFromCondition = true;
-      }
-      if (Object.prototype.hasOwnProperty.call(patch || {}, "condition") && targetEvaluationMode === "iw_conditions" && trigger.iwConditionsFromCondition) {
-        const parsed = parseEventTriggerBrowserConditionInput(patch.condition);
-        if (!parsed) {
-          toast("That browser condition is not valid condition-tree JSON. The previous condition was kept.", 7000);
-          renderEventTriggers();
-          return;
-        }
-        trigger.iwConditions = parsed;
+      patch = { ...(patch || {}) };
+      if (Object.prototype.hasOwnProperty.call(patch, "evaluationMode")) {
+        patch.condition = applyEventTriggerConditionScaffold(trigger.condition, patch.evaluationMode);
       }
       Object.assign(trigger, patch);
       trigger.timing = normalizeEventTriggerTiming(trigger.timing);
       trigger.evaluationMode = normalizeEventTriggerEvaluationMode(trigger.evaluationMode, trigger);
-      if (Object.prototype.hasOwnProperty.call(patch, "evaluationMode")
-          && trigger.evaluationMode === "keywords" && !trigger.keywordSourceTrackerId
-          && (!Array.isArray(trigger.keywords) || !trigger.keywords.length)) {
-        trigger.keywordsFromCondition = true;
-        trigger.keywords = parseEventTriggerKeywordInput(trigger.condition);
-      } else if (Object.prototype.hasOwnProperty.call(patch, "condition")
-          && trigger.evaluationMode === "keywords" && !trigger.keywordSourceTrackerId
-          && (trigger.keywordsFromCondition || !Array.isArray(trigger.keywords) || !trigger.keywords.length)) {
-        trigger.keywordsFromCondition = true;
-        trigger.keywords = parseEventTriggerKeywordInput(trigger.condition);
-      }
+      trigger.condition = applyEventTriggerConditionScaffold(trigger.condition, trigger.evaluationMode);
       if (trigger.timing !== "after") trigger.addTextAfter = false;
       trigger.updatedAt = nowIso();
+
+      if (trigger.evaluationMode === "iw_conditions" && !parseEventTriggerBrowserConditionInput(trigger.condition)) {
+        toast("Browser-evaluated mode uses the condition box directly. Put valid Infinite Worlds condition-tree JSON after the automatic heading.", 7000);
+      } else if (trigger.evaluationMode === "keywords") {
+        const spec = parseEventTriggerKeywordSpec(trigger.condition);
+        if (!spec.keywords.length && !spec.trackerIds.length) toast("Keyword mode uses the condition box directly. Add one or more comma- or line-separated keywords after the automatic heading.", 7000);
+      }
+
       state.eventTriggers = normalizeEventTriggers(state.eventTriggers);
       saveState();
       renderEventTriggers();
@@ -7852,22 +7915,23 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         toast("Event trigger needs both an activation condition and an effect.");
         return;
       }
-      const manualIwConditions = evaluationMode === "iw_conditions" ? parseEventTriggerBrowserConditionInput(condition) : null;
-      if (evaluationMode === "iw_conditions" && !manualIwConditions) {
-        toast("A manually created Browser-evaluated Condition Trigger needs valid Infinite Worlds condition-tree JSON in the condition box.", 7000);
+      if (evaluationMode === "iw_conditions" && !parseEventTriggerBrowserConditionInput(condition)) {
+        toast("A Browser-evaluated Condition Trigger needs valid Infinite Worlds condition-tree JSON after the automatic heading.", 7000);
         return;
+      }
+      if (evaluationMode === "keywords") {
+        const spec = parseEventTriggerKeywordSpec(condition);
+        if (!spec.keywords.length && !spec.trackerIds.length) {
+          toast("A Keyword Trigger needs one or more comma- or line-separated keywords after the automatic heading.", 7000);
+          return;
+        }
       }
       state.eventTriggers.push({
         id: uid("event_trigger"),
         timing,
         evaluationMode,
-        condition,
+        condition: applyEventTriggerConditionScaffold(condition, evaluationMode),
         effect,
-        keywords: evaluationMode === "keywords" ? parseEventTriggerKeywordInput(condition) : [],
-        keywordSourceTrackerId: "",
-        keywordsFromCondition: evaluationMode === "keywords",
-        iwConditions: manualIwConditions,
-        iwConditionsFromCondition: evaluationMode === "iw_conditions",
         addTextAfter,
         createdAt: nowIso(),
         updatedAt: null,
@@ -7884,6 +7948,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       if ($("eventTriggerEvaluationKeywords")) $("eventTriggerEvaluationKeywords").checked = false;
       if ($("eventTriggerEvaluationIwConditions")) $("eventTriggerEvaluationIwConditions").checked = false;
       if ($("eventTriggerAppendAfter")) $("eventTriggerAppendAfter").checked = false;
+      syncAddEventTriggerConditionScaffold();
       setAddEventTriggerAppendEnabled();
       saveState();
       renderEventTriggers();
@@ -7900,18 +7965,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       });
       document.querySelectorAll("textarea[data-event-trigger-condition]").forEach(area => {
         const trigger = state.eventTriggers.find(t => t.id === area.dataset.eventTriggerCondition);
-        if (trigger) {
-          const nextCondition = area.value.trim();
-          if (eventTriggerEvaluationMode(trigger) === "iw_conditions" && trigger.iwConditionsFromCondition) {
-            const parsed = parseEventTriggerBrowserConditionInput(nextCondition);
-            if (parsed) trigger.iwConditions = parsed;
-          }
-          trigger.condition = nextCondition;
-          if (eventTriggerEvaluationMode(trigger) === "keywords" && !trigger.keywordSourceTrackerId && (trigger.keywordsFromCondition || !Array.isArray(trigger.keywords) || !trigger.keywords.length)) {
-            trigger.keywordsFromCondition = true;
-            trigger.keywords = parseEventTriggerKeywordInput(trigger.condition);
-          }
-        }
+        if (trigger) trigger.condition = applyEventTriggerConditionScaffold(area.value.trim(), eventTriggerEvaluationMode(trigger));
       });
       document.querySelectorAll("textarea[data-event-trigger-effect]").forEach(area => {
         const trigger = state.eventTriggers.find(t => t.id === area.dataset.eventTriggerEffect);
@@ -7929,10 +7983,9 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     }
 
     // --- Deterministic (no-LLM) event trigger evaluation -------------------------------------
-    // Imported Infinite Worlds worlds attach machine-readable data to event triggers so that
-    // lorebook entries, NPC reference sheets, keyword instruction blocks, and tracker/turn
-    // conditions can activate exactly and cheaply, the way Infinite Worlds evaluates them,
-    // instead of relying on the limited-context LLM first-pass check.
+    // Keyword and Browser-evaluated triggers read their machine-usable condition directly from
+    // the visible condition textbox. Imported and manually created triggers therefore use the
+    // same representation and the same evaluator; there is no hidden parallel condition copy.
     const IW_MILESTONE_TRACKER_ID = "iw_milestones";
     const KEYWORD_TRIGGER_SCAN_RECENT_TURNS = 2;
 
@@ -7969,18 +8022,18 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     }
 
     function liveKeywordListForTrigger(trigger) {
-      const sourceTrackerId = String(trigger.keywordSourceTrackerId || "").trim();
-      if (sourceTrackerId) {
-        // Mutable Infinite Worlds lore stores its content (including a "Keywords: ..." line)
-        // in a native tracker, so events that rewrite the lore also update the scan keywords.
+      const spec = parseEventTriggerKeywordSpec(trigger?.condition || "");
+      const keywords = new Set(spec.keywords);
+      spec.trackerIds.forEach(sourceTrackerId => {
+        // Mutable Infinite Worlds lore can explicitly reference a tracker's live "Keywords:"
+        // line using @tracker-keywords: TRACKER_ID in the condition box. The directive is visible,
+        // editable, and evaluated from the textbox just like ordinary keyword entries.
         const tracker = (state.trackers || []).find(item => item.id === sourceTrackerId);
         const match = String(tracker?.value || "").match(/^\s*Keywords\s*:\s*(.+)$/im);
-        if (match) {
-          const parsed = match[1].split(",").map(item => item.trim()).filter(Boolean);
-          if (parsed.length) return parsed;
-        }
-      }
-      return Array.isArray(trigger.keywords) ? trigger.keywords : [];
+        if (!match) return;
+        match[1].split(",").map(item => item.trim()).filter(Boolean).forEach(item => keywords.add(item));
+      });
+      return [...keywords];
     }
 
     function parseIwMilestoneStates() {
@@ -8102,11 +8155,13 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
           if (matched.length) activated.push(buildDeterministicActivation(trigger, currentTurn, `Keyword match in the player's action or recent scenes: ${matched.slice(0, 6).join(", ")}.`));
           return;
         }
-        const conditions = Array.isArray(trigger.iwConditions) ? trigger.iwConditions : [trigger.iwConditions];
+        const parsedCondition = parseEventTriggerBrowserConditionInput(trigger.condition);
+        if (!parsedCondition) return;
+        const conditions = Array.isArray(parsedCondition) ? parsedCondition : [parsedCondition];
         const result = evaluateIwTriggerConditionNode({ category: "logic", operator: "and", data: conditions }, ctx);
-        if (result === "true") activated.push(buildDeterministicActivation(trigger, currentTurn, "Browser-evaluated condition matched current trackers, milestones, and turn number."));
-        // False or unknown browser conditions do not fall back to the LLM: the selected trigger type
-        // is an explicit promise that this trigger is browser-evaluated only.
+        if (result === "true") activated.push(buildDeterministicActivation(trigger, currentTurn, "Browser-evaluated condition from the condition box matched current trackers, milestones, and turn number."));
+        // False, unknown, or invalid browser conditions do not fall back to the LLM: selecting
+        // this trigger type is an explicit promise that the visible condition is browser-evaluated only.
       });
       if (activated.length) recordActivatedEventTriggerHits(activated);
       return { activated };
@@ -11582,12 +11637,7 @@ ${missingList}`,
         condition: trigger.condition || "",
         effect: trigger.effect || "",
         addTextAfter: !!trigger.addTextAfter,
-        ...(Array.isArray(trigger.keywords) && trigger.keywords.length ? { keywords: [...trigger.keywords] } : {}),
-        ...(trigger.keywordSourceTrackerId ? { keywordSourceTrackerId: trigger.keywordSourceTrackerId } : {}),
-        ...(trigger.keywordsFromCondition === true ? { keywordsFromCondition: true } : {}),
         ...(trigger.repeat === true ? { repeat: true } : {}),
-        ...(trigger.iwConditions ? { iwConditions: deepClone(trigger.iwConditions) } : {}),
-        ...(trigger.iwConditionsFromCondition === true ? { iwConditionsFromCondition: true } : {}),
         createdAt: trigger.createdAt || null,
         updatedAt: trigger.updatedAt || null,
         triggeredCount: trigger.triggeredCount || 0,
@@ -12647,11 +12697,10 @@ ${missingList}`,
           label: name,
           timing: "before",
           evaluationMode: machineConditions ? "iw_conditions" : "llm",
-          condition,
+          condition: machineConditions ? formatBrowserTriggerCondition(machineConditions) : condition,
           effect: effect || `Apply the imported Infinite Worlds event “${name}”.`,
           addTextAfter: false,
-          repeat: event.canTriggerMoreThanOnce === true,
-          ...(machineConditions ? { iwConditions: machineConditions } : {})
+          repeat: event.canTriggerMoreThanOnce === true
         };
       }).filter(Boolean);
     }
@@ -12810,9 +12859,8 @@ ${missingList}`,
           label: `Instructions: ${name}`,
           timing: "before",
           evaluationMode: "keywords",
-          keywords,
           repeat: true,
-          condition: `Automatic keyword scan (evaluated by the app, no AI check): activates while any of these keywords appear in the player's action or the last few scenes: ${keywords.join(", ")}.`,
+          condition: formatKeywordTriggerCondition(keywords),
           effect: `The imported Infinite Worlds instruction block “${name}” applies to the current scene. Follow these instructions for this turn:\n${content}`,
           addTextAfter: false
         });
@@ -12847,10 +12895,8 @@ ${missingList}`,
             label: `Lore: ${name}`,
             timing: "before",
             evaluationMode: "keywords",
-            keywords,
-            keywordSourceTrackerId: tracker.id,
             repeat: true,
-            condition: `Automatic keyword scan (evaluated by the app, no AI check): activates while any keyword of the mutable lore tracker “${tracker.name}” appears in the player's action or the last few scenes. Keywords are read live from the tracker's “Keywords:” line.`,
+            condition: formatKeywordTrackerTriggerCondition(tracker.id),
             effect: `The keywords of imported lore tracker “${tracker.name}” are present in the current scene. Treat that tracker's complete current value as active, authoritative background lore for this turn. Use it for accuracy and continuity; do not treat this as a plot event and do not force the lore into the narration.`,
             addTextAfter: false
           });
@@ -12866,9 +12912,8 @@ ${missingList}`,
           label: `Lore: ${name}`,
           timing: "before",
           evaluationMode: "keywords",
-          keywords,
           repeat: true,
-          condition: `Automatic keyword scan (evaluated by the app, no AI check): activates while any of these keywords appear in the player's action or the last few scenes: ${keywords.join(", ")}.`,
+          condition: formatKeywordTriggerCondition(keywords),
           effect: joinImportSections([
             `Imported Infinite Worlds lore “${name}” is relevant to the current scene. Use it as authoritative background for accuracy and continuity; do not treat it as a plot event and do not force it into the narration.`,
             content
@@ -12926,9 +12971,8 @@ ${missingList}`,
           label: `NPC: ${name}`,
           timing: "before",
           evaluationMode: "keywords",
-          keywords: [...keywords],
           repeat: true,
-          condition: `Automatic keyword scan (evaluated by the app, no AI check): activates while ${name} (or an alias) is mentioned in the player's action or the last few scenes.`,
+          condition: formatKeywordTriggerCondition([...keywords]),
           effect: joinImportSections([
             `The imported Infinite Worlds NPC ${name} is present or relevant in the current scene. Use this full reference sheet as authoritative characterization and continuity for them; do not treat this as a plot event.`,
             infiniteWorldsNpcSheetText(npc, idx, lookup)
@@ -14949,6 +14993,9 @@ Rules:
       bindSetupSummary("btnToggleRpgStats", "rpgStatsPanel");
       $("eventTriggerTimingBefore")?.addEventListener("change", setAddEventTriggerAppendEnabled);
       $("eventTriggerTimingAfter")?.addEventListener("change", setAddEventTriggerAppendEnabled);
+      $("eventTriggerEvaluationLlm")?.addEventListener("change", syncAddEventTriggerConditionScaffold);
+      $("eventTriggerEvaluationKeywords")?.addEventListener("change", syncAddEventTriggerConditionScaffold);
+      $("eventTriggerEvaluationIwConditions")?.addEventListener("change", syncAddEventTriggerConditionScaffold);
       $("btnAddEventTrigger")?.addEventListener("click", addEventTrigger);
       $("btnAddStat").addEventListener("click", addRpgStat);
       $("btnResetStats").addEventListener("click", resetRpgStats);

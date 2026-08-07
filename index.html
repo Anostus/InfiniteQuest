@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Infinite Quest - OpenRouter CYOA Engine v2.61</title>
+  <title>Infinite Quest - OpenRouter CYOA Engine v2.62</title>
   <style>
     :root {
       --bg: #07131d;
@@ -1869,6 +1869,7 @@
               <p class="mini">Optional controls for turn input, prompt context, and LLM request usage.</p>
               <label class="checkline"><input id="enableStorytellerMode" type="checkbox" /> Enable storyteller mode (grays out the player action box and adds a storyteller box where the player can dictate what happens each turn)</label>
               <label class="checkline"><input id="disableTextTruncation" type="checkbox" /> Disable text truncation (by default, text sent to the LLM, such as past turns, is truncated. This saves tokens, but details can sometimes be lost. Disabling truncation provides fuller context to the LLM at the cost of increased token usage)</label>
+              <label id="llmAssistedJsonRepairLabel" class="checkline"><input id="llmAssistedJsonRepair" type="checkbox" /> LLM-assisted JSON Repair (if a structured-output response is still malformed after the normal retries, send the broken JSON back to the LLM with compact request context and ask it to repair/complete it once; disabled by Turn Saver Mode)</label>
               <label class="checkline"><input id="turnSaverMode" type="checkbox" /> Turn Saver Mode (disables most advanced features and ensures that only one prompt is sent per turn to reduce usage)</label>
             </div>
           <summary id="btnToggleAdvancedStart" class="setup-toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="advancedStartPanel">
@@ -1909,10 +1910,15 @@
             <div id="eventTriggersPanel" class="setup-section-body stack hidden">
               <label id="suppressTriggersLabel" class="checkline"><input id="suppressTriggers" type="checkbox" /> Suppress Triggers</label>
               <p class="mini">When enabled, custom event triggers stay saved but the app skips all trigger-check LLM prompts and behaves as though no event triggers exist.</p>
-              <p class="mini">Define special event triggers that the app checks with a separate LLM prompt before or after the main story response. Activated trigger instructions can influence the next story response, or optionally add a brief after-response passage.</p>
+              <p class="mini">Define special event triggers before or after the main story response. LLM-evaluated triggers use a separate model check; Keyword Triggers and Browser-evaluated Condition Triggers are checked locally in the browser without an extra LLM query. For a manually created Keyword Trigger, enter comma- or line-separated keywords in the condition box. Browser-evaluated Condition Triggers normally come from imported Infinite Worlds iwConditions; when creating one manually, the condition box must contain a valid Infinite Worlds condition-tree JSON object or array.</p>
               <div class="row wrap event-trigger-mode-row" role="radiogroup" aria-label="When to check this event trigger">
                 <label class="checkline"><input id="eventTriggerTimingBefore" type="radio" name="eventTriggerTiming" value="before" checked /> Check before the LLM's main story response</label>
                 <label class="checkline"><input id="eventTriggerTimingAfter" type="radio" name="eventTriggerTiming" value="after" /> Check after the LLM's main story response</label>
+              </div>
+              <div class="row wrap event-trigger-mode-row" role="radiogroup" aria-label="How to evaluate this event trigger">
+                <label class="checkline"><input id="eventTriggerEvaluationLlm" type="radio" name="eventTriggerEvaluationMode" value="llm" checked /> LLM-evaluated Trigger</label>
+                <label class="checkline"><input id="eventTriggerEvaluationKeywords" type="radio" name="eventTriggerEvaluationMode" value="keywords" /> Keyword Trigger</label>
+                <label class="checkline"><input id="eventTriggerEvaluationIwConditions" type="radio" name="eventTriggerEvaluationMode" value="iw_conditions" /> Browser-evaluated Condition Trigger</label>
               </div>
               <label>When should the event trigger go off?
                 <textarea id="eventTriggerCondition" placeholder="Examples: on turn 10; whenever the word 'crown' appears in the last response; when the player dies; when the player achieves the escape objective."></textarea>
@@ -2351,7 +2357,7 @@
             <li>In Infinite Worlds, find the world you want, click <strong>Edit World</strong>, and select <strong>Show optional features</strong>.</li>
             <li>Open <strong>Misc advanced features (optional)</strong>, then click <strong>Show raw JSON</strong>.</li>
             <li>Copy the JSON that appears. Choose <strong>Load world from text</strong> below to paste it, or save it as a JSON/text file and choose <strong>Load world from file</strong>.</li>
-            <li>Confirm the prompts to load the world. If the world offers multiple player characters, the character-selection screen will appear.</li>
+            <li>Confirm the prompts to load the world. If the world offers multiple player characters, the character-selection screen will appear. Source-defined opening choices or setup questions are resolved locally during import when possible.</li>
           </ol>
           <div class="row wrap">
             <button id="btnInfiniteWorldLoadWorldFile" class="accent" type="button">📂 Load world from file</button>
@@ -2868,6 +2874,7 @@
         storytellerMode: false,
         betterMemoryManagement: false,
         disableTextTruncation: false,
+        llmAssistedJsonRepair: false,
         turnSaverMode: false,
         temperature: 0.85
       },
@@ -2881,6 +2888,7 @@
         premise: "",
         firstAction: "",
         rules: "",
+        memoryInstructions: "",
         suppressTriggers: false
       },
       modelLists: { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS, llmContextLengths: {}, aiHordeModels: [], aiHordeModelsLoadedAt: 0 },
@@ -4550,7 +4558,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     function cleanupDeprecatedState(target = state) {
       if (!target || typeof target !== "object") return target;
       if (!target.turns?.length && isLegacySchoolOfMagicDefaultWorld(target.world || {})) {
-        target.world = { title: "", genre: "", tone: "", backgroundStory: "", character: "", premise: "", firstAction: "", rules: "", suppressTriggers: false };
+        target.world = { title: "", genre: "", tone: "", backgroundStory: "", character: "", premise: "", firstAction: "", rules: "", memoryInstructions: "", suppressTriggers: false };
       }
       delete target.collapsedPanels;
       target.modelLists ||= { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS, llmContextLengths: {}, aiHordeModels: [], aiHordeModelsLoadedAt: 0 };
@@ -6337,18 +6345,65 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       return "before";
     }
 
+    function normalizeEventTriggerEvaluationMode(value = "", trigger = null) {
+      const text = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+      if (["keyword", "keywords", "keyword_trigger"].includes(text)) return "keywords";
+      if (["iw_conditions", "iwcondition", "iwconditions", "browser", "browser_condition", "browser_evaluated", "condition"].includes(text)) return "iw_conditions";
+      if (["llm", "llm_evaluated", "ai", "model"].includes(text)) return "llm";
+      if ((Array.isArray(trigger?.keywords) && trigger.keywords.length) || trigger?.keywordSourceTrackerId || trigger?.keyword_source_tracker_id) return "keywords";
+      if (trigger?.iwConditions || trigger?.iw_conditions) return "iw_conditions";
+      return "llm";
+    }
+
+    function parseEventTriggerKeywordInput(text = "") {
+      return [...new Set(String(text || "").split(/[\n,]+/).map(item => item.trim()).filter(Boolean))];
+    }
+
+    function parseEventTriggerBrowserConditionInput(text = "") {
+      const raw = String(text || "").trim();
+      if (!raw || (!raw.startsWith("{") && !raw.startsWith("["))) return null;
+      try {
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === "object" ? parsed : null;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function eventTriggerEvaluationModeLabel(mode = "llm") {
+      if (mode === "keywords") return "Keyword Trigger";
+      if (mode === "iw_conditions") return "Browser-evaluated Condition Trigger";
+      return "LLM-evaluated Trigger";
+    }
+
     function normalizeEventTriggers(triggers) {
       return (Array.isArray(triggers) ? triggers : []).map((trigger, idx) => {
         const timing = normalizeEventTriggerTiming(trigger.timing || trigger.checkTiming || trigger.check_timing || trigger.phase || trigger.whenChecked || trigger.when_checked || trigger.trigger_timing);
         const condition = String(trigger.condition || trigger.when || trigger.when_should_trigger || trigger.activation_condition || trigger.activationCondition || trigger.triggerCondition || trigger.trigger_condition || "").trim();
         const effect = String(trigger.effect || trigger.what_happens || trigger.whatHappens || trigger.event_effect || trigger.eventEffect || trigger.instructions || trigger.result || "").trim();
         const addTextAfter = timing === "after" && !!(trigger.addTextAfter || trigger.add_text_after || trigger.additionalTextAfterResponse || trigger.additional_text_after_response || trigger.appendAfterResponse || trigger.append_after_response || trigger.appendAdditionalText || trigger.append_additional_text);
+        // Deterministic-evaluation extensions (used by imported Infinite Worlds worlds):
+        // - keywords / keywordSourceTrackerId: client-side keyword scan, no LLM check needed.
+        // - iwConditions: original Infinite Worlds trigger-condition tree, evaluated mechanically
+        //   against current trackers, milestones, and the turn number when possible.
+        // - repeat: whether a deterministic trigger may activate more than once.
+        const keywords = (Array.isArray(trigger.keywords) ? trigger.keywords : []).map(item => String(item || "").trim()).filter(Boolean);
+        const iwConditionsSource = trigger.iwConditions || trigger.iw_conditions || null;
+        const iwConditions = iwConditionsSource && typeof iwConditionsSource === "object" ? deepClone(iwConditionsSource) : null;
+        const evaluationMode = normalizeEventTriggerEvaluationMode(trigger.evaluationMode || trigger.evaluation_mode || trigger.checkMode || trigger.check_mode, trigger);
         return {
           id: trigger.id || uid("event_trigger"),
           timing,
+          evaluationMode,
           condition,
           effect,
           addTextAfter,
+          keywords,
+          keywordSourceTrackerId: String(trigger.keywordSourceTrackerId || trigger.keyword_source_tracker_id || "").trim(),
+          keywordsFromCondition: trigger.keywordsFromCondition === true || trigger.keywords_from_condition === true,
+          iwConditionsFromCondition: trigger.iwConditionsFromCondition === true || trigger.iw_conditions_from_condition === true,
+          repeat: trigger.repeat === true || trigger.canTriggerMoreThanOnce === true || trigger.can_trigger_more_than_once === true,
+          iwConditions,
           createdAt: trigger.createdAt || trigger.created_at || nowIso(),
           updatedAt: trigger.updatedAt || trigger.updated_at || null,
           triggeredCount: clampNumber(trigger.triggeredCount ?? trigger.triggered_count ?? 0, 0, 999999, 0),
@@ -6385,7 +6440,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         id: trigger.id,
         label: trigger.label || trigger.name || "",
         check_timing: trigger.timing === "after" ? "after_main_story_response" : "before_main_story_response",
-        activation_condition: promptText(trigger.condition || "", 1400),
+        activation_condition: promptText(renderLiveTriggerConditionText(trigger.condition || ""), 1400),
         what_happens_when_activated: promptText(trigger.effect || "", 2200),
         may_add_short_text_after_current_response: trigger.timing === "after" && !!trigger.addTextAfter,
         triggered_count: trigger.triggeredCount || 0,
@@ -6394,14 +6449,20 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     }
 
     function compactActivatedEventForPrompt(item) {
+      // Deterministic keyword activations carry full lore/NPC reference text as their effect;
+      // give them a higher legacy-truncation ceiling so the injected context stays intact even
+      // when the user has fixed-limit truncation enabled.
+      const isDeterministic = item.checkMode === "deterministic" || (Array.isArray(item.checkModes) && item.checkModes.includes("deterministic"));
+      const effectLimit = isDeterministic ? 6000 : 2000;
+      const instructionsLimit = isDeterministic ? 6000 : 2400;
       return {
         trigger_id: item.sourceTriggerId || item.id || "",
         name: item.name || "Event trigger",
         check_timing: item.timing || "before",
-        activation_condition: promptText(item.condition || "", 1200),
-        trigger_effect: promptText(item.effect || "", 2000),
+        activation_condition: promptText(renderLiveTriggerConditionText(item.condition || ""), 1200),
+        trigger_effect: promptText(item.effect || "", effectLimit),
         activation_reason: promptText(item.reason || "", 900),
-        instructions_for_story_response: promptText(item.instructions || item.effect || "", 2400),
+        instructions_for_story_response: promptText(item.instructions || item.effect || "", instructionsLimit),
         source_turn: item.sourceTurn || null
       };
     }
@@ -6990,6 +7051,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       state.settings.storytellerMode = !!$("enableStorytellerMode")?.checked;
       state.settings.betterMemoryManagement = !!$("betterMemoryManagement")?.checked;
       state.settings.disableTextTruncation = !!$("disableTextTruncation")?.checked;
+      state.settings.llmAssistedJsonRepair = !!$("llmAssistedJsonRepair")?.checked;
       state.settings.turnSaverMode = !!$("turnSaverMode")?.checked;
       syncAiHordeFormToSettings();
       state.settings.temperature = Number($("temperature").value || 0.85);
@@ -7047,6 +7109,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       if ($("enableStorytellerMode")) $("enableStorytellerMode").checked = !!state.settings.storytellerMode;
       if ($("betterMemoryManagement")) $("betterMemoryManagement").checked = !!state.settings.betterMemoryManagement;
       if ($("disableTextTruncation")) $("disableTextTruncation").checked = !!state.settings.disableTextTruncation;
+      if ($("llmAssistedJsonRepair")) $("llmAssistedJsonRepair").checked = !!state.settings.llmAssistedJsonRepair;
       if ($("turnSaverMode")) $("turnSaverMode").checked = !!state.settings.turnSaverMode;
       $("temperature").value = state.settings.temperature ?? 0.85;
       $("worldTitle").value = state.world.title || "";
@@ -7074,6 +7137,8 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       const useRpgLabel = $("useRpgStatsLabel");
       const betterMemory = $("betterMemoryManagement");
       const betterMemoryLabel = $("betterMemoryManagementLabel");
+      const jsonRepair = $("llmAssistedJsonRepair");
+      const jsonRepairLabel = $("llmAssistedJsonRepairLabel");
       const generateImages = $("generateImages");
       const generateImagesLabel = $("generateImagesLabel");
 
@@ -7097,6 +7162,13 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         betterMemory.title = enabled ? "Turn Saver Mode disables extra memory-compression prompts." : "";
       }
       if (betterMemoryLabel) betterMemoryLabel.classList.toggle("turn-saver-disabled", enabled);
+
+      if (jsonRepair) {
+        jsonRepair.checked = !!state.settings.llmAssistedJsonRepair;
+        jsonRepair.disabled = enabled;
+        jsonRepair.title = enabled ? "Turn Saver Mode disables the additional LLM request used for JSON repair." : "";
+      }
+      if (jsonRepairLabel) jsonRepairLabel.classList.toggle("turn-saver-disabled", enabled);
 
       if (generateImages) {
         generateImages.checked = state.settings.generateImages !== false;
@@ -7675,7 +7747,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       normalizeEventTriggerState(state);
       list.innerHTML = "";
       if (!state.eventTriggers.length) {
-        list.innerHTML = `<p class="mini">No event triggers yet. Add one to have the LLM check custom story conditions before or after each turn.</p>`;
+        list.innerHTML = `<p class="mini">No event triggers yet. Add one to check custom story conditions before or after each turn.</p>`;
         setAddEventTriggerAppendEnabled();
         return;
       }
@@ -7684,15 +7756,22 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         card.className = "track-card event-trigger-card";
         const title = trigger.label || truncateText(trigger.condition || `Event Trigger ${idx + 1}`, 60);
         const timingLabel = trigger.timing === "after" ? "After the LLM response" : "Before the LLM response";
+        const evaluationMode = eventTriggerEvaluationMode(trigger);
+        const evaluationLabel = eventTriggerEvaluationModeLabel(evaluationMode);
         card.innerHTML = `
           <div class="row" style="justify-content:space-between;align-items:flex-start;">
             <h4>${escapeHtml(title || "Event trigger")}</h4>
             <button class="small danger" data-event-trigger-del="${escapeHtml(trigger.id)}" type="button">Delete</button>
           </div>
-          <p><strong>Check timing:</strong> ${escapeHtml(timingLabel)}${trigger.triggeredCount ? ` · Triggered ${escapeHtml(trigger.triggeredCount)} time${trigger.triggeredCount === 1 ? "" : "s"}` : ""}</p>
+          <p><strong>Check timing:</strong> ${escapeHtml(timingLabel)} · <strong>Trigger type:</strong> ${escapeHtml(evaluationLabel)}${trigger.triggeredCount ? ` · Triggered ${escapeHtml(trigger.triggeredCount)} time${trigger.triggeredCount === 1 ? "" : "s"}` : ""}</p>
           <div class="row wrap event-trigger-mode-row" role="radiogroup" aria-label="Check timing for ${escapeHtml(title || "event trigger")}">
             <label class="checkline"><input data-event-trigger-timing="${escapeHtml(trigger.id)}" type="radio" name="event-trigger-timing-${escapeHtml(trigger.id)}" value="before" ${trigger.timing === "before" ? "checked" : ""} /> Check before the LLM's main story response</label>
             <label class="checkline"><input data-event-trigger-timing="${escapeHtml(trigger.id)}" type="radio" name="event-trigger-timing-${escapeHtml(trigger.id)}" value="after" ${trigger.timing === "after" ? "checked" : ""} /> Check after the LLM's main story response</label>
+          </div>
+          <div class="row wrap event-trigger-mode-row" role="radiogroup" aria-label="Evaluation type for ${escapeHtml(title || "event trigger")}">
+            <label class="checkline"><input data-event-trigger-evaluation="${escapeHtml(trigger.id)}" type="radio" name="event-trigger-evaluation-${escapeHtml(trigger.id)}" value="llm" ${evaluationMode === "llm" ? "checked" : ""} /> LLM-evaluated Trigger</label>
+            <label class="checkline"><input data-event-trigger-evaluation="${escapeHtml(trigger.id)}" type="radio" name="event-trigger-evaluation-${escapeHtml(trigger.id)}" value="keywords" ${evaluationMode === "keywords" ? "checked" : ""} /> Keyword Trigger</label>
+            <label class="checkline"><input data-event-trigger-evaluation="${escapeHtml(trigger.id)}" type="radio" name="event-trigger-evaluation-${escapeHtml(trigger.id)}" value="iw_conditions" ${evaluationMode === "iw_conditions" ? "checked" : ""} /> Browser-evaluated Condition Trigger</label>
           </div>
           <label>When should the event trigger go off?
             <textarea data-event-trigger-condition="${escapeHtml(trigger.id)}">${escapeHtml(trigger.condition || "")}</textarea>
@@ -7710,6 +7789,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         renderEventTriggers();
       }));
       list.querySelectorAll("input[data-event-trigger-timing]").forEach(input => input.addEventListener("change", () => updateEventTrigger(input.dataset.eventTriggerTiming, { timing: input.value })));
+      list.querySelectorAll("input[data-event-trigger-evaluation]").forEach(input => input.addEventListener("change", () => updateEventTrigger(input.dataset.eventTriggerEvaluation, { evaluationMode: input.value })));
       list.querySelectorAll("textarea[data-event-trigger-condition]").forEach(area => area.addEventListener("change", () => updateEventTrigger(area.dataset.eventTriggerCondition, { condition: area.value.trim() })));
       list.querySelectorAll("textarea[data-event-trigger-effect]").forEach(area => area.addEventListener("change", () => updateEventTrigger(area.dataset.eventTriggerEffect, { effect: area.value.trim() })));
       list.querySelectorAll("input[data-event-trigger-append]").forEach(input => input.addEventListener("change", () => updateEventTrigger(input.dataset.eventTriggerAppend, { addTextAfter: input.checked })));
@@ -7719,8 +7799,40 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     function updateEventTrigger(id, patch) {
       const trigger = state.eventTriggers.find(t => t.id === id);
       if (!trigger) return;
+      const targetEvaluationMode = normalizeEventTriggerEvaluationMode(patch?.evaluationMode ?? trigger.evaluationMode, trigger);
+      if (patch?.evaluationMode === "iw_conditions" && !trigger.iwConditions) {
+        const parsed = parseEventTriggerBrowserConditionInput(trigger.condition);
+        if (!parsed) {
+          toast("Browser-evaluated mode needs imported iwConditions or valid condition-tree JSON in the condition box.", 7000);
+          renderEventTriggers();
+          return;
+        }
+        trigger.iwConditions = parsed;
+        trigger.iwConditionsFromCondition = true;
+      }
+      if (Object.prototype.hasOwnProperty.call(patch || {}, "condition") && targetEvaluationMode === "iw_conditions" && trigger.iwConditionsFromCondition) {
+        const parsed = parseEventTriggerBrowserConditionInput(patch.condition);
+        if (!parsed) {
+          toast("That browser condition is not valid condition-tree JSON. The previous condition was kept.", 7000);
+          renderEventTriggers();
+          return;
+        }
+        trigger.iwConditions = parsed;
+      }
       Object.assign(trigger, patch);
       trigger.timing = normalizeEventTriggerTiming(trigger.timing);
+      trigger.evaluationMode = normalizeEventTriggerEvaluationMode(trigger.evaluationMode, trigger);
+      if (Object.prototype.hasOwnProperty.call(patch, "evaluationMode")
+          && trigger.evaluationMode === "keywords" && !trigger.keywordSourceTrackerId
+          && (!Array.isArray(trigger.keywords) || !trigger.keywords.length)) {
+        trigger.keywordsFromCondition = true;
+        trigger.keywords = parseEventTriggerKeywordInput(trigger.condition);
+      } else if (Object.prototype.hasOwnProperty.call(patch, "condition")
+          && trigger.evaluationMode === "keywords" && !trigger.keywordSourceTrackerId
+          && (trigger.keywordsFromCondition || !Array.isArray(trigger.keywords) || !trigger.keywords.length)) {
+        trigger.keywordsFromCondition = true;
+        trigger.keywords = parseEventTriggerKeywordInput(trigger.condition);
+      }
       if (trigger.timing !== "after") trigger.addTextAfter = false;
       trigger.updatedAt = nowIso();
       state.eventTriggers = normalizeEventTriggers(state.eventTriggers);
@@ -7730,6 +7842,9 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
 
     function addEventTrigger() {
       const timing = $("eventTriggerTimingAfter")?.checked ? "after" : "before";
+      const evaluationMode = $("eventTriggerEvaluationKeywords")?.checked
+        ? "keywords"
+        : ($("eventTriggerEvaluationIwConditions")?.checked ? "iw_conditions" : "llm");
       const condition = $("eventTriggerCondition")?.value.trim() || "";
       const effect = $("eventTriggerEffect")?.value.trim() || "";
       const addTextAfter = timing === "after" && $("eventTriggerAppendAfter")?.checked === true;
@@ -7737,11 +7852,22 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         toast("Event trigger needs both an activation condition and an effect.");
         return;
       }
+      const manualIwConditions = evaluationMode === "iw_conditions" ? parseEventTriggerBrowserConditionInput(condition) : null;
+      if (evaluationMode === "iw_conditions" && !manualIwConditions) {
+        toast("A manually created Browser-evaluated Condition Trigger needs valid Infinite Worlds condition-tree JSON in the condition box.", 7000);
+        return;
+      }
       state.eventTriggers.push({
         id: uid("event_trigger"),
         timing,
+        evaluationMode,
         condition,
         effect,
+        keywords: evaluationMode === "keywords" ? parseEventTriggerKeywordInput(condition) : [],
+        keywordSourceTrackerId: "",
+        keywordsFromCondition: evaluationMode === "keywords",
+        iwConditions: manualIwConditions,
+        iwConditionsFromCondition: evaluationMode === "iw_conditions",
         addTextAfter,
         createdAt: nowIso(),
         updatedAt: null,
@@ -7754,6 +7880,9 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       if ($("eventTriggerEffect")) $("eventTriggerEffect").value = "";
       if ($("eventTriggerTimingBefore")) $("eventTriggerTimingBefore").checked = true;
       if ($("eventTriggerTimingAfter")) $("eventTriggerTimingAfter").checked = false;
+      if ($("eventTriggerEvaluationLlm")) $("eventTriggerEvaluationLlm").checked = true;
+      if ($("eventTriggerEvaluationKeywords")) $("eventTriggerEvaluationKeywords").checked = false;
+      if ($("eventTriggerEvaluationIwConditions")) $("eventTriggerEvaluationIwConditions").checked = false;
       if ($("eventTriggerAppendAfter")) $("eventTriggerAppendAfter").checked = false;
       setAddEventTriggerAppendEnabled();
       saveState();
@@ -7765,9 +7894,24 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         const trigger = state.eventTriggers.find(t => t.id === input.dataset.eventTriggerTiming);
         if (trigger) trigger.timing = normalizeEventTriggerTiming(input.value);
       });
+      document.querySelectorAll("input[data-event-trigger-evaluation]:checked").forEach(input => {
+        const trigger = state.eventTriggers.find(t => t.id === input.dataset.eventTriggerEvaluation);
+        if (trigger) trigger.evaluationMode = normalizeEventTriggerEvaluationMode(input.value, trigger);
+      });
       document.querySelectorAll("textarea[data-event-trigger-condition]").forEach(area => {
         const trigger = state.eventTriggers.find(t => t.id === area.dataset.eventTriggerCondition);
-        if (trigger) trigger.condition = area.value.trim();
+        if (trigger) {
+          const nextCondition = area.value.trim();
+          if (eventTriggerEvaluationMode(trigger) === "iw_conditions" && trigger.iwConditionsFromCondition) {
+            const parsed = parseEventTriggerBrowserConditionInput(nextCondition);
+            if (parsed) trigger.iwConditions = parsed;
+          }
+          trigger.condition = nextCondition;
+          if (eventTriggerEvaluationMode(trigger) === "keywords" && !trigger.keywordSourceTrackerId && (trigger.keywordsFromCondition || !Array.isArray(trigger.keywords) || !trigger.keywords.length)) {
+            trigger.keywordsFromCondition = true;
+            trigger.keywords = parseEventTriggerKeywordInput(trigger.condition);
+          }
+        }
       });
       document.querySelectorAll("textarea[data-event-trigger-effect]").forEach(area => {
         const trigger = state.eventTriggers.find(t => t.id === area.dataset.eventTriggerEffect);
@@ -7784,10 +7928,206 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       return isTurnSaverMode() || !!state.world?.suppressTriggers;
     }
 
+    // --- Deterministic (no-LLM) event trigger evaluation -------------------------------------
+    // Imported Infinite Worlds worlds attach machine-readable data to event triggers so that
+    // lorebook entries, NPC reference sheets, keyword instruction blocks, and tracker/turn
+    // conditions can activate exactly and cheaply, the way Infinite Worlds evaluates them,
+    // instead of relying on the limited-context LLM first-pass check.
+    const IW_MILESTONE_TRACKER_ID = "iw_milestones";
+    const KEYWORD_TRIGGER_SCAN_RECENT_TURNS = 2;
+
+    function eventTriggerEvaluationMode(trigger) {
+      return normalizeEventTriggerEvaluationMode(trigger?.evaluationMode || trigger?.evaluation_mode, trigger);
+    }
+
+    function escapeForKeywordRegExp(text) {
+      return String(text || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+
+    function keywordAppearsInText(keyword, lowerText) {
+      const term = String(keyword || "").trim().toLowerCase();
+      if (!term || !lowerText) return false;
+      const escaped = escapeForKeywordRegExp(term);
+      let pattern;
+      try {
+        // Word-ish keywords use letter/number boundaries so "Roman" does not match "romance".
+        pattern = /^[\p{L}\p{N}][\p{L}\p{N} '’.-]*$/u.test(term)
+          ? new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, "u")
+          : new RegExp(escaped, "u");
+      } catch (_) {
+        pattern = new RegExp(escaped);
+      }
+      return pattern.test(lowerText);
+    }
+
+    function buildKeywordScanText(action) {
+      const parts = [String(action || "")];
+      (state.turns || []).slice(-KEYWORD_TRIGGER_SCAN_RECENT_TURNS).forEach(turn => {
+        parts.push(String(turn?.action || ""), String(turn?.narration || ""));
+      });
+      return parts.join("\n").toLowerCase();
+    }
+
+    function liveKeywordListForTrigger(trigger) {
+      const sourceTrackerId = String(trigger.keywordSourceTrackerId || "").trim();
+      if (sourceTrackerId) {
+        // Mutable Infinite Worlds lore stores its content (including a "Keywords: ..." line)
+        // in a native tracker, so events that rewrite the lore also update the scan keywords.
+        const tracker = (state.trackers || []).find(item => item.id === sourceTrackerId);
+        const match = String(tracker?.value || "").match(/^\s*Keywords\s*:\s*(.+)$/im);
+        if (match) {
+          const parsed = match[1].split(",").map(item => item.trim()).filter(Boolean);
+          if (parsed.length) return parsed;
+        }
+      }
+      return Array.isArray(trigger.keywords) ? trigger.keywords : [];
+    }
+
+    function parseIwMilestoneStates() {
+      const tracker = (state.trackers || []).find(item => item.id === IW_MILESTONE_TRACKER_ID);
+      const states = new Map();
+      if (!tracker) return { found: false, states };
+      String(tracker.value || "").split(/\r?\n/).forEach(line => {
+        const match = line.match(/^\s*\[\s*(x|X)?\s*\]\s*(.+?)\s*$/);
+        if (!match) return;
+        states.set(match[2].trim().toLowerCase(), !!match[1]);
+      });
+      return { found: true, states };
+    }
+
+    function iwMilestoneStateFor(text, ctx) {
+      const key = String(text || "").trim().toLowerCase();
+      if (!key || !ctx.milestones?.found || !ctx.milestones.states.has(key)) return "unknown";
+      return ctx.milestones.states.get(key) ? "true" : "false";
+    }
+
+    function compareIwLiveTrackerValue(currentValue, details = {}) {
+      const current = String(currentValue ?? "").trim();
+      const required = String(details.requiredValue ?? details.value ?? details.expectedValue ?? "").trim();
+      const inequality = String(details.inequality || details.comparison || "is_exactly").toLowerCase();
+      const textComparison = String(details.textComparison || "").toLowerCase();
+      const currentNumber = Number(current);
+      const requiredNumber = Number(required);
+      const numericComparison = ["at_most", "less_than_or_equal", "at_least", "greater_than_or_equal", "less_than", "greater_than"].includes(inequality);
+      if (numericComparison) {
+        if (!Number.isFinite(currentNumber) || !Number.isFinite(requiredNumber)) return "unknown";
+        if (inequality === "at_most" || inequality === "less_than_or_equal") return currentNumber <= requiredNumber ? "true" : "false";
+        if (inequality === "at_least" || inequality === "greater_than_or_equal") return currentNumber >= requiredNumber ? "true" : "false";
+        if (inequality === "less_than") return currentNumber < requiredNumber ? "true" : "false";
+        if (inequality === "greater_than") return currentNumber > requiredNumber ? "true" : "false";
+      }
+      if (textComparison === "contains") {
+        const contains = current.toLowerCase().includes(required.toLowerCase());
+        if (inequality === "is_not" || inequality === "not_equal" || inequality === "does_not_contain") return contains ? "false" : "true";
+        return contains ? "true" : "false";
+      }
+      if (Number.isFinite(currentNumber) && Number.isFinite(requiredNumber)) {
+        if (inequality === "is_not" || inequality === "not_equal") return currentNumber !== requiredNumber ? "true" : "false";
+        return currentNumber === requiredNumber ? "true" : "false";
+      }
+      const equal = current.toLowerCase() === required.toLowerCase();
+      if (inequality === "is_not" || inequality === "not_equal") return equal ? "false" : "true";
+      return equal ? "true" : "false";
+    }
+
+    function evaluateIwTriggerConditionNode(node, ctx) {
+      // Three-valued: "true" | "false" | "unknown".
+      if (typeof node === "string") return iwMilestoneStateFor(node, ctx);
+      if (!node || typeof node !== "object") return "unknown";
+      if (node.category === "logic") {
+        const children = (Array.isArray(node.data) ? node.data : []).map(child => evaluateIwTriggerConditionNode(child, ctx));
+        if (!children.length) return "unknown";
+        if (String(node.operator || "").toLowerCase() === "or") {
+          if (children.includes("true")) return "true";
+          return children.every(result => result === "false") ? "false" : "unknown";
+        }
+        if (children.includes("false")) return "false";
+        return children.every(result => result === "true") ? "true" : "unknown";
+      }
+      const type = String(node.type || "");
+      const data = node.data;
+      if (type === "triggerOnTurn") {
+        const target = Number(typeof data === "object" && data !== null ? (data.turn ?? data.value ?? data.number) : data);
+        if (!Number.isFinite(target)) return "unknown";
+        // Infinite Worlds turn triggers fire once the story reaches that turn.
+        return ctx.currentTurn >= target ? "true" : "false";
+      }
+      if (type === "triggerOnEvent") {
+        const text = typeof data === "string" ? data : String(data?.text || data?.condition || "");
+        return iwMilestoneStateFor(text, ctx);
+      }
+      if (type === "triggerOnCharacter") return "true"; // Character-restricted events are filtered at import time.
+      if (type === "triggerOnTrackedItem") {
+        const details = (data && typeof data === "object") ? data : node;
+        const trackerId = String(details.trackedItemID || details.trackedItemId || details.trackerId || node.trackedItemID || "").trim();
+        const tracker = (state.trackers || []).find(item => item.id === trackerId);
+        if (!tracker) return "unknown";
+        return compareIwLiveTrackerValue(tracker.value, details);
+      }
+      return "unknown";
+    }
+
+    function buildDeterministicActivation(trigger, currentTurn, reason) {
+      return {
+        id: uid("activated_event_trigger"),
+        sourceTriggerId: trigger.id,
+        name: trigger.label || "Event trigger",
+        timing: trigger.timing || "before",
+        condition: trigger.condition || "",
+        effect: trigger.effect || "",
+        instructions: trigger.effect || "",
+        reason,
+        addTextAfter: trigger.timing === "after" && !!trigger.addTextAfter,
+        createdAt: nowIso(),
+        sourceTurn: currentTurn,
+        checkMode: "deterministic"
+      };
+    }
+
+    function runDeterministicEventTriggerChecks(action, currentTurn, phase = "before") {
+      // Explicit world-level suppression still applies, but Turn Saver Mode does not:
+      // these checks are free (no LLM query), so they keep working in Turn Saver Mode.
+      if (state.world?.suppressTriggers) return { activated: [] };
+      normalizeEventTriggerState(state);
+      const activated = [];
+      const scanText = buildKeywordScanText(action);
+      const ctx = { currentTurn, milestones: parseIwMilestoneStates() };
+      state.eventTriggers.forEach(trigger => {
+        if (trigger.timing !== normalizeEventTriggerTiming(phase)) return;
+        const mode = eventTriggerEvaluationMode(trigger);
+        if (mode === "llm") return;
+        if (trigger.repeat !== true && (Number(trigger.triggeredCount) || 0) > 0) return;
+        if (mode === "keywords") {
+          const matched = liveKeywordListForTrigger(trigger).filter(keyword => keywordAppearsInText(keyword, scanText));
+          if (matched.length) activated.push(buildDeterministicActivation(trigger, currentTurn, `Keyword match in the player's action or recent scenes: ${matched.slice(0, 6).join(", ")}.`));
+          return;
+        }
+        const conditions = Array.isArray(trigger.iwConditions) ? trigger.iwConditions : [trigger.iwConditions];
+        const result = evaluateIwTriggerConditionNode({ category: "logic", operator: "and", data: conditions }, ctx);
+        if (result === "true") activated.push(buildDeterministicActivation(trigger, currentTurn, "Browser-evaluated condition matched current trackers, milestones, and turn number."));
+        // False or unknown browser conditions do not fall back to the LLM: the selected trigger type
+        // is an explicit promise that this trigger is browser-evaluated only.
+      });
+      if (activated.length) recordActivatedEventTriggerHits(activated);
+      return { activated };
+    }
+
+    function renderLiveTriggerConditionText(text) {
+      // Imported conditions may embed {{tracker_value:ID}} tokens so the limited-context
+      // LLM trigger check can see live tracker values it otherwise has no access to.
+      return String(text || "").replace(/\{\{tracker_value:([^}]+)\}\}/g, (full, rawId) => {
+        const tracker = (state.trackers || []).find(item => item.id === String(rawId || "").trim());
+        return tracker ? String(tracker.value || "(empty)").slice(0, 400) : "unknown";
+      });
+    }
+
     function eventTriggersForPhase(phase) {
       if (areEventTriggersSuppressed()) return [];
       normalizeEventTriggerState(state);
-      return state.eventTriggers.filter(trigger => trigger.timing === phase);
+      return state.eventTriggers.filter(trigger => {
+        if (trigger.timing !== phase) return false;
+        return eventTriggerEvaluationMode(trigger) === "llm";
+      });
     }
 
     function renderTrackers() {
@@ -7860,9 +8200,14 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       return String(content ?? "");
     }
 
-    function modelJsonError(cause = null) {
-      const err = new Error("The model did not return valid JSON. The app quietly retried, but the final response was still malformed. Try again, or choose a model with stronger JSON/structured output support.");
+    function modelJsonError(cause = null, malformedText = "", repairAttempted = false) {
+      const suffix = repairAttempted
+        ? " LLM-assisted JSON Repair was also attempted once, but the repaired response was still invalid."
+        : "";
+      const err = new Error(`The model did not return valid JSON. The app quietly retried, but the final response was still malformed.${suffix} Try again, or choose a model with stronger JSON/structured output support.`);
       err.isModelJsonError = true;
+      err.malformedJsonText = String(malformedText || "");
+      err.jsonRepairAttempted = !!repairAttempted;
       if (cause) err.cause = cause;
       return err;
     }
@@ -7879,16 +8224,68 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       const first = cleaned.indexOf("{");
       const last = cleaned.lastIndexOf("}");
       if (first >= 0 && last > first) {
-        try { return JSON.parse(cleaned.slice(first, last + 1)); } catch (err) { throw modelJsonError(err); }
+        try { return JSON.parse(cleaned.slice(first, last + 1)); } catch (err) { throw modelJsonError(err, cleaned); }
       }
-      throw modelJsonError(firstError);
+      throw modelJsonError(firstError, cleaned);
+    }
+
+    function compactJsonRepairContext(messages = [], maxTotalChars = 32000) {
+      const source = Array.isArray(messages) ? messages : [];
+      if (!source.length) return [];
+      const perMessage = Math.max(1800, Math.floor(maxTotalChars / Math.max(1, source.length)));
+      return source.map(message => {
+        const content = normalizeContent(message?.content);
+        const compact = content.length <= perMessage
+          ? content
+          : `${content.slice(0, Math.floor(perMessage * 0.58))}\n...[context compacted for JSON repair]...\n${content.slice(-Math.floor(perMessage * 0.38))}`;
+        return { role: message?.role || "user", content: compact };
+      });
+    }
+
+    function buildLlmJsonRepairMessages(originalMessages, malformedText, label = "structured response") {
+      return [
+        ...compactJsonRepairContext(originalMessages),
+        { role: "assistant", content: String(malformedText || "") },
+        {
+          role: "user",
+          content: `The previous ${label} response was malformed or incomplete JSON. Repair and, if it was cut off, complete it using the request context above. Preserve the intended data and wording as closely as possible; do not invent unrelated content. Return ONLY one complete valid JSON object with the schema required by the original request. No markdown fences, comments, or explanation.`
+        }
+      ];
+    }
+
+    async function attemptLlmAssistedJsonRepair(label, originalMessages, malformedText, options = {}) {
+      const broken = String(malformedText || "").trim();
+      if (!broken) throw modelJsonError(null, broken, true);
+      const repairMessages = buildLlmJsonRepairMessages(originalMessages, broken, label);
+      const originalMax = Math.max(0, Number(options.max_tokens ?? 1200) || 0);
+      const estimatedRepairTokens = Math.ceil(broken.length / 3.2) + 700;
+      const repairOptions = {
+        ...options,
+        temperature: 0,
+        max_tokens: Math.min(8000, Math.max(1600, originalMax, estimatedRepairTokens))
+      };
+      delete repairOptions.json_retries;
+      delete repairOptions.no_content_retries;
+      try {
+        return await fetchOpenRouterJsonOnce(`${label} JSON repair`, repairMessages, repairOptions);
+      } catch (repairErr) {
+        if (isProviderJsonModeNotEnabledError(repairErr) && !repairOptions.disable_json_response_format) {
+          try {
+            return await fetchOpenRouterJsonOnce(`${label} JSON repair`, repairMessages, { ...repairOptions, disable_json_response_format: true });
+          } catch (secondRepairErr) {
+            throw modelJsonError(secondRepairErr, broken, true);
+          }
+        }
+        throw modelJsonError(repairErr, broken, true);
+      }
     }
 
     function explainWorldGenerationError(err) {
       if (err?.isCommunityDailyLimitError) return communityDailyLimitPopupMessage();
       const message = err?.message || String(err || "Unknown error");
       if (err?.isModelJsonError) {
-        return "The model answered with malformed JSON instead of a usable world setup. The app silently tried three additional generations before showing this message.\n\nWhat to try:\n• Press Generate and fill setup again.\n• Use a model with better JSON/structured-output support.\n• Shorten very long prompt details if the response seems to be getting cut off.";
+        const repairNote = err.jsonRepairAttempted ? " LLM-assisted JSON Repair was also attempted once, but that repaired response was still invalid." : "";
+        return `The model answered with malformed JSON instead of a usable world setup. The app silently tried three additional generations before showing this message.${repairNote}\n\nWhat to try:\n• Press Generate and fill setup again.\n• Use a model with better JSON/structured-output support.\n• Shorten very long prompt details if the response seems to be getting cut off.`;
       }
       if (err?.isModelNoContentError || /returned no .*content/i.test(message)) {
         return "OpenRouter returned an empty world setup response. The app could not find any text to turn into the setup fields.\n\nWhat to try:\n• Press Generate and fill setup again.\n• Pick a different story model in Model Settings.\n• If you are using free/community models, the provider may be temporarily unavailable or rate-limited.";
@@ -8085,7 +8482,13 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
           }
           const canRetryJson = !!err?.isModelJsonError && attempt < jsonRetries;
           const canRetryNoContent = !!err?.isModelNoContentError && attempt < noContentRetries;
-          if (!canRetryJson && !canRetryNoContent) throw err;
+          if (!canRetryJson && !canRetryNoContent) {
+            if (err?.isModelJsonError && state.settings.llmAssistedJsonRepair && !isTurnSaverMode() && err.malformedJsonText) {
+              console.warn(`[Infinite Quest] ${label} JSON remained malformed after normal retries; attempting one LLM-assisted repair.`);
+              return await attemptLlmAssistedJsonRepair(label, prepared.messages, err.malformedJsonText, preparedOptions);
+            }
+            throw err;
+          }
           lastRetryableError = err;
           await sleep(350 + attempt * 250);
         }
@@ -8128,6 +8531,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     function closeCharacterSelectDialog() {
       if (transientUi.characterSelectTarget === "infiniteWorldsJsonImport") {
         transientUi.pendingInfiniteWorldsJsonImport = null;
+        transientUi.characterSelectIntro = "";
       }
       closeDialog("characterSelectDialog");
     }
@@ -8273,7 +8677,7 @@ Character option requirements:
     }
 
     function normalizeInfiniteWorldsCharacterSelectOptions(source = {}) {
-      return getInfiniteWorldsPlayableCharacters(source).map((character, idx) => {
+      const options = getInfiniteWorldsPlayableCharacters(source).map((character, idx) => {
         const name = textFromAny(character.name || `Character ${idx + 1}`);
         const description = textFromAny(character.description);
         const skills = summarizeInfiniteWorldsSkillsForCard(character.skills);
@@ -8291,6 +8695,20 @@ Character option requirements:
           infiniteWorldsIndex: idx
         };
       });
+      // Infinite Worlds also lets the player write their own character; offer the same here.
+      const guidance = textFromAny(source.charSelectText);
+      options.push({
+        name: "Create your own character",
+        gender: "",
+        role: "Custom character",
+        personality: "",
+        background: guidance ? (guidance.length > 220 ? `${guidance.slice(0, 220).trim()}…` : guidance) : "",
+        fit: "Start from a blank character card that you write yourself in World Set Up before starting. World-defined skills start at average ratings.",
+        playerText: "",
+        portraitUrl: "",
+        iwCustomCharacter: true
+      });
+      return options;
     }
 
     function characterGenderBucket(gender = "") {
@@ -8314,6 +8732,15 @@ Character option requirements:
       if (!list) return;
       const options = Array.isArray(transientUi.characterSelectOptions) ? transientUi.characterSelectOptions : [];
       list.innerHTML = "";
+      const intro = transientUi.characterSelectTarget === "infiniteWorldsJsonImport" ? String(transientUi.characterSelectIntro || "").trim() : "";
+      if (intro) {
+        const introEl = document.createElement("p");
+        introEl.className = "mini";
+        introEl.style.whiteSpace = "pre-wrap";
+        introEl.style.gridColumn = "1 / -1";
+        introEl.textContent = intro;
+        list.appendChild(introEl);
+      }
       if (!options.length) {
         list.innerHTML = `<p class="mini">No character options are available yet.</p>`;
         return;
@@ -8397,17 +8824,23 @@ Character option requirements:
         const pending = transientUi.pendingInfiniteWorldsJsonImport;
         if (!pending?.source) return;
         const characters = getInfiniteWorldsPlayableCharacters(pending.source);
-        const selectedCharacter = character.sourceCharacter || characters[Number(character.infiniteWorldsIndex)] || characters[0] || {};
-        const converted = convertInfiniteWorldsJsonToWorldImport(pending.source, selectedCharacter);
+        const selectedCharacter = character.iwCustomCharacter === true
+          ? { iwCustomCharacter: true }
+          : (character.sourceCharacter || characters[Number(character.infiniteWorldsIndex)] || characters[0] || {});
+        const converted = convertInfiniteWorldsJsonToWorldImport(pending.source, selectedCharacter, { resolveStartSetup: true });
         const loaded = applyWorldImport(converted, { skipConfirm: true, protectInfiniteWorldsImportFromTruncation: true });
         if (!loaded) return;
         const selectedName = textFromAny(selectedCharacter.name || character.name || "selected character");
-        const toastMessage = pending.toastMessage || `Loaded Infinite Worlds JSON with ${selectedName} as the player character.`;
+        const toastMessage = character.iwCustomCharacter === true
+          ? "Loaded Infinite Worlds JSON with a custom character slot. Edit the Player character box in World Set Up before starting."
+          : (pending.toastMessage || `Loaded Infinite Worlds JSON with ${selectedName} as the player character.`);
         const shouldCloseTextDialog = !!pending.closeTextDialogOnLoad;
         transientUi.pendingInfiniteWorldsJsonImport = null;
+        transientUi.characterSelectIntro = "";
         closeCharacterSelectDialog();
         if (shouldCloseTextDialog) closeWorldTextImportDialog();
         toast(toastMessage, 7500);
+        showInfiniteWorldsImportReportPopup(converted.importReport);
         return;
       }
 
@@ -8424,7 +8857,8 @@ Character option requirements:
       if (err?.isCommunityDailyLimitError) return communityDailyLimitPopupMessage();
       const message = err?.message || String(err || "Unknown error");
       if (err?.isModelJsonError) {
-        return "The model answered with malformed JSON instead of usable character options. The app silently retried before showing this message. Try Generate Character Select again, or choose a model with stronger JSON support.";
+        const repairNote = err.jsonRepairAttempted ? " LLM-assisted JSON Repair was also attempted once and failed." : "";
+        return `The model answered with malformed JSON instead of usable character options. The app silently retried before showing this message.${repairNote} Try Generate Character Select again, or choose a model with stronger JSON support.`;
       }
       if (err?.isModelNoContentError || /returned no .*content/i.test(message)) {
         return "OpenRouter returned an empty character-selection response. Try again, or pick a different story model in Model Settings.";
@@ -8941,6 +9375,7 @@ Required JSON shape:
 }
 
 Memory rules:
+- If imported_memory_guidance is provided, treat it as the world author's authoritative instructions for what to track and how to structure detail inside the four JSON fields, without changing the JSON shape itself.
 - Preserve important facts from any existing full history unless the latest turns clearly correct them.
 - Merge the provided turns into the full history; do not merely summarize those turns in isolation if existing full history is provided.
 - Keep secrets and private continuity notes available to the story engine, but do not write future narration.
@@ -8962,6 +9397,9 @@ Memory rules:
         compressed_through_turn_after_update: state.turns.length,
         current_scratchpad: promptText(state.scratchpad || "", PROMPT_LIMITS.scratchpad),
         current_trackers: state.trackers.map(compactTrackerForPrompt),
+        ...(String(state.world?.memoryInstructions || "").trim()
+          ? { imported_memory_guidance: promptText(state.world.memoryInstructions, 4200) }
+          : {}),
         output_requirement: "Return only the JSON object with Characters, Setting Details, Plot Details, and Other Important Notes."
       }, null, 2);
     }
@@ -10678,6 +11116,10 @@ SVG requirements:
         // previous discard behavior when triggers are explicitly suppressed by the world.
         if (!triggersSuppressed || !isTurnSaverMode()) state.pendingEventTriggers = [];
         let activatedForMainStory = [...pendingFromPreviousAfterChecks];
+        // Deterministic before-response checks first: keyword triggers and browser-evaluated
+        // conditions activate client-side with no LLM query (and still work in Turn Saver Mode).
+        const deterministicCheck = runDeterministicEventTriggerChecks(action, state.turns.length + 1, "before");
+        if (deterministicCheck.activated.length) activatedForMainStory.push(...deterministicCheck.activated);
         let raw;
         if (eventTriggersForPhase("before").length) {
           setBusy(true, "Checking triggers + drafting scene");
@@ -10704,20 +11146,23 @@ SVG requirements:
         state.turns.push(turn);
         state.viewIndex = state.turns.length - 1;
 
+        const deterministicAfterCheck = runDeterministicEventTriggerChecks(action, turn.turnNumber, "after");
+        let afterTriggerResults = [...deterministicAfterCheck.activated];
         if (eventTriggersForPhase("after").length) {
           setBusy(true, "Checking after-response triggers");
-          const afterTriggerResults = await runCombinedEventTriggerChecks("after", action, { currentTurn: turn.turnNumber, generatedTurn: turn });
-          if (afterTriggerResults.length) {
-            turn.eventTriggersAfterChecked = afterTriggerResults.map(compactActivatedEventForPrompt);
-            const immediate = afterTriggerResults.filter(item => item.addTextAfter);
-            const deferred = afterTriggerResults.filter(item => !item.addTextAfter);
-            if (immediate.length) {
-              setBusy(true, "Adding trigger text");
-              await appendAfterResponseEventTriggerText(action, turn, immediate);
-            }
-            if (deferred.length) {
-              state.pendingEventTriggers = normalizePendingEventTriggers([...(state.pendingEventTriggers || []), ...deferred]);
-            }
+          const llmAfterTriggerResults = await runCombinedEventTriggerChecks("after", action, { currentTurn: turn.turnNumber, generatedTurn: turn });
+          if (llmAfterTriggerResults.length) afterTriggerResults.push(...llmAfterTriggerResults);
+        }
+        if (afterTriggerResults.length) {
+          turn.eventTriggersAfterChecked = afterTriggerResults.map(compactActivatedEventForPrompt);
+          const immediate = isTurnSaverMode() ? [] : afterTriggerResults.filter(item => item.addTextAfter);
+          const deferred = isTurnSaverMode() ? afterTriggerResults : afterTriggerResults.filter(item => !item.addTextAfter);
+          if (immediate.length) {
+            setBusy(true, "Adding trigger text");
+            await appendAfterResponseEventTriggerText(action, turn, immediate);
+          }
+          if (deferred.length) {
+            state.pendingEventTriggers = normalizePendingEventTriggers([...(state.pendingEventTriggers || []), ...deferred]);
           }
         }
 
@@ -10797,6 +11242,7 @@ ${missingList}`,
       state.world.premise = String(payload.world.premise || "").trim();
       state.world.firstAction = String(payload.world.firstAction || "").trim();
       state.world.rules = String(payload.world.rules || "").trim();
+      state.world.memoryInstructions = String(payload.world.memoryInstructions || payload.world.memory_instructions || "").trim();
       state.world.suppressTriggers = !!payload.world.suppressTriggers;
       if (payload.rpgStats.length) state.rpgStats = payload.rpgStats;
       if (payload.useRpgStats !== undefined) state.settings.useRpgStats = !!payload.useRpgStats;
@@ -10806,6 +11252,7 @@ ${missingList}`,
       if (payload.storytellerMode !== undefined) state.settings.storytellerMode = !!payload.storytellerMode;
       if (payload.betterMemoryManagement !== undefined) state.settings.betterMemoryManagement = !!payload.betterMemoryManagement;
       if (payload.disableTextTruncation !== undefined) state.settings.disableTextTruncation = !!payload.disableTextTruncation;
+      if (payload.llmAssistedJsonRepair !== undefined) state.settings.llmAssistedJsonRepair = !!payload.llmAssistedJsonRepair;
       if (payload.turnSaverMode !== undefined) state.settings.turnSaverMode = !!payload.turnSaverMode;
       enforceTurnSaverModeSettings();
       state.defaultTriggers = payload.defaultTriggers;
@@ -11099,6 +11546,7 @@ ${missingList}`,
           premise: state.world.premise || "",
           firstAction: state.world.firstAction || "",
           rules: state.world.rules || "",
+          memoryInstructions: state.world.memoryInstructions || "",
           suppressTriggers: !!state.world.suppressTriggers
         },
         settings: {
@@ -11108,6 +11556,7 @@ ${missingList}`,
           storytellerMode: !!state.settings.storytellerMode,
           betterMemoryManagement: !!state.settings.betterMemoryManagement,
           disableTextTruncation: !!state.settings.disableTextTruncation,
+          llmAssistedJsonRepair: !!state.settings.llmAssistedJsonRepair,
           turnSaverMode: !!state.settings.turnSaverMode
         },
         rpgStats: normalizeRpgStats(state.rpgStats).map(stat => ({
@@ -11127,10 +11576,18 @@ ${missingList}`,
       };
       const eventTriggers = normalizeEventTriggers(state.eventTriggers || []).map(trigger => ({
         id: trigger.id || uid("event_trigger"),
+        label: trigger.label || "",
         timing: trigger.timing || "before",
+        evaluationMode: eventTriggerEvaluationMode(trigger),
         condition: trigger.condition || "",
         effect: trigger.effect || "",
         addTextAfter: !!trigger.addTextAfter,
+        ...(Array.isArray(trigger.keywords) && trigger.keywords.length ? { keywords: [...trigger.keywords] } : {}),
+        ...(trigger.keywordSourceTrackerId ? { keywordSourceTrackerId: trigger.keywordSourceTrackerId } : {}),
+        ...(trigger.keywordsFromCondition === true ? { keywordsFromCondition: true } : {}),
+        ...(trigger.repeat === true ? { repeat: true } : {}),
+        ...(trigger.iwConditions ? { iwConditions: deepClone(trigger.iwConditions) } : {}),
+        ...(trigger.iwConditionsFromCondition === true ? { iwConditionsFromCondition: true } : {}),
         createdAt: trigger.createdAt || null,
         updatedAt: trigger.updatedAt || null,
         triggeredCount: trigger.triggeredCount || 0,
@@ -11495,8 +11952,9 @@ ${missingList}`,
       const rootOnlyExcluded = new Set([
         // Already imported into dedicated fields, trackers, event triggers, or the selected character card.
         "title", "name", "description", "background", "instructions", "objective", "firstInput",
-        "authorStyle", "summaryRequest", "possibleCharacters", "triggerEvents", "victoryCondition",
-        "defeatCondition", "instructionBlocks",
+        "authorStyle", "summaryRequest", "descriptionRequest", "evaluationRequest", "possibleCharacters",
+        "triggerEvents", "victoryCondition", "defeatCondition", "instructionBlocks", "trackedItems",
+        "loreBookEntries", "NPCs", "conditions", "mature", "initialDirectives", "charSelectText", "skills",
         // Editor metadata, image-selection data, warnings, sharing, or design bookkeeping.
         "version", "autoAdvanceVersion", "favorite", "schemaVersion",
         "recommendedAIModel", "nsfw", "contentWarnings", "permissionsOnceShared",
@@ -11562,89 +12020,698 @@ ${missingList}`,
       return 50;
     }
 
-    function convertInfiniteWorldsSkillsToRpgStats(skills = {}, characterName = "") {
+    function convertInfiniteWorldsSkillsToRpgStats(skills = {}, characterName = "", worldSkills = []) {
       const entries = [];
+      const seen = new Set();
+      const pushEntry = (rawName, value, description = "") => {
+        const name = String(rawName || "").trim();
+        if (!name || seen.has(name.toLowerCase())) return;
+        seen.add(name.toLowerCase());
+        entries.push({ name, value, description: String(description || "").trim() });
+      };
       if (Array.isArray(skills)) {
         skills.forEach(item => {
-          if (typeof item === "string") entries.push([item, 3]);
-          else if (isPlainObject(item)) entries.push([item.name || item.skill || item.stat || "Skill", item.value ?? item.score ?? item.rating ?? 3]);
+          if (typeof item === "string") pushEntry(item, 3);
+          else if (isPlainObject(item)) pushEntry(item.name || item.skill || item.stat || "Skill", item.value ?? item.score ?? item.rating ?? 3, textFromAny(item.description || item.details));
         });
       } else if (isPlainObject(skills)) {
-        Object.entries(skills).forEach(([name, value]) => entries.push([name, value]));
+        Object.entries(skills).forEach(([name, value]) => pushEntry(name, value));
       }
-      return entries.map(([name, value]) => ({
-        name: String(name || "Skill").trim(),
-        value: mapInfiniteWorldsSkillToPercent(value),
-        covers: `Imported from Infinite Worlds${characterName ? ` for ${characterName}` : ""}. Original 1–5 rating: ${textFromAny(value) || "unknown"}.`
+      // The world-level skills array is the canonical roster: any skill it defines that the
+      // selected character does not list still exists, starting at an average 3/5 rating.
+      (Array.isArray(worldSkills) ? worldSkills : []).forEach(item => {
+        if (typeof item === "string") pushEntry(item, 3);
+        else if (isPlainObject(item)) {
+          const name = textFromAny(item.name || item.skill || item.title || item.stat);
+          const description = textFromAny(item.description || item.details);
+          if (name && seen.has(name.toLowerCase()) && description) {
+            const existing = entries.find(entry => entry.name.toLowerCase() === name.toLowerCase());
+            if (existing && !existing.description) existing.description = description;
+          } else pushEntry(name, item.value ?? 3, description);
+        }
+      });
+      return entries.map(entry => ({
+        name: entry.name,
+        value: mapInfiniteWorldsSkillToPercent(entry.value),
+        covers: [entry.description, `Imported from Infinite Worlds${characterName ? ` for ${characterName}` : ""}. Original 1–5 rating: ${textFromAny(entry.value) || "unknown"}.`].filter(Boolean).join(" ")
       })).filter(stat => stat.name);
     }
 
-    function trackedItemToTracker(item, idx = 0, ownerName = "") {
+    function infiniteWorldsFirstDefined(source = {}, keys = [], fallback = undefined) {
+      for (const key of keys) {
+        if (Object.prototype.hasOwnProperty.call(source || {}, key) && source[key] !== undefined && source[key] !== null) return source[key];
+      }
+      return fallback;
+    }
+
+    function infiniteWorldsTrackerValue(item = {}, fallback = "Not yet established.") {
+      const value = infiniteWorldsFirstDefined(item, [
+        "initialPCValue", "initial_pc_value", "value", "initialValue", "initial_value",
+        "currentValue", "current_value", "startingValue", "starting_value"
+      ], undefined);
+      if (value === undefined) return fallback;
+      if (typeof value === "string") return value;
+      if (typeof value === "number" || typeof value === "boolean") return String(value);
+      return compactJsonForWorldImport(value);
+    }
+
+    function infiniteWorldsTrackerMetadataRules(item = {}, ownerName = "") {
+      const lines = [];
+      if (ownerName) lines.push(`Selected-character source: ${ownerName}.`);
+      if (item.autoUpdate === true) lines.push("Source update mode: automatic. Re-evaluate and update this tracker whenever its instructions say the state changed.");
+      if (item.autoUpdate === false) lines.push("Source update mode: manual/event-only. Keep this value unchanged unless the player, an imported event, or an explicit rule changes it.");
+      if (textFromAny(item.visibility)) lines.push(`Source visibility: ${textFromAny(item.visibility)}. Infinite Quest has one native tracker visibility, so preserve the source visibility as behavioral guidance only.`);
+      if (textFromAny(item.dataType)) {
+        const dataTypeText = textFromAny(item.dataType);
+        const isNumeric = ["number", "numeric", "integer", "int", "float"].includes(dataTypeText.toLowerCase());
+        lines.push(`Source data type: ${dataTypeText}.${isNumeric ? " Keep the tracker value as a bare number (no words, symbols, or units) so imported numeric trigger conditions can be evaluated mechanically." : ""}`);
+      }
+      const basedOnPC = textFromAny(item.initialValueBasedOnPC || item.initial_value_based_on_pc).toLowerCase();
+      if (basedOnPC && basedOnPC !== "same") lines.push("Source setting: the starting value depends on the selected player character. On the first turn, derive an appropriate initial value for the current player character and store it via tracker_updates.");
+      if (textFromAny(item.variableName)) lines.push(`Infinite Worlds variable alias: <<${textFromAny(item.variableName)}>>.`);
+      if (item.enforceFormat === true) lines.push("The source requires the specified format to be enforced exactly.");
+      if (textFromAny(item.formatSchema)) lines.push(`Required format schema:\n${textFromAny(item.formatSchema)}`);
+      if (textFromAny(item.formatExample)) lines.push(`Format example:\n${textFromAny(item.formatExample)}`);
+      return lines.join("\n");
+    }
+
+    function trackedItemToTracker(item, idx = 0, ownerName = "", extraRules = "") {
       if (typeof item === "string") {
-        return { name: item || `Tracked Item ${idx + 1}`, rules: `Track this Infinite Worlds item${ownerName ? ` for ${ownerName}` : ""} whenever it changes.`, value: item || "Not yet established." };
+        return {
+          name: item || `Tracked Item ${idx + 1}`,
+          rules: joinImportSections([
+            `Track this Infinite Worlds item${ownerName ? ` for ${ownerName}` : ""} whenever it changes.`,
+            extraRules
+          ]),
+          value: item || "Not yet established."
+        };
       }
       if (!isPlainObject(item)) return null;
       const name = textFromAny(item.name || item.title || item.label || item.item || item.key || `Tracked Item ${idx + 1}`);
       const description = textFromAny(item.description || item.details || item.context || item.prompt || item.rules);
-      const updateRules = textFromAny(item.updateRules || item.update_rules || item.whenToUpdate || item.when_to_update || item.rules || description);
-      const value = textFromAny(item.value || item.initialValue || item.initial_value || item.currentValue || item.current_value || item.startingValue || item.starting_value || description || "Not yet established.");
-      return { name, rules: updateRules || `Track this Infinite Worlds item${ownerName ? ` for ${ownerName}` : ""} whenever it changes.`, value };
+      const updateRules = textFromAny(infiniteWorldsFirstDefined(item, [
+        "updateInstructions", "update_instructions", "updateRules", "update_rules",
+        "whenToUpdate", "when_to_update", "rules"
+      ], ""));
+      const defaultRule = `Track this Infinite Worlds item${ownerName ? ` for ${ownerName}` : ""} whenever it changes.`;
+      return {
+        id: textFromAny(item.id) || undefined,
+        name,
+        rules: joinImportSections([
+          description,
+          updateRules || (!description ? defaultRule : ""),
+          infiniteWorldsTrackerMetadataRules(item, ownerName),
+          extraRules
+        ]),
+        value: infiniteWorldsTrackerValue(item)
+      };
     }
 
-    function convertInfiniteWorldsTrackedItems(items = [], ownerName = "") {
-      return (Array.isArray(items) ? items : []).map((item, idx) => trackedItemToTracker(item, idx, ownerName)).filter(Boolean);
+    function applyInfiniteWorldsCharacterTrackerOverrides(items = [], selectedCharacter = {}) {
+      const merged = (Array.isArray(items) ? items : []).filter(isPlainObject).map(item => deepClone(item));
+      const byId = new Map();
+      const byName = new Map();
+      merged.forEach(item => {
+        if (textFromAny(item.id)) byId.set(textFromAny(item.id), item);
+        if (textFromAny(item.name)) byName.set(textFromAny(item.name).toLowerCase(), item);
+      });
+      const overrides = Array.isArray(selectedCharacter?.initialTrackedItemValues) ? selectedCharacter.initialTrackedItemValues : [];
+      overrides.forEach((override, idx) => {
+        if (!isPlainObject(override)) return;
+        const match = byId.get(textFromAny(override.id)) || byName.get(textFromAny(override.name).toLowerCase());
+        const target = match || deepClone(override);
+        if (!match) {
+          if (!textFromAny(target.name)) target.name = `Tracked Item ${merged.length + 1}`;
+          merged.push(target);
+          if (textFromAny(target.id)) byId.set(textFromAny(target.id), target);
+          if (textFromAny(target.name)) byName.set(textFromAny(target.name).toLowerCase(), target);
+        }
+        const overrideValue = infiniteWorldsFirstDefined(override, [
+          "initialPCValue", "initial_pc_value", "value", "initialValue", "initial_value",
+          "currentValue", "current_value", "startingValue", "starting_value"
+        ], undefined);
+        if (overrideValue !== undefined) target.initialValue = overrideValue;
+        ["description", "updateInstructions", "updateRules", "visibility", "autoUpdate", "dataType", "formatExample", "formatSchema", "enforceFormat", "variableName"].forEach(key => {
+          if (Object.prototype.hasOwnProperty.call(override, key) && override[key] !== undefined && override[key] !== null && override[key] !== "") target[key] = override[key];
+        });
+      });
+      return merged;
     }
 
-    function convertInfiniteWorldsTriggerEvents(events = []) {
-      return (Array.isArray(events) ? events : []).map((event, idx) => {
+    function buildInfiniteWorldsLookup(source = {}, trackerSources = [], selectedCharacter = {}) {
+      const trackerById = new Map();
+      const trackerByName = new Map();
+      const trackerByVariable = new Map();
+      (Array.isArray(trackerSources) ? trackerSources : []).forEach(item => {
+        if (!isPlainObject(item)) return;
+        if (textFromAny(item.id)) trackerById.set(textFromAny(item.id), item);
+        if (textFromAny(item.name)) trackerByName.set(textFromAny(item.name).toLowerCase(), item);
+        if (textFromAny(item.variableName)) trackerByVariable.set(textFromAny(item.variableName).toLowerCase(), item);
+      });
+      const blockById = new Map((Array.isArray(source.instructionBlocks) ? source.instructionBlocks : []).filter(isPlainObject).map(item => [textFromAny(item.id), item]));
+      const loreById = new Map((Array.isArray(source.loreBookEntries) ? source.loreBookEntries : []).filter(isPlainObject).map(item => [textFromAny(item.id), item]));
+      const characterById = new Map(getInfiniteWorldsPlayableCharacters(source).map(item => [textFromAny(item.characterId || item.id), item]));
+      return { trackerById, trackerByName, trackerByVariable, blockById, loreById, characterById, selectedCharacter };
+    }
+
+    function infiniteWorldsTrackerLabel(id, lookup) {
+      const item = lookup?.trackerById?.get(textFromAny(id));
+      return item ? textFromAny(item.name || item.variableName || id) : (textFromAny(id) || "unknown tracker");
+    }
+
+    function infiniteWorldsTrackerDescriptor(id, lookup) {
+      const sourceId = textFromAny(id);
+      const label = infiniteWorldsTrackerLabel(sourceId, lookup);
+      return sourceId ? `“${label}” (id ${sourceId})` : `“${label}”`;
+    }
+
+    function infiniteWorldsBlockLabel(id, lookup) {
+      const item = lookup?.blockById?.get(textFromAny(id));
+      return item ? textFromAny(item.name || id) : (textFromAny(id) || "unknown instruction block");
+    }
+
+    function infiniteWorldsLoreLabel(id, lookup) {
+      const item = lookup?.loreById?.get(textFromAny(id));
+      return item ? textFromAny(item.name || id) : (textFromAny(id) || "unknown lore entry");
+    }
+
+    function renderInfiniteWorldsTemplateText(value, lookup, options = {}) {
+      const text = typeof value === "string" ? value : textFromAny(value);
+      if (!text) return "";
+      return text.replace(/<<\s*([^<>]+?)\s*>>/g, (full, rawName) => {
+        const key = String(rawName || "").trim().toLowerCase();
+        const tracker = lookup?.trackerByVariable?.get(key) || lookup?.trackerByName?.get(key);
+        if (!tracker) return full;
+        const label = textFromAny(tracker.name || tracker.variableName || rawName);
+        const current = infiniteWorldsTrackerValue(tracker, "");
+        if (options.useCurrentValues !== false && current.trim()) return current;
+        return `[use the current value of tracker “${label}”]`;
+      });
+    }
+
+    function infiniteWorldsCompareTrackerCondition(data = {}, lookup) {
+      const trackerId = textFromAny(data.trackedItemID || data.trackedItemId || data.trackerId);
+      const tracker = lookup?.trackerById?.get(trackerId);
+      const current = tracker ? infiniteWorldsTrackerValue(tracker, "") : "";
+      const required = textFromAny(data.requiredValue ?? data.value ?? data.expectedValue);
+      const inequality = textFromAny(data.inequality || data.comparison || "is_exactly").toLowerCase();
+      const textComparison = textFromAny(data.textComparison).toLowerCase();
+      const currentNumber = Number(current);
+      const requiredNumber = Number(required);
+      const numericComparison = ["at_most", "less_than_or_equal", "at_least", "greater_than_or_equal", "less_than", "greater_than"].includes(inequality);
+      if (numericComparison && Number.isFinite(currentNumber) && Number.isFinite(requiredNumber)) {
+        if (inequality === "at_most" || inequality === "less_than_or_equal") return currentNumber <= requiredNumber;
+        if (inequality === "at_least" || inequality === "greater_than_or_equal") return currentNumber >= requiredNumber;
+        if (inequality === "less_than") return currentNumber < requiredNumber;
+        if (inequality === "greater_than") return currentNumber > requiredNumber;
+      }
+      if (textComparison === "contains") {
+        if (inequality === "is_not" || inequality === "not_equal" || inequality === "does_not_contain") return !current.includes(required);
+        return current.includes(required);
+      }
+      if (Number.isFinite(currentNumber) && Number.isFinite(requiredNumber)) {
+        if (inequality === "is_not" || inequality === "not_equal") return currentNumber !== requiredNumber;
+        return currentNumber === requiredNumber;
+      }
+      if (inequality === "is_not" || inequality === "not_equal") return current !== required;
+      return current === required;
+    }
+
+    function evaluateInfiniteWorldsSetupCondition(node, lookup) {
+      if (typeof node === "string") return { known: false, value: false };
+      if (!isPlainObject(node)) return { known: false, value: false };
+      if (node.category === "logic") {
+        const children = (Array.isArray(node.data) ? node.data : []).map(child => evaluateInfiniteWorldsSetupCondition(child, lookup));
+        if (!children.length || children.some(result => !result.known)) return { known: false, value: false };
+        const isOr = textFromAny(node.operator).toLowerCase() === "or";
+        return { known: true, value: isOr ? children.some(result => result.value) : children.every(result => result.value) };
+      }
+      const type = textFromAny(node.type);
+      if (type === "triggerOnTrackedItem") return { known: true, value: infiniteWorldsCompareTrackerCondition(isPlainObject(node.data) ? node.data : node, lookup) };
+      if (type === "triggerOnCharacter") {
+        const ids = Array.isArray(node.data) ? node.data.map(textFromAny) : [textFromAny(node.data)];
+        const selectedId = textFromAny(lookup?.selectedCharacter?.characterId || lookup?.selectedCharacter?.id);
+        return { known: true, value: !!selectedId && ids.includes(selectedId) };
+      }
+      return { known: false, value: false };
+    }
+
+    function infiniteWorldsStartEventConditionIsMet(event, lookup) {
+      const conditions = Array.isArray(event?.triggerConditions) ? event.triggerConditions : [];
+      if (!conditions.length) return true;
+      const results = conditions.map(node => evaluateInfiniteWorldsSetupCondition(node, lookup));
+      return results.every(result => result.known && result.value);
+    }
+
+    function promptInfiniteWorldsChoice(data = {}) {
+      if (typeof window === "undefined" || typeof window.prompt !== "function") return { completed: false, value: "" };
+      const choices = String(data.choices || "").split(/\r?\n/).map(item => item.trim()).filter(Boolean);
+      if (!choices.length) return { completed: false, value: "" };
+      const selectionMode = textFromAny(data.selectionMode || "single").toLowerCase();
+      const numbered = choices.map((choice, idx) => `${idx + 1}. ${choice}`).join("\n");
+      const suffix = selectionMode === "single" ? "Enter one number or exact choice." : "Enter one or more numbers separated by commas.";
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const response = window.prompt(`${textFromAny(data.message) || "Choose an option:"}\n\n${numbered}\n\n${suffix}`, "");
+        if (response === null) return { completed: false, value: "" };
+        const tokens = response.split(/[,\n]/).map(item => item.trim()).filter(Boolean);
+        const selected = [];
+        tokens.forEach(token => {
+          const numeric = Number(token);
+          const choice = Number.isInteger(numeric) && numeric >= 1 && numeric <= choices.length
+            ? choices[numeric - 1]
+            : choices.find(item => item.toLowerCase() === token.toLowerCase());
+          if (choice && !selected.includes(choice)) selected.push(choice);
+        });
+        const minSelections = data.minSelections !== null && data.minSelections !== undefined && Number.isFinite(Number(data.minSelections)) ? Number(data.minSelections) : 1;
+        const maxSelections = data.maxSelections !== null && data.maxSelections !== undefined && Number.isFinite(Number(data.maxSelections)) ? Number(data.maxSelections) : (selectionMode === "single" ? 1 : choices.length);
+        if (selected.length >= minSelections && selected.length <= maxSelections) {
+          const delimiter = textFromAny(data.valueDelimiter || "newline").toLowerCase() === "comma" ? ", " : "\n";
+          return { completed: true, value: selected.join(delimiter) };
+        }
+        if (typeof window.alert === "function") window.alert("Please choose from the listed options.");
+      }
+      return { completed: false, value: "" };
+    }
+
+    function setInfiniteWorldsTrackerSourceValue(tracker, value, mode = "replace", replaceWith = "") {
+      if (!tracker) return false;
+      const existing = infiniteWorldsTrackerValue(tracker, "");
+      const normalizedMode = textFromAny(mode || "replace").toLowerCase();
+      if (normalizedMode === "add" || normalizedMode === "append") tracker.initialValue = `${existing}${existing && value ? "\n" : ""}${value}`;
+      else if ((normalizedMode === "replace_text" || normalizedMode === "replace") && replaceWith) tracker.initialValue = existing.split(replaceWith).join(value);
+      else tracker.initialValue = value;
+      return true;
+    }
+
+    function applyInfiniteWorldsSetupEffect(effect, working, options = {}) {
+      if (!isPlainObject(effect)) return { applied: false };
+      const lookup = buildInfiniteWorldsLookup(working, working.trackedItems, options.selectedCharacter);
+      const type = textFromAny(effect.type);
+      const data = effect.data;
+      if (type === "effectTellAIWhatToDo") {
+        const directive = renderInfiniteWorldsTemplateText(textFromAny(data), lookup);
+        if (directive) working.initialDirectives.push(directive);
+        return { applied: !!directive };
+      }
+      if (type === "effectPresentChoice") {
+        if (!options.interactive) return { applied: false };
+        const result = promptInfiniteWorldsChoice(isPlainObject(data) ? data : {});
+        if (!result.completed) return { applied: false, cancelled: true };
+        const target = lookup.trackerById.get(textFromAny(data.targetTrackedItemId || data.targetTrackedItemID));
+        return { applied: setInfiniteWorldsTrackerSourceValue(target, result.value, data.updateMode || "replace") };
+      }
+      if (type === "effectRequestInput") {
+        if (!options.interactive || typeof window === "undefined" || typeof window.prompt !== "function") return { applied: false };
+        const response = window.prompt(textFromAny(data?.requestText) || "Enter the requested setup information:", "");
+        if (response === null) return { applied: false, cancelled: true };
+        const target = lookup.trackerById.get(textFromAny(data?.targetTrackedItemId || data?.targetTrackedItemID));
+        return { applied: setInfiniteWorldsTrackerSourceValue(target, response, "replace") };
+      }
+      if (type === "effectSetTrackedItemValue") {
+        const target = lookup.trackerById.get(textFromAny(data?.trackedItemID || data?.trackedItemId || effect.trackedItemID));
+        const value = renderInfiniteWorldsTemplateText(infiniteWorldsTrackerValue({ initialValue: data?.newValue ?? data?.value ?? "" }, ""), lookup);
+        return { applied: setInfiniteWorldsTrackerSourceValue(target, value, data?.action || "set", data?.replaceWith || "") };
+      }
+      if (type === "effectModifyTrackedItemDetails") {
+        const target = lookup.trackerById.get(textFromAny(data?.trackedItemID || data?.trackedItemId || effect.trackedItemID));
+        if (!target) return { applied: false };
+        if (data.overrideName && textFromAny(data.name)) target.name = data.name;
+        if (data.overrideDescription) target.description = data.description || "";
+        if (data.overrideUpdateInstructions) target.updateInstructions = data.updateInstructions || "";
+        if (data.overrideVisibility) target.visibility = data.visibility || target.visibility;
+        if (data.overrideAutoUpdate) target.autoUpdate = !!data.autoUpdate;
+        return { applied: true };
+      }
+      if (type === "effectModifyInstructionBlock") {
+        const target = lookup.blockById.get(textFromAny(data?.id || data?.instructionBlockID || data?.instructionBlockId));
+        if (!target) return { applied: false };
+        target.content = renderInfiniteWorldsTemplateText(textFromAny(data?.content ?? data?.text ?? ""), lookup);
+        return { applied: true };
+      }
+      if (type === "effectModifyKeywordBlock") {
+        const target = lookup.loreById.get(textFromAny(data?.id || data?.keywordBlockID || data?.keywordBlockId));
+        if (!target) return { applied: false };
+        if (Object.prototype.hasOwnProperty.call(data || {}, "content")) target.content = renderInfiniteWorldsTemplateText(textFromAny(data.content), lookup);
+        if (Array.isArray(data?.keywords)) target.keywords = deepClone(data.keywords);
+        return { applied: true };
+      }
+      const directFieldMap = {
+        effectChangeFirstAction: "firstInput",
+        effectChangeObjective: "objective",
+        effectChangeBackground: "background",
+        effectChangeDescriptionInstructions: "descriptionRequest"
+      };
+      if (directFieldMap[type]) {
+        working[directFieldMap[type]] = renderInfiniteWorldsTemplateText(textFromAny(data), lookup);
+        return { applied: true };
+      }
+      if (type === "effectChangeDefeatCondition") {
+        working.defeatCondition = deepClone(data);
+        return { applied: true };
+      }
+      return { applied: false };
+    }
+
+    function resolveInfiniteWorldsStartSetup(source = {}, selectedCharacter = {}, options = {}) {
+      const working = deepClone(source);
+      working.trackedItems = applyInfiniteWorldsCharacterTrackerOverrides(working.trackedItems, selectedCharacter);
+      working.instructionBlocks = Array.isArray(working.instructionBlocks) ? working.instructionBlocks : [];
+      working.loreBookEntries = Array.isArray(working.loreBookEntries) ? working.loreBookEntries : [];
+      working.initialDirectives = [];
+      const consumed = new Set();
+      const events = Array.isArray(working.triggerEvents) ? working.triggerEvents : [];
+      let madeProgress = true;
+      let passes = 0;
+      while (madeProgress && passes < Math.max(2, events.length + 1)) {
+        madeProgress = false;
+        passes += 1;
+        for (const event of events) {
+          const eventId = textFromAny(event?.id) || `index-${events.indexOf(event)}`;
+          if (consumed.has(eventId) || event?.triggerOnStartOfGame !== true) continue;
+          const lookup = buildInfiniteWorldsLookup(working, working.trackedItems, selectedCharacter);
+          if (!infiniteWorldsStartEventConditionIsMet(event, lookup)) continue;
+          const trial = deepClone(working);
+          trial.initialDirectives = Array.isArray(working.initialDirectives) ? [...working.initialDirectives] : [];
+          let allApplied = true;
+          for (const effect of (Array.isArray(event.triggerEffects) ? event.triggerEffects : [])) {
+            const result = applyInfiniteWorldsSetupEffect(effect, trial, { selectedCharacter, interactive: !!options.resolveStartSetup });
+            if (!result.applied) {
+              allApplied = false;
+              break;
+            }
+          }
+          if (!allApplied) continue;
+          Object.keys(working).forEach(key => delete working[key]);
+          Object.assign(working, trial);
+          consumed.add(eventId);
+          madeProgress = true;
+        }
+      }
+      working.triggerEvents = events.filter((event, idx) => !consumed.has(textFromAny(event?.id) || `index-${idx}`));
+      working.descriptionRequest = renderInfiniteWorldsTemplateText(working.descriptionRequest, buildInfiniteWorldsLookup(working, working.trackedItems, selectedCharacter));
+      working.evaluationRequest = renderInfiniteWorldsTemplateText(working.evaluationRequest, buildInfiniteWorldsLookup(working, working.trackedItems, selectedCharacter));
+      working.summaryRequest = renderInfiniteWorldsTemplateText(working.summaryRequest, buildInfiniteWorldsLookup(working, working.trackedItems, selectedCharacter));
+      return { working, consumedCount: consumed.size };
+    }
+
+    function convertInfiniteWorldsConditionNode(node, lookup) {
+      if (typeof node === "string") return textFromAny(node);
+      if (!isPlainObject(node)) return "";
+      if (node.category === "logic") {
+        const operator = textFromAny(node.operator).toLowerCase() === "or" ? "OR" : "AND";
+        const children = (Array.isArray(node.data) ? node.data : []).map(child => convertInfiniteWorldsConditionNode(child, lookup)).filter(Boolean);
+        return children.length ? `(${children.join(` ${operator} `)})` : "";
+      }
+      const type = textFromAny(node.type);
+      const data = node.data;
+      if (type === "triggerOnEvent") {
+        const eventText = textFromAny(data?.text || data?.condition || data);
+        return eventText ? `Story milestone “${eventText}” has occurred (see the “Story milestones” tracker).` : "The named source event occurs.";
+      }
+      if (type === "triggerOnTurn") {
+        if (typeof data === "number" || typeof data === "string") return `The current turn number is ${textFromAny(data)} or higher.`;
+        if (isPlainObject(data)) return `The current turn satisfies: ${compactJsonForWorldImport(data)}.`;
+      }
+      if (type === "triggerOnCharacter") {
+        const ids = Array.isArray(data) ? data.map(textFromAny) : [textFromAny(data)];
+        const names = ids.map(id => textFromAny(lookup?.characterById?.get(id)?.name || id)).filter(Boolean);
+        return `The selected player character is one of: ${names.join(", ") || "the listed Infinite Worlds character IDs"}.`;
+      }
+      if (type === "triggerOnTrackedItem") {
+        const details = isPlainObject(data) ? data : node;
+        const sourceId = textFromAny(details.trackedItemID || details.trackedItemId || details.trackerId || node.trackedItemID);
+        const tracker = infiniteWorldsTrackerLabel(sourceId, lookup);
+        // The {{tracker_value:ID}} token is replaced with the live tracker value whenever this
+        // condition is shown to an LLM checker, so limited-context checks can still evaluate it.
+        const live = sourceId ? ` (live value: {{tracker_value:${sourceId}}})` : "";
+        const required = textFromAny(details.requiredValue ?? details.value ?? "");
+        const comparison = textFromAny(details.inequality || "is_exactly").toLowerCase();
+        const textComparison = textFromAny(details.textComparison).toLowerCase();
+        if (comparison === "at_most") return `The numeric value of tracker “${tracker}”${live} is at most ${required}.`;
+        if (comparison === "at_least") return `The numeric value of tracker “${tracker}”${live} is at least ${required}.`;
+        if (comparison === "less_than") return `The numeric value of tracker “${tracker}”${live} is less than ${required}.`;
+        if (comparison === "greater_than") return `The numeric value of tracker “${tracker}”${live} is greater than ${required}.`;
+        if (textComparison === "contains") return `Tracker “${tracker}”${live} contains “${required}”.`;
+        if (comparison === "is_not" || comparison === "not_equal") return `Tracker “${tracker}”${live} is not exactly “${required}”.`;
+        return `Tracker “${tracker}”${live} is exactly “${required}”.`;
+      }
+      return textFromAny(node.text || node.condition) || compactJsonForWorldImport(node);
+    }
+
+    function infiniteWorldsMutableTargetSets(events = []) {
+      const blockIds = new Set();
+      const loreIds = new Set();
+      (Array.isArray(events) ? events : []).forEach(event => {
+        (Array.isArray(event?.triggerEffects) ? event.triggerEffects : []).forEach(effect => {
+          if (!isPlainObject(effect) || !isPlainObject(effect.data)) return;
+          if (effect.type === "effectModifyInstructionBlock" && textFromAny(effect.data.id)) blockIds.add(textFromAny(effect.data.id));
+          if (effect.type === "effectModifyKeywordBlock" && textFromAny(effect.data.id)) loreIds.add(textFromAny(effect.data.id));
+        });
+      });
+      return { blockIds, loreIds };
+    }
+
+    function buildInfiniteWorldsMutableContentTrackers(source = {}, mutableTargets = { blockIds: new Set(), loreIds: new Set() }) {
+      const trackers = [];
+      const blockTrackerBySourceId = new Map();
+      const loreTrackerBySourceId = new Map();
+      (Array.isArray(source.instructionBlocks) ? source.instructionBlocks : []).forEach((block, idx) => {
+        const sourceId = textFromAny(block?.id);
+        if (!sourceId || !mutableTargets.blockIds.has(sourceId)) return;
+        const tracker = {
+          id: `iw_instruction_${sourceId}`,
+          name: `IW Instruction Block — ${textFromAny(block.name || `Block ${idx + 1}`)}`,
+          rules: "This native tracker stores the complete currently active content of a mutable Infinite Worlds instruction block. Treat its current value as authoritative story guidance. Preserve it exactly unless an imported event explicitly replaces it, and apply any replacement on future turns.",
+          value: textFromAny(block.content || block.text || block.instructions)
+        };
+        trackers.push(tracker);
+        blockTrackerBySourceId.set(sourceId, tracker);
+      });
+      (Array.isArray(source.loreBookEntries) ? source.loreBookEntries : []).forEach((entry, idx) => {
+        const sourceId = textFromAny(entry?.id);
+        if (!sourceId || !mutableTargets.loreIds.has(sourceId)) return;
+        const keywords = Array.isArray(entry.keywords) ? entry.keywords.map(textFromAny).filter(Boolean) : [];
+        const tracker = {
+          id: `iw_lore_${sourceId}`,
+          name: `IW Lore — ${textFromAny(entry.name || `Entry ${idx + 1}`)}`,
+          rules: joinImportSections([
+            "This native tracker stores a mutable Infinite Worlds lore/keyword block. Its complete current value is authoritative lore. Use it when the current scene concerns its keywords, and preserve it unless an imported event explicitly replaces it.",
+            keywords.length ? `Source activation keywords: ${keywords.join(", ")}.` : ""
+          ]),
+          value: joinImportSections([
+            keywords.length ? `Keywords: ${keywords.join(", ")}` : "",
+            textFromAny(entry.content)
+          ])
+        };
+        trackers.push(tracker);
+        loreTrackerBySourceId.set(sourceId, tracker);
+      });
+      return { trackers, blockTrackerBySourceId, loreTrackerBySourceId };
+    }
+
+    function compileInfiniteWorldsConditionalTrackerRules(events = [], lookup) {
+      const additions = new Map();
+      (Array.isArray(events) ? events : []).forEach((event, idx) => {
+        const eventName = textFromAny(event?.name || event?.title || `Infinite Worlds Trigger ${idx + 1}`);
+        (Array.isArray(event?.triggerEffects) ? event.triggerEffects : []).forEach(effect => {
+          if (!isPlainObject(effect) || effect.type !== "effectModifyTrackedItemDetails" || !isPlainObject(effect.data)) return;
+          const data = effect.data;
+          const id = textFromAny(data.trackedItemID || data.trackedItemId || effect.trackedItemID);
+          if (!id) return;
+          const parts = [`When imported event “${eventName}” activates, apply these continuing source tracker-detail changes:`];
+          if (data.overrideName && textFromAny(data.name)) parts.push(`name becomes “${textFromAny(data.name)}”`);
+          if (data.overrideDescription) parts.push(`description becomes: ${textFromAny(data.description) || "(empty)"}`);
+          if (data.overrideUpdateInstructions) parts.push(`update instructions become:\n${textFromAny(data.updateInstructions) || "(empty)"}`);
+          if (data.overrideVisibility) parts.push(`source visibility becomes ${textFromAny(data.visibility) || "unspecified"}`);
+          if (data.overrideAutoUpdate) parts.push(`source automatic updating becomes ${data.autoUpdate ? "enabled" : "disabled"}`);
+          const prior = additions.get(id) || [];
+          prior.push(parts.join("\n"));
+          additions.set(id, prior);
+        });
+      });
+      return additions;
+    }
+
+    function convertInfiniteWorldsTrackedItems(items = [], ownerName = "", conditionalRules = new Map()) {
+      return (Array.isArray(items) ? items : []).map((item, idx) => {
+        const id = isPlainObject(item) ? textFromAny(item.id) : "";
+        return trackedItemToTracker(item, idx, ownerName, (conditionalRules.get(id) || []).join("\n\n"));
+      }).filter(Boolean);
+    }
+
+    function convertInfiniteWorldsEffect(effect, context = {}) {
+      if (typeof effect === "string") return textFromAny(effect);
+      if (!isPlainObject(effect)) return "";
+      const type = textFromAny(effect.type);
+      const data = effect.data;
+      const lookup = context.lookup;
+      if (type === "effectTellAIWhatToDo") return `Direct source instruction:\n${renderInfiniteWorldsTemplateText(textFromAny(data), lookup, { useCurrentValues: false })}`;
+      if (type === "effectSetTrackedItemValue") {
+        const sourceId = textFromAny(data?.trackedItemID || data?.trackedItemId || effect.trackedItemID);
+        const tracker = infiniteWorldsTrackerDescriptor(sourceId, lookup);
+        const action = textFromAny(data?.action || "set").toLowerCase();
+        const value = renderInfiniteWorldsTemplateText(infiniteWorldsTrackerValue({ initialValue: data?.newValue ?? data?.value ?? "" }, ""), lookup, { useCurrentValues: false });
+        if (action === "add" || action === "append") return `Append the following to tracker ${tracker} and return its complete new value in tracker_updates:\n${value}`;
+        if (textFromAny(data?.replaceWith)) return `In tracker ${tracker}, replace every occurrence of “${textFromAny(data.replaceWith)}” with the following, then return the complete new value in tracker_updates:\n${value}`;
+        return `Set tracker ${tracker} to exactly the following complete value in tracker_updates:\n${value}`;
+      }
+      if (type === "effectModifyTrackedItemDetails") {
+        const sourceId = textFromAny(data?.trackedItemID || data?.trackedItemId || effect.trackedItemID);
+        const tracker = infiniteWorldsTrackerDescriptor(sourceId, lookup);
+        const parts = [`Apply the imported continuing detail changes for tracker ${tracker}.`];
+        if (data?.overrideDescription) parts.push(`New description: ${textFromAny(data.description) || "(empty)"}`);
+        if (data?.overrideUpdateInstructions) parts.push(`New update instructions:\n${textFromAny(data.updateInstructions) || "(empty)"}`);
+        if (data?.overrideVisibility) parts.push(`Source visibility becomes ${textFromAny(data.visibility)}.`);
+        if (data?.overrideAutoUpdate) parts.push(`Source automatic updating becomes ${data.autoUpdate ? "enabled" : "disabled"}.`);
+        return parts.join("\n");
+      }
+      if (type === "effectModifyInstructionBlock") {
+        const sourceId = textFromAny(data?.id || data?.instructionBlockID || data?.instructionBlockId);
+        const blockName = infiniteWorldsBlockLabel(sourceId, lookup);
+        const tracker = context.mutableContent?.blockTrackerBySourceId?.get(sourceId);
+        const content = renderInfiniteWorldsTemplateText(textFromAny(data?.content ?? data?.text ?? ""), lookup, { useCurrentValues: false });
+        if (tracker) return `Set tracker “${tracker.name}” (id ${tracker.id}) to exactly the following complete value in tracker_updates. This replaces imported instruction block “${blockName}” and remains authoritative on future turns:\n${content}`;
+        return `For this and future turns, replace imported instruction block “${blockName}” with the following authoritative rules:\n${content}`;
+      }
+      if (type === "effectModifyKeywordBlock") {
+        const sourceId = textFromAny(data?.id || data?.keywordBlockID || data?.keywordBlockId);
+        const loreName = infiniteWorldsLoreLabel(sourceId, lookup);
+        const tracker = context.mutableContent?.loreTrackerBySourceId?.get(sourceId);
+        const keywords = Array.isArray(data?.keywords) ? data.keywords.map(textFromAny).filter(Boolean) : [];
+        const value = joinImportSections([
+          keywords.length ? `Keywords: ${keywords.join(", ")}` : "",
+          renderInfiniteWorldsTemplateText(textFromAny(data?.content ?? ""), lookup, { useCurrentValues: false })
+        ]);
+        if (tracker) return `Set tracker “${tracker.name}” (id ${tracker.id}) to exactly the following complete value in tracker_updates. This replaces mutable lore entry “${loreName}” for future turns:\n${value}`;
+        return `Replace lore entry “${loreName}” with the following keywords and authoritative content:\n${value}`;
+      }
+      if (type === "effectPresentChoice") {
+        const target = infiniteWorldsTrackerDescriptor(data?.targetTrackedItemId || data?.targetTrackedItemID, lookup);
+        return joinImportSections([
+          `Present this source setup choice to the player at the next meaningful decision point: ${textFromAny(data?.message)}`,
+          `Allowed choices:\n${textFromAny(data?.choices)}`,
+          `After the player chooses, store the selected text in tracker ${target} using ${textFromAny(data?.updateMode || "replace")} mode.`
+        ]);
+      }
+      if (type === "effectRequestInput") {
+        const target = infiniteWorldsTrackerDescriptor(data?.targetTrackedItemId || data?.targetTrackedItemID, lookup);
+        return `Ask the player for this source setup input before progressing: ${textFromAny(data?.requestText)}\nStore the response as the complete value of tracker ${target}.`;
+      }
+      const directFieldLabels = {
+        effectChangeFirstAction: "opening/first action",
+        effectChangeObjective: "world objective",
+        effectChangeBackground: "background story",
+        effectChangeDescriptionInstructions: "narration/output rules"
+      };
+      if (directFieldLabels[type]) return `For this and future turns, replace the imported ${directFieldLabels[type]} with:\n${renderInfiniteWorldsTemplateText(textFromAny(data), lookup, { useCurrentValues: false })}`;
+      if (type === "effectChangeDefeatCondition") return `Replace the imported defeat condition with:\n${compactJsonForWorldImport(data)}`;
+      return `Unsupported Infinite Worlds effect type “${type || "unknown"}”; preserve and interpret this source payload as faithfully as possible:\n${compactJsonForWorldImport(effect)}`;
+    }
+
+    function infiniteWorldsCharacterRestrictionAllowsEvent(node, lookup) {
+      if (!isPlainObject(node)) return true;
+      if (node.category === "logic") {
+        const children = (Array.isArray(node.data) ? node.data : []).map(child => infiniteWorldsCharacterRestrictionAllowsEvent(child, lookup));
+        return textFromAny(node.operator).toLowerCase() === "or" ? children.some(Boolean) : children.every(Boolean);
+      }
+      if (textFromAny(node.type) !== "triggerOnCharacter") return true;
+      const ids = Array.isArray(node.data) ? node.data.map(textFromAny) : [textFromAny(node.data)];
+      const selectedId = textFromAny(lookup?.selectedCharacter?.characterId || lookup?.selectedCharacter?.id);
+      return !selectedId || ids.includes(selectedId);
+    }
+
+    function convertInfiniteWorldsTriggerEvents(events = [], context = {}) {
+      const sourceEvents = Array.isArray(events) ? events : [];
+      return sourceEvents.map((event, idx) => {
         if (!isPlainObject(event)) return null;
+        if ((Array.isArray(event.triggerConditions) ? event.triggerConditions : []).some(node => !infiniteWorldsCharacterRestrictionAllowsEvent(node, context.lookup))) return null;
         const name = textFromAny(event.name || event.title || `Infinite Worlds Trigger ${idx + 1}`);
         const conditionParts = [];
-        if (event.triggerOnStartOfGame) conditionParts.push("At the start of the adventure.");
-        if (Array.isArray(event.triggerConditions) && event.triggerConditions.length) {
-          conditionParts.push(event.triggerConditions.map((condition, cIdx) => {
-            if (typeof condition === "string") return condition;
-            if (isPlainObject(condition)) return textFromAny(condition.text || condition.condition || condition.data || compactJsonForWorldImport(condition));
-            return "";
-          }).filter(Boolean).join("\n"));
-        }
-        const effectText = Array.isArray(event.triggerEffects)
-          ? event.triggerEffects.map((effect, eIdx) => {
-              if (typeof effect === "string") return effect;
-              if (isPlainObject(effect)) return textFromAny(effect.data || effect.text || effect.effect || effect.instructions || compactJsonForWorldImport(effect));
-              return "";
-            }).filter(Boolean).join("\n\n")
-          : "";
+        if (event.triggerOnStartOfGame) conditionParts.push("The adventure has not generated its first scene yet.");
+        const sourceConditions = Array.isArray(event.triggerConditions) ? event.triggerConditions : [];
+        const translatedConditions = sourceConditions.map(condition => convertInfiniteWorldsConditionNode(condition, context.lookup)).filter(Boolean);
+        if (translatedConditions.length) conditionParts.push(translatedConditions.join(" AND "));
+        if (event.canTriggerMoreThanOnce !== true) conditionParts.push("This is a one-shot imported trigger: activate it only when triggered_count is 0.");
+        else conditionParts.push("This imported trigger may activate more than once whenever its condition becomes true again.");
+        const effects = (Array.isArray(event.triggerEffects) ? event.triggerEffects : []).map(effect => convertInfiniteWorldsEffect(effect, context)).filter(Boolean);
+        const fallbackEffect = textFromAny(event.effect || event.instructions || event.data);
+        const effect = joinImportSections([effects.join("\n\n"), fallbackEffect]);
         const condition = conditionParts.filter(Boolean).join("\n") || `When the Infinite Worlds trigger “${name}” should fire.`;
-        const effect = effectText || textFromAny(event.effect || event.instructions || event.data || compactJsonForWorldImport(event));
         if (!condition && !effect) return null;
-        return { timing: event.triggerOnStartOfGame ? "before" : "before", condition: `${name}: ${condition}`, effect, addTextAfter: false };
+        // Preserve the original Infinite Worlds condition tree so the app can evaluate the
+        // trigger mechanically (trackers, turn numbers, milestones) with no LLM query.
+        // Start-of-game events keep their text-only guard, so they stay LLM-checked.
+        const machineConditions = (!event.triggerOnStartOfGame && sourceConditions.length) ? deepClone(sourceConditions) : null;
+        return {
+          id: textFromAny(event.id) || undefined,
+          label: name,
+          timing: "before",
+          evaluationMode: machineConditions ? "iw_conditions" : "llm",
+          condition,
+          effect: effect || `Apply the imported Infinite Worlds event “${name}”.`,
+          addTextAfter: false,
+          repeat: event.canTriggerMoreThanOnce === true,
+          ...(machineConditions ? { iwConditions: machineConditions } : {})
+        };
       }).filter(Boolean);
     }
 
     function conditionToEventTrigger(rawCondition, fallbackName, fallbackEffect) {
-      if (!rawCondition) return null;
-      const condition = typeof rawCondition === "string" ? rawCondition : textFromAny(rawCondition.condition || rawCondition.when || rawCondition.text || rawCondition.name || compactJsonForWorldImport(rawCondition));
-      const effect = typeof rawCondition === "string" ? fallbackEffect : textFromAny(rawCondition.effect || rawCondition.result || rawCondition.outcome || rawCondition.data || rawCondition.text || fallbackEffect);
+      if (!rawCondition || (isPlainObject(rawCondition) && rawCondition.alreadyFired === true)) return null;
+      const condition = typeof rawCondition === "string" ? rawCondition : textFromAny(rawCondition.condition || rawCondition.when || rawCondition.text || rawCondition.name) || compactJsonForWorldImport(rawCondition);
+      // Infinite Worlds ending conditions carry an author-written end screen in `text`.
+      // Instead of treating that text as loose effect guidance, instruct the model to end
+      // the adventure and present the author's ending verbatim.
+      const endingText = typeof rawCondition === "string" ? "" : textFromAny(rawCondition.text);
+      const effect = endingText
+        ? `${fallbackName} reached — the adventure is over. Bring the current scene to a close, then append the world author's ending text, exactly as written, clearly separated from the narration. Do not paraphrase, shorten, or restyle it:\n${endingText}\n\nAfter presenting this ending, treat the story as concluded; do not open new plot threads.`
+        : (typeof rawCondition === "string" ? fallbackEffect : textFromAny(rawCondition.effect || rawCondition.result || rawCondition.outcome || rawCondition.data) || fallbackEffect);
       if (!condition && !effect) return null;
-      return { timing: "after", condition: `${fallbackName}: ${condition || fallbackName}`, effect: effect || fallbackEffect, addTextAfter: true };
+      return { timing: "after", evaluationMode: "llm", condition: `${fallbackName}: ${condition || fallbackName}\nActivate only when triggered_count is 0.`, effect: effect || fallbackEffect, addTextAfter: true, label: fallbackName };
     }
 
-    function buildInfiniteWorldsCharacterText(character = {}, allCharacters = []) {
+    function buildInfiniteWorldsCharacterText(character = {}, allCharacters = [], sourceWorld = {}) {
       if (!isPlainObject(character)) return "";
+      if (character.iwCustomCharacter === true) {
+        const guidance = textFromAny(sourceWorld.charSelectText);
+        return joinImportSections([
+          "Custom character — replace this text with your own player character before starting: name, appearance, personality, background, and anything else the narrator should know.",
+          guidance ? `World author's character-creation guidance:\n${guidance}` : ""
+        ]);
+      }
       const name = textFromAny(character.name || "Player Character");
-      const initialTrackers = Array.isArray(character.initialTrackedItemValues) && character.initialTrackedItemValues.length
-        ? sectionText("Initial tracked item values:", compactJsonForWorldImport(character.initialTrackedItemValues))
-        : "";
+      // Physical description lives in the portrait prompt fields in Infinite Worlds; fold the
+      // durable parts (appearance, usual attire) into the character description so the story
+      // and image prompts stay accurate.
+      const portrait = isPlainObject(character.portraitPromptDetails) ? character.portraitPromptDetails : {};
+      const appearance = textFromAny(portrait.illustrAppearance || portrait.appearance);
+      const attire = textFromAny(portrait.illustrClothes || portrait.clothes);
       return joinImportSections([
         name,
         textFromAny(character.description),
-        initialTrackers
+        appearance ? `Appearance: ${appearance}` : "",
+        attire ? `Usual attire: ${attire}` : ""
       ]);
     }
 
+    const IW_IMAGE_STYLE_HINTS = {
+      anime: "clean, richly detailed modern anime illustration",
+      jojo: "bold JoJo's Bizarre Adventure-inspired anime style: heavy linework, dramatic poses, saturated colors, stylish framing",
+      cgi_1: "high-end cel-shaded 3D CGI render, like a stylized game cinematic",
+      cgi_2: "polished 3D CGI render with cinematic lighting",
+      realistic: "photorealistic digital illustration",
+      painting: "painterly digital illustration with visible brushwork",
+      comic: "western comic-book illustration with bold inks"
+    };
+    const IW_IMAGE_MODEL_HINTS = {
+      "flux.1": "high prompt adherence; describe scenes in full natural-language sentences",
+      manticore: "detailed, realism-leaning rendering; concrete physical descriptions work best"
+    };
+
     function buildInfiniteWorldsImageGuidance(source = {}) {
       const fields = [
+        ["Source image model", source.imageModel],
+        ["Source image style", source.imageStyle],
         ["Non-character style, low priority", source.illustrationStyleNonCharacterLowPriority],
         ["Non-character style, high priority", source.illustrationStyleNonCharacterHighPriority],
         ["Character style, low priority", source.illustrationStyleCharacterLowPriority],
@@ -11654,38 +12721,295 @@ ${missingList}`,
         ["Non-character image prefix", source.imageStyleNonCharacterPre],
         ["Non-character image suffix", source.imageStyleNonCharacterPost]
       ].filter(([, value]) => textFromAny(value));
-      const promptDetails = isPlainObject(source.imagePromptDetails) && Object.keys(source.imagePromptDetails).length
-        ? `Image prompt details:\n${compactJsonForWorldImport(source.imagePromptDetails)}`
-        : "";
-      const imageGuidanceText = [fields.map(([label, value]) => `${label}: ${textFromAny(value)}`).join("\n"), promptDetails].filter(Boolean).join("\n\n");
-      const imageGuidanceIntro = "Use the following as templates and guidelines when creating your image prompts";
-      const text = imageGuidanceText ? `${imageGuidanceIntro}\n${imageGuidanceText}` : "";
+      const styleHint = IW_IMAGE_STYLE_HINTS[textFromAny(source.imageStyle).toLowerCase()] || "";
+      const modelHint = IW_IMAGE_MODEL_HINTS[textFromAny(source.imageModel).toLowerCase()] || "";
+      const hintLines = [
+        styleHint ? `Interpreted style for “${textFromAny(source.imageStyle)}”: ${styleHint}. Describe every scene image prompt in this style.` : "",
+        modelHint ? `Source image model “${textFromAny(source.imageModel)}” notes: ${modelHint}.` : ""
+      ].filter(Boolean);
+      const imageGuidanceText = [...fields.map(([label, value]) => `${label}: ${textFromAny(value)}`), ...hintLines].join("\n");
+      const text = imageGuidanceText ? `Use the following as templates and guidelines when creating scene image prompts. The source cover-image prompt details are intentionally not reused as recurring scene instructions.\n${imageGuidanceText}` : "";
       return sectionText("Infinite Worlds image / illustration guidance", text);
     }
 
-    function buildInfiniteWorldsPermissionNotes(source = {}) {
-      const fields = [
-        ["NSFW", source.nsfw],
-        ["Content warnings", source.contentWarnings],
-        ["AI-specific instruction blocks enabled", source.enableAISpecificInstructionBlocks],
-        ["Allow character name changes", source.allowChangeCharacterName],
-        ["Allow character description changes", source.allowChangeCharacterDescription],
-        ["Allow character skills changes", source.allowChangeCharacterSkills],
-        ["Allow character item-value changes", source.allowChangeCharacterItemValues],
-        ["Allow character portrait changes", source.allowChangeCharacterPortrait],
-        ["Allow new character portraits", source.allowChangeCharacterNewPortrait],
-        ["Permissions once shared", isPlainObject(source.permissionsOnceShared) ? compactJsonForWorldImport(source.permissionsOnceShared) : ""]
-      ].filter(([, value]) => value !== undefined && value !== null && textFromAny(value) !== "");
-      return sectionText("Infinite Worlds settings and permissions", fields.map(([label, value]) => `${label}: ${textFromAny(value)}`).join("\n"));
+    function buildInfiniteWorldsContentMetadata(source = {}) {
+      const fields = [];
+      if (source.mature === true) fields.push("Mature content flag: true");
+      if (source.nsfw === true) fields.push("NSFW content flag: true");
+      if (textFromAny(source.contentWarnings)) fields.push(`Content warnings: ${textFromAny(source.contentWarnings)}`);
+      return sectionText("Infinite Worlds content metadata", fields.join("\n"));
     }
 
-    function buildInfiniteWorldsInstructionBlocks(source = {}) {
+    function chooseInfiniteWorldsAIProfile(source = {}, options = {}) {
+      // Profile restrictions only mean anything when the world explicitly enables
+      // AI-specific instruction blocks. Otherwise every block is a normal active block.
+      if (source.enableAISpecificInstructionBlocks !== true) return { profileMode: false, selectedAIProfile: "", availableProfiles: [] };
+      const blocks = Array.isArray(source.instructionBlocks) ? source.instructionBlocks : [];
+      const availableProfiles = [...new Set(blocks.flatMap(block => Array.isArray(block?.selectedAIProfiles) ? block.selectedAIProfiles.map(textFromAny).filter(Boolean) : []))];
+      if (!availableProfiles.length) return { profileMode: true, selectedAIProfile: "", availableProfiles };
+      if (options.resolveStartSetup && typeof window !== "undefined" && typeof window.prompt === "function") {
+        const result = promptInfiniteWorldsChoice({
+          message: "This Infinite Worlds world restricts some instruction blocks to specific AI profiles. Pick the profile to emulate; its blocks will be activated.",
+          choices: [...availableProfiles, "None of these profiles (skip profile-restricted blocks)"].join("\n"),
+          selectionMode: "single"
+        });
+        const value = textFromAny(result?.value);
+        if (result?.completed && availableProfiles.includes(value)) return { profileMode: true, selectedAIProfile: value, availableProfiles };
+      }
+      return { profileMode: true, selectedAIProfile: "", availableProfiles };
+    }
+
+    function buildInfiniteWorldsInstructionBlocks(source = {}, mutableBlockIds = new Set(), lookup = null, options = {}) {
       const blocks = Array.isArray(source.instructionBlocks) ? source.instructionBlocks : [];
       if (!blocks.length) return "";
-      return sectionText("Infinite Worlds instruction blocks", blocks.map((block, idx) => {
-        if (!isPlainObject(block)) return "";
-        return `${textFromAny(block.name || `Instruction Block ${idx + 1}`)}\n${textFromAny(block.content || block.text || block.instructions || compactJsonForWorldImport(block))}`.trim();
-      }).filter(Boolean).join("\n\n"));
+      const profileMode = source.enableAISpecificInstructionBlocks === true;
+      const selectedProfile = textFromAny(options.selectedAIProfile);
+      const keywordBlockIds = options.keywordBlockIds instanceof Set ? options.keywordBlockIds : new Set();
+      const active = [];
+      const excludedProfiles = [];
+      blocks.forEach((block, idx) => {
+        if (!isPlainObject(block)) return;
+        const id = textFromAny(block.id);
+        if (mutableBlockIds.has(id) || keywordBlockIds.has(id || `index-${idx}`)) return;
+        const profiles = Array.isArray(block.selectedAIProfiles) ? block.selectedAIProfiles.map(textFromAny).filter(Boolean) : [];
+        if (profileMode && profiles.length && !(selectedProfile && profiles.includes(selectedProfile))) {
+          excludedProfiles.push(`${textFromAny(block.name || `Instruction Block ${idx + 1}`)} (source profiles: ${profiles.join(", ")})`);
+          return;
+        }
+        const content = renderInfiniteWorldsTemplateText(textFromAny(block.content || block.text || block.instructions), lookup, { useCurrentValues: false });
+        if (content) active.push(`${textFromAny(block.name || `Instruction Block ${idx + 1}`)}\n${content}`.trim());
+      });
+      return joinImportSections([
+        active.length ? sectionText("Infinite Worlds instruction blocks", active.join("\n\n")) : "",
+        excludedProfiles.length ? sectionText("AI-profile-specific blocks not activated", `These blocks are restricted to Infinite Worlds AI profiles that were not selected during import, so they were not made active:\n- ${excludedProfiles.join("\n- ")}`) : ""
+      ]);
+    }
+
+    function buildInfiniteWorldsKeywordInstructionBlockTriggers(source = {}, mutableBlockIds = new Set(), lookup = null, options = {}) {
+      // Instruction blocks that carry a keywords list behave like Infinite Worlds keyword
+      // blocks: they should only steer the story while their keywords are on screen. They
+      // become client-side keyword triggers instead of always-on rules text.
+      const triggers = [];
+      const keywordBlockIds = new Set();
+      const profileMode = source.enableAISpecificInstructionBlocks === true;
+      const selectedProfile = textFromAny(options.selectedAIProfile);
+      (Array.isArray(source.instructionBlocks) ? source.instructionBlocks : []).forEach((block, idx) => {
+        if (!isPlainObject(block)) return;
+        const id = textFromAny(block.id);
+        if (mutableBlockIds.has(id)) return;
+        const keywords = Array.isArray(block.keywords) ? block.keywords.map(textFromAny).filter(Boolean) : [];
+        if (!keywords.length) return;
+        const profiles = Array.isArray(block.selectedAIProfiles) ? block.selectedAIProfiles.map(textFromAny).filter(Boolean) : [];
+        if (profileMode && profiles.length && !(selectedProfile && profiles.includes(selectedProfile))) return;
+        const content = renderInfiniteWorldsTemplateText(textFromAny(block.content || block.text || block.instructions), lookup, { useCurrentValues: false });
+        if (!content) return;
+        const name = textFromAny(block.name || `Instruction Block ${idx + 1}`);
+        keywordBlockIds.add(id || `index-${idx}`);
+        triggers.push({
+          id: id ? `iw_block_kw_${id}` : uid("event_trigger"),
+          label: `Instructions: ${name}`,
+          timing: "before",
+          evaluationMode: "keywords",
+          keywords,
+          repeat: true,
+          condition: `Automatic keyword scan (evaluated by the app, no AI check): activates while any of these keywords appear in the player's action or the last few scenes: ${keywords.join(", ")}.`,
+          effect: `The imported Infinite Worlds instruction block “${name}” applies to the current scene. Follow these instructions for this turn:\n${content}`,
+          addTextAfter: false
+        });
+      });
+      return { triggers, keywordBlockIds };
+    }
+
+    function buildInfiniteWorldsLoreKeywordTriggers(source = {}, mutableContent = null, mutableLoreIds = new Set(), lookup = null) {
+      // Lorebook entries with keywords become client-side keyword triggers: the moment a
+      // keyword shows up in the player's action or the recent scenes, the entry's full text is
+      // injected into the turn writer's context — exactly how Infinite Worlds lorebooks work,
+      // with zero extra LLM queries.
+      const triggers = [];
+      const handledLoreIds = new Set();
+      const keywordLoreNames = [];
+      (Array.isArray(source.loreBookEntries) ? source.loreBookEntries : []).forEach((entry, idx) => {
+        if (!isPlainObject(entry)) return;
+        const entryId = textFromAny(entry.id);
+        const entryKey = entryId || `index-${idx}`;
+        const name = textFromAny(entry.name || `Lore entry ${idx + 1}`);
+        const keywords = Array.isArray(entry.keywords) ? entry.keywords.map(textFromAny).filter(Boolean) : [];
+        if (entryId && mutableLoreIds.has(entryId)) {
+          // Mutable lore already lives in a tracker (so events can rewrite it). The trigger
+          // reads its keywords live from the tracker's "Keywords:" line, so keyword changes
+          // made by events keep working, and points the model at the tracker's current value.
+          const tracker = mutableContent?.loreTrackerBySourceId?.get?.(entryId) || null;
+          if (!tracker) return;
+          handledLoreIds.add(entryKey);
+          keywordLoreNames.push(name);
+          triggers.push({
+            id: `iw_lore_kw_${entryId}`,
+            label: `Lore: ${name}`,
+            timing: "before",
+            evaluationMode: "keywords",
+            keywords,
+            keywordSourceTrackerId: tracker.id,
+            repeat: true,
+            condition: `Automatic keyword scan (evaluated by the app, no AI check): activates while any keyword of the mutable lore tracker “${tracker.name}” appears in the player's action or the last few scenes. Keywords are read live from the tracker's “Keywords:” line.`,
+            effect: `The keywords of imported lore tracker “${tracker.name}” are present in the current scene. Treat that tracker's complete current value as active, authoritative background lore for this turn. Use it for accuracy and continuity; do not treat this as a plot event and do not force the lore into the narration.`,
+            addTextAfter: false
+          });
+          return;
+        }
+        if (!keywords.length) return; // No keywords: the entry stays always-on in the story rules.
+        const content = renderInfiniteWorldsTemplateText(textFromAny(entry.content || entry.text || entry.description), lookup, { useCurrentValues: false });
+        if (!content) return;
+        handledLoreIds.add(entryKey);
+        keywordLoreNames.push(name);
+        triggers.push({
+          id: entryId ? `iw_lore_kw_${entryId}` : uid("event_trigger"),
+          label: `Lore: ${name}`,
+          timing: "before",
+          evaluationMode: "keywords",
+          keywords,
+          repeat: true,
+          condition: `Automatic keyword scan (evaluated by the app, no AI check): activates while any of these keywords appear in the player's action or the last few scenes: ${keywords.join(", ")}.`,
+          effect: joinImportSections([
+            `Imported Infinite Worlds lore “${name}” is relevant to the current scene. Use it as authoritative background for accuracy and continuity; do not treat it as a plot event and do not force it into the narration.`,
+            content
+          ]),
+          addTextAfter: false
+        });
+      });
+      const rosterText = keywordLoreNames.length
+        ? sectionText("Keyword-activated lorebook entries", `These imported lore entries exist and surface automatically (with their full text) whenever their keywords come up: ${keywordLoreNames.join("; ")}. Do not invent contradicting lore for these topics.`)
+        : "";
+      return { triggers, handledLoreIds, rosterText };
+    }
+
+    function buildInfiniteWorldsLoreBook(source = {}, excludedLoreKeys = new Set()) {
+      const entries = (Array.isArray(source.loreBookEntries) ? source.loreBookEntries : []).filter((entry, idx) => isPlainObject(entry) && !excludedLoreKeys.has(textFromAny(entry.id) || `index-${idx}`));
+      if (!entries.length) return "";
+      return sectionText("Infinite Worlds lorebook", entries.map((entry, idx) => joinImportSections([
+        `[Lore entry: ${textFromAny(entry.name || `Entry ${idx + 1}`)}]`,
+        Array.isArray(entry.keywords) && entry.keywords.length ? `Keywords: ${entry.keywords.map(textFromAny).filter(Boolean).join(", ")}` : "",
+        textFromAny(entry.content || entry.text || entry.description)
+      ])).filter(Boolean).join("\n\n---\n\n"));
+    }
+
+    function infiniteWorldsNpcSheetText(npc = {}, idx = 0, lookup = null) {
+      return joinImportSections([
+        `[NPC: ${textFromAny(npc.name || `NPC ${idx + 1}`)}]`,
+        Array.isArray(npc.names) && npc.names.length ? `Names and aliases: ${npc.names.map(textFromAny).filter(Boolean).join(", ")}` : "",
+        textFromAny(npc.location) ? `Known source location: ${textFromAny(npc.location)}` : "",
+        renderInfiniteWorldsTemplateText(textFromAny(npc.one_liner), lookup, { useCurrentValues: false }),
+        textFromAny(npc.appearance) ? `Appearance:\n${renderInfiniteWorldsTemplateText(textFromAny(npc.appearance), lookup, { useCurrentValues: false })}` : "",
+        renderInfiniteWorldsTemplateText(textFromAny(npc.detail || npc.description), lookup, { useCurrentValues: false }),
+        textFromAny(npc.secret_info || npc.secretInfo) ? `Private information for the narrator only — never reveal it to the player directly; let it surface through story events if at all:\n${renderInfiniteWorldsTemplateText(textFromAny(npc.secret_info || npc.secretInfo), lookup, { useCurrentValues: false })}` : ""
+      ]);
+    }
+
+    function buildInfiniteWorldsNpcKeywordTriggers(source = {}, lookup = null) {
+      // Every named NPC becomes a client-side keyword trigger: whenever their name (or an
+      // alias) appears in the player's action or the recent scenes, their full reference sheet
+      // — including narrator-only secrets — is injected into the turn writer's context. The
+      // story rules keep only a compact roster so the model knows who exists.
+      const npcs = (Array.isArray(source.NPCs) ? source.NPCs : (Array.isArray(source.npcs) ? source.npcs : [])).filter(isPlainObject);
+      const triggers = [];
+      const handledNpcKeys = new Set();
+      const rosterNames = [];
+      npcs.forEach((npc, idx) => {
+        const name = textFromAny(npc.name);
+        if (!name) return;
+        const keywords = new Set([name]);
+        name.split(/\s+/).forEach(word => { const clean = word.trim(); if (clean.length >= 3) keywords.add(clean); });
+        (Array.isArray(npc.names) ? npc.names : []).forEach(alias => { const clean = textFromAny(alias); if (clean) keywords.add(clean); });
+        handledNpcKeys.add(textFromAny(npc.id) || `index-${idx}`);
+        rosterNames.push(name);
+        triggers.push({
+          id: textFromAny(npc.id) ? `iw_npc_kw_${textFromAny(npc.id)}` : uid("event_trigger"),
+          label: `NPC: ${name}`,
+          timing: "before",
+          evaluationMode: "keywords",
+          keywords: [...keywords],
+          repeat: true,
+          condition: `Automatic keyword scan (evaluated by the app, no AI check): activates while ${name} (or an alias) is mentioned in the player's action or the last few scenes.`,
+          effect: joinImportSections([
+            `The imported Infinite Worlds NPC ${name} is present or relevant in the current scene. Use this full reference sheet as authoritative characterization and continuity for them; do not treat this as a plot event.`,
+            infiniteWorldsNpcSheetText(npc, idx, lookup)
+          ]),
+          addTextAfter: false
+        });
+      });
+      const rosterText = rosterNames.length
+        ? sectionText("Infinite Worlds NPC roster", `These NPCs exist in this world: ${rosterNames.join("; ")}. Their full reference sheets (including private narrator-only information) are injected automatically whenever they come up, so keep them consistent and do not invent replacements for them.`)
+        : "";
+      return { triggers, handledNpcKeys, rosterText };
+    }
+
+    function buildInfiniteWorldsNpcReference(source = {}, handledNpcKeys = new Set()) {
+      const npcs = (Array.isArray(source.NPCs) ? source.NPCs : (Array.isArray(source.npcs) ? source.npcs : [])).filter(isPlainObject)
+        .filter((npc, idx) => !handledNpcKeys.has(textFromAny(npc.id) || `index-${idx}`));
+      if (!npcs.length) return "";
+      return sectionText("Infinite Worlds NPC reference", npcs.map((npc, idx) => infiniteWorldsNpcSheetText(npc, idx, null)).filter(Boolean).join("\n\n---\n\n"));
+    }
+
+    function buildInfiniteWorldsConditionHints(source = {}) {
+      const conditions = Array.isArray(source.conditions) ? source.conditions.map(textFromAny).filter(Boolean) : [];
+      return conditions.length ? sectionText("Infinite Worlds reusable trigger-condition phrases", conditions.map(item => `- ${item}`).join("\n")) : "";
+    }
+
+    function collectInfiniteWorldsMilestoneConditionTexts(events = [], extraConditions = []) {
+      // Narrative triggerOnEvent conditions become checkable "milestones": the model marks
+      // them off in a native tracker as they happen, and the app then evaluates the imported
+      // trigger conditions mechanically against that checklist.
+      const texts = new Set();
+      const visit = node => {
+        if (typeof node === "string") { if (node.trim()) texts.add(node.trim()); return; }
+        if (!isPlainObject(node)) return;
+        if (node.category === "logic") { (Array.isArray(node.data) ? node.data : []).forEach(visit); return; }
+        if (textFromAny(node.type) === "triggerOnEvent") {
+          const text = typeof node.data === "string" ? node.data : textFromAny(node.data?.text || node.data?.condition);
+          if (text.trim()) texts.add(text.trim());
+        }
+      };
+      (Array.isArray(events) ? events : []).forEach(event => (Array.isArray(event?.triggerConditions) ? event.triggerConditions : []).forEach(visit));
+      (Array.isArray(extraConditions) ? extraConditions : []).forEach(item => { const text = textFromAny(item); if (text) texts.add(text); });
+      return [...texts];
+    }
+
+    function buildInfiniteWorldsMilestoneTracker(milestoneTexts = []) {
+      if (!milestoneTexts.length) return null;
+      return {
+        id: "iw_milestones",
+        name: "Story milestones",
+        rules: [
+          "Imported Infinite Worlds milestone checklist. Each line is “[ ] milestone” (has not happened) or “[x] milestone” (has happened).",
+          "As soon as a listed milestone clearly happens in the story, change its “[ ]” to “[x]” via tracker_updates. Never delete, reword, or reorder lines — always return the complete checklist as the value.",
+          "These lines mechanically control imported event triggers, so mark them promptly, and only when the milestone has truly occurred."
+        ].join("\n"),
+        value: milestoneTexts.map(text => `[ ] ${text}`).join("\n")
+      };
+    }
+
+    const IW_FIELD_TRANSLATION_RULES = [
+      { pattern: /\boutcomeDescription\b/i, note: "“outcomeDescription” → Infinite Quest's “narration” field (the main story text of each turn)." },
+      { pattern: /\bsuggestedActions?\b/i, note: "“suggestedActions” → Infinite Quest's “choices” list of next-action suggestions." },
+      { pattern: /\billustr[A-Z]\w*/, note: "“illustrSubject”, “illustrSetting”, “illustrAppearance”, “illustrClothes”, “illustrExpressionPosition”, and other “illustr…” fields → guidance for composing Infinite Quest's single “image_prompt” for the turn's scene image; apply their rules when writing image_prompt." },
+      { pattern: /evaluation field|<evaluation>|\"evaluation\"|“evaluation”|'evaluation'/i, note: "the “evaluation” field or step → Infinite Quest's private reasoning about how the player's action resolves (including RPG-roll outcomes); apply those rules when deciding outcomes." },
+      { pattern: /summary field|<summary>|\"summary\"|“summary”/i, note: "the “summary” field or step → Infinite Quest's private scratchpad and compressed memory; apply those rules when updating them." },
+      { pattern: /\bplayerCharacterUpdate\b/i, note: "“playerCharacterUpdate” → updates to the player character are tracked through Infinite Quest's trackers and scratchpad instead." }
+    ];
+
+    function buildInfiniteWorldsFieldTranslationGuide(sampleText = "") {
+      const notes = IW_FIELD_TRANSLATION_RULES.filter(rule => rule.pattern.test(sampleText)).map(rule => `- ${rule.note}`);
+      return notes.length
+        ? sectionText("Infinite Worlds → Infinite Quest field translation", `The imported instructions below were written for Infinite Worlds' output format. When they mention these fields, map them onto Infinite Quest's output like this:\n${notes.join("\n")}`)
+        : "";
+    }
+
+    function buildInfiniteWorldsVariableLegend(trackerSources = []) {
+      const lines = (Array.isArray(trackerSources) ? trackerSources : [])
+        .filter(item => isPlainObject(item) && textFromAny(item.variableName))
+        .map(item => `- <<${textFromAny(item.variableName)}>> = the current value of tracker “${textFromAny(item.name || item.variableName)}” (tracker id: ${textFromAny(item.id) || "unknown"})`);
+      return lines.length
+        ? sectionText("Infinite Worlds template variables", `When imported text contains <<variable>> markers or bracketed “[use the current value of …]” notes, substitute the named tracker's current value:\n${lines.join("\n")}`)
+        : "";
     }
 
     function inferInfiniteWorldsGenre(source = {}) {
@@ -11712,74 +13036,149 @@ ${missingList}`,
       return style || "Interactive fiction adapted from Infinite Worlds JSON";
     }
 
-    function convertInfiniteWorldsJsonToWorldImport(source = {}, selectedCharacter = null) {
-      const characters = getInfiniteWorldsPlayableCharacters(source);
-      const firstCharacter = isPlainObject(selectedCharacter) ? selectedCharacter : (characters[0] || {});
+    function convertInfiniteWorldsJsonToWorldImport(source = {}, selectedCharacter = null, options = {}) {
+      const sourceCharacters = getInfiniteWorldsPlayableCharacters(source);
+      const firstCharacter = isPlainObject(selectedCharacter) ? selectedCharacter : (sourceCharacters[0] || {});
       const firstCharacterName = textFromAny(firstCharacter.name);
+      const setupResult = resolveInfiniteWorldsStartSetup(source, firstCharacter, options);
+      const working = setupResult.working;
+      const trackerSources = Array.isArray(working.trackedItems) ? working.trackedItems : [];
+      const lookup = buildInfiniteWorldsLookup(working, trackerSources, firstCharacter);
+      const remainingEvents = (Array.isArray(working.triggerEvents) ? working.triggerEvents : []).filter(event =>
+        (Array.isArray(event?.triggerConditions) ? event.triggerConditions : []).every(node => infiniteWorldsCharacterRestrictionAllowsEvent(node, lookup))
+      );
+      const mutableTargets = infiniteWorldsMutableTargetSets(remainingEvents);
+      const mutableContent = buildInfiniteWorldsMutableContentTrackers(working, mutableTargets);
+      const conditionalTrackerRules = compileInfiniteWorldsConditionalTrackerRules(remainingEvents, lookup);
+      const profileChoice = chooseInfiniteWorldsAIProfile(working, options);
+      const loreKeyword = buildInfiniteWorldsLoreKeywordTriggers(working, mutableContent, mutableTargets.loreIds, lookup);
+      const npcKeyword = buildInfiniteWorldsNpcKeywordTriggers(working, lookup);
+      const blockKeyword = buildInfiniteWorldsKeywordInstructionBlockTriggers(working, mutableTargets.blockIds, lookup, profileChoice);
+      const milestoneTexts = collectInfiniteWorldsMilestoneConditionTexts(remainingEvents, working.conditions);
+      const milestoneTracker = buildInfiniteWorldsMilestoneTracker(milestoneTexts);
 
       const premise = joinImportSections([
-        sectionText("Description", source.description),
-        sectionText("Objective", source.objective)
+        sectionText("Description", working.description),
+        sectionText("Objective", working.objective)
       ]);
 
-      const triggerSummary = Array.isArray(source.triggerEvents) && source.triggerEvents.length
-        ? sectionText("Infinite Worlds trigger events", compactJsonForWorldImport(source.triggerEvents))
-        : "";
       const victoryDefeat = joinImportSections([
-        source.victoryCondition ? sectionText("Victory condition", typeof source.victoryCondition === "string" ? source.victoryCondition : compactJsonForWorldImport(source.victoryCondition)) : "",
-        source.defeatCondition ? sectionText("Defeat condition", typeof source.defeatCondition === "string" ? source.defeatCondition : compactJsonForWorldImport(source.defeatCondition)) : ""
+        working.victoryCondition ? sectionText("Victory condition", typeof working.victoryCondition === "string" ? working.victoryCondition : compactJsonForWorldImport(working.victoryCondition)) : "",
+        working.defeatCondition ? sectionText("Defeat condition", typeof working.defeatCondition === "string" ? working.defeatCondition : compactJsonForWorldImport(working.defeatCondition)) : ""
+      ]);
+
+      const translationSample = joinImportSections([
+        working.instructions,
+        working.descriptionRequest,
+        working.evaluationRequest,
+        working.summaryRequest,
+        (Array.isArray(working.instructionBlocks) ? working.instructionBlocks : []).map(block => isPlainObject(block) ? textFromAny(block.content || block.text || block.instructions) : "").join("\n")
       ]);
 
       const storyRules = joinImportSections([
-        sectionText("Main Infinite Worlds instructions", source.instructions),
-        sectionText("Summary request", source.summaryRequest),
-        buildInfiniteWorldsImageGuidance(source),
-        buildInfiniteWorldsInstructionBlocks(source),
-        buildInfiniteWorldsLongformArchive(source)
+        buildInfiniteWorldsFieldTranslationGuide(translationSample),
+        sectionText("Main Infinite Worlds instructions", working.instructions),
+        sectionText("Narration / outcome instructions", working.descriptionRequest),
+        sectionText("Action and character evaluation instructions", working.evaluationRequest),
+        Array.isArray(working.initialDirectives) && working.initialDirectives.length
+          ? sectionText("Resolved start-of-adventure directives", working.initialDirectives.map(item => `- ${item}`).join("\n"))
+          : "",
+        victoryDefeat ? sectionText("Imported end conditions", victoryDefeat) : "",
+        buildInfiniteWorldsVariableLegend(trackerSources),
+        buildInfiniteWorldsConditionHints(working),
+        buildInfiniteWorldsImageGuidance(working),
+        buildInfiniteWorldsInstructionBlocks(working, mutableTargets.blockIds, lookup, { selectedAIProfile: profileChoice.selectedAIProfile, keywordBlockIds: blockKeyword.keywordBlockIds }),
+        loreKeyword.rosterText,
+        buildInfiniteWorldsLoreBook(working, new Set([...mutableTargets.loreIds, ...loreKeyword.handledLoreIds])),
+        npcKeyword.rosterText,
+        buildInfiniteWorldsNpcReference(working, npcKeyword.handledNpcKeys),
+        buildInfiniteWorldsContentMetadata(working),
+        buildInfiniteWorldsLongformArchive(working)
       ]);
 
-      const defaultTriggers = [];
-      if (source.summaryRequest) {
-        defaultTriggers.push({
-          name: "Continuity / source summary request",
-          rules: "Update whenever source-important continuity changes occur. This tracker was created from the Infinite Worlds summaryRequest field.",
-          value: textFromAny(source.summaryRequest)
-        });
-      }
-      defaultTriggers.push(...convertInfiniteWorldsTrackedItems(firstCharacter.initialTrackedItemValues, firstCharacterName));
+      const defaultTriggers = convertInfiniteWorldsTrackedItems(trackerSources, firstCharacterName, conditionalTrackerRules);
+      defaultTriggers.push(...mutableContent.trackers);
+      if (milestoneTracker) defaultTriggers.push(milestoneTracker);
 
-      const eventTriggers = convertInfiniteWorldsTriggerEvents(source.triggerEvents);
-      const victoryTrigger = conditionToEventTrigger(source.victoryCondition, "Victory condition", "Resolve the victory condition according to the imported Infinite Worlds source.");
-      const defeatTrigger = conditionToEventTrigger(source.defeatCondition, "Defeat condition", "Resolve the defeat condition according to the imported Infinite Worlds source.");
+      const eventContext = { lookup, mutableContent };
+      const eventTriggers = [
+        ...loreKeyword.triggers,
+        ...npcKeyword.triggers,
+        ...blockKeyword.triggers,
+        ...convertInfiniteWorldsTriggerEvents(remainingEvents, eventContext)
+      ];
+      const victoryTrigger = conditionToEventTrigger(working.victoryCondition, "Victory condition", "Resolve the victory condition according to the imported Infinite Worlds source.");
+      const defeatTrigger = conditionToEventTrigger(working.defeatCondition, "Defeat condition", "Resolve the defeat condition according to the imported Infinite Worlds source.");
       if (victoryTrigger) eventTriggers.push(victoryTrigger);
       if (defeatTrigger) eventTriggers.push(defeatTrigger);
 
-      return {
+      const unsupportedEffectTypes = [...new Set(remainingEvents.flatMap(event => (Array.isArray(event?.triggerEffects) ? event.triggerEffects : []))
+        .map(effect => textFromAny(effect?.type))
+        .filter(type => type && !new Set([
+          "effectTellAIWhatToDo", "effectSetTrackedItemValue", "effectModifyTrackedItemDetails",
+          "effectModifyInstructionBlock", "effectModifyKeywordBlock", "effectPresentChoice",
+          "effectRequestInput", "effectChangeFirstAction", "effectChangeObjective",
+          "effectChangeBackground", "effectChangeDescriptionInstructions", "effectChangeDefeatCondition"
+        ]).has(type)))];
+
+      const knownRootKeys = new Set(["schemaVersion", "version", "autoAdvanceVersion", "id", "favorite", "title", "name", "description", "background", "instructions", "authorStyle", "firstInput", "objective", "designNotes", "recommendedAIModel", "imageModel", "imageStyle", "illustrationStyleNonCharacterLowPriority", "illustrationStyleNonCharacterHighPriority", "illustrationStyleCharacterLowPriority", "illustrationStyleCharacterHighPriority", "imageStyleCharacterPre", "imageStyleCharacterPost", "imageStyleNonCharacterPre", "imageStyleNonCharacterPost", "mature", "nsfw", "contentWarnings", "enableAISpecificInstructionBlocks", "previewImage", "fullSizePreviewImage", "previewImageOptions", "fullSizePreviewImageOptions", "currentPreviewImageIndex", "imagePromptDetails", "permissionsOnceShared", "allowChangeCharacterName", "allowChangeCharacterGender", "allowChangeCharacterDescription", "allowChangeCharacterSkills", "allowChangeCharacterPortrait", "allowChangeCharacterItemValues", "allowChangeCharacterNewPortrait", "conditions", "descriptionRequest", "evaluationRequest", "summaryRequest", "charSelectText", "skills", "possibleCharacters", "triggerEvents", "victoryCondition", "defeatCondition", "loreBookEntries", "trackedItems", "NPCs", "npcs", "instructionBlocks", "initialDirectives"]);
+      const unrecognizedRootKeys = isPlainObject(source) ? Object.keys(source).filter(key => !knownRootKeys.has(key)) : [];
+
+      const rpgStats = convertInfiniteWorldsSkillsToRpgStats(firstCharacter.iwCustomCharacter === true ? {} : firstCharacter.skills, firstCharacterName, working.skills);
+      const importReport = {
+        selectedCharacter: firstCharacter.iwCustomCharacter === true ? "Custom character (write your own)" : firstCharacterName,
+        selectedAIProfile: profileChoice.profileMode ? (profileChoice.selectedAIProfile || "none selected") : "",
+        availableAIProfiles: profileChoice.availableProfiles || [],
+        sourceTrackers: trackerSources.length,
+        importedTrackers: defaultTriggers.length,
+        sourceEvents: Array.isArray(source.triggerEvents) ? source.triggerEvents.length : 0,
+        resolvedStartEvents: setupResult.consumedCount,
+        importedEventTriggers: eventTriggers.length,
+        keywordLoreTriggers: loreKeyword.triggers.length,
+        npcKeywordTriggers: npcKeyword.triggers.length,
+        keywordInstructionBlockTriggers: blockKeyword.triggers.length,
+        milestoneCount: milestoneTexts.length,
+        rpgStatCount: rpgStats.length,
+        mutableInstructionBlocks: mutableTargets.blockIds.size,
+        mutableLoreEntries: mutableTargets.loreIds.size,
+        loreEntries: Array.isArray(working.loreBookEntries) ? working.loreBookEntries.length : 0,
+        npcEntries: Array.isArray(working.NPCs) ? working.NPCs.length : 0,
+        memoryInstructionsImported: !!textFromAny(working.summaryRequest),
+        unsupportedEffectTypes,
+        unrecognizedRootKeys
+      };
+      const converted = {
         export_type: "infinite-quest-world",
         version: 1,
         world: {
-          title: textFromAny(source.title || source.name || "Imported Infinite Worlds Adventure"),
-          genre: inferInfiniteWorldsGenre(source),
-          tone: inferInfiniteWorldsTone(source),
-          backgroundStory: textFromAny(source.background),
-          character: buildInfiniteWorldsCharacterText(firstCharacter, characters),
+          title: textFromAny(working.title || working.name || "Imported Infinite Worlds Adventure"),
+          genre: inferInfiniteWorldsGenre(working),
+          tone: inferInfiniteWorldsTone(working),
+          backgroundStory: textFromAny(working.background),
+          character: buildInfiniteWorldsCharacterText(firstCharacter, sourceCharacters, working),
           premise,
-          firstAction: textFromAny(source.firstInput),
+          firstAction: textFromAny(working.firstInput),
           rules: storyRules,
+          // Infinite Worlds' summaryRequest describes how to compress and remember the story —
+          // it drives Infinite Quest's memory compression instead of sitting in a tracker.
+          memoryInstructions: textFromAny(working.summaryRequest),
           suppressTriggers: false
         },
         settings: {
-          useRpgStats: !!(firstCharacter.skills && Object.keys(firstCharacter.skills || {}).length),
+          useRpgStats: rpgStats.length > 0,
           manualRpgSelection: false,
           enableResponseEditing: false,
           storytellerMode: false,
           betterMemoryManagement: true,
           turnSaverMode: false
         },
-        rpgStats: convertInfiniteWorldsSkillsToRpgStats(firstCharacter.skills, firstCharacterName),
+        rpgStats,
         defaultTriggers,
         eventTriggers
       };
+      converted.importReport = importReport;
+      console.info("Infinite Worlds non-LLM import report", importReport);
+      return converted;
     }
 
     function loadInfiniteWorldsJsonWithCharacterChoice(imported, options = {}) {
@@ -11789,6 +13188,7 @@ ${missingList}`,
         if (options.closeTextDialogOnLoad) closeWorldTextImportDialog();
         transientUi.characterSelectTarget = "infiniteWorldsJsonImport";
         transientUi.characterSelectOptions = normalizeInfiniteWorldsCharacterSelectOptions(imported);
+        transientUi.characterSelectIntro = textFromAny(imported.charSelectText);
         transientUi.pendingInfiniteWorldsJsonImport = {
           source: imported,
           closeTextDialogOnLoad: !!options.closeTextDialogOnLoad,
@@ -11799,7 +13199,38 @@ ${missingList}`,
         return "pending";
       }
       const selectedCharacter = isPlainObject(options.selectedCharacter) ? options.selectedCharacter : (characters[0] || {});
-      return applyWorldImport(convertInfiniteWorldsJsonToWorldImport(imported, selectedCharacter), { ...options, protectInfiniteWorldsImportFromTruncation: true });
+      const converted = convertInfiniteWorldsJsonToWorldImport(imported, selectedCharacter, { resolveStartSetup: options.resolveStartSetup !== false });
+      const loaded = applyWorldImport(converted, { ...options, protectInfiniteWorldsImportFromTruncation: true });
+      if (loaded === true) showInfiniteWorldsImportReportPopup(converted.importReport);
+      return loaded;
+    }
+
+    function describeInfiniteWorldsImportReport(report = {}) {
+      const lines = [];
+      if (report.selectedCharacter) lines.push(`Player character: ${report.selectedCharacter}`);
+      if (report.selectedAIProfile) lines.push(`AI profile emulated for restricted instruction blocks: ${report.selectedAIProfile}${Array.isArray(report.availableAIProfiles) && report.availableAIProfiles.length ? ` (available: ${report.availableAIProfiles.join(", ")})` : ""}`);
+      lines.push(`Trackers created: ${report.importedTrackers ?? 0} — ${report.sourceTrackers ?? 0} tracked item(s)${report.mutableInstructionBlocks ? `, ${report.mutableInstructionBlocks} mutable instruction block(s)` : ""}${report.mutableLoreEntries ? `, ${report.mutableLoreEntries} mutable lore entr${report.mutableLoreEntries === 1 ? "y" : "ies"}` : ""}${report.milestoneCount ? `, plus a "Story milestones" checklist with ${report.milestoneCount} milestone(s)` : ""}.`);
+      lines.push(`Event triggers created: ${report.importedEventTriggers ?? 0} — ${Math.max(0, (report.sourceEvents ?? 0) - (report.resolvedStartEvents ?? 0))} imported event(s)${report.resolvedStartEvents ? ` (${report.resolvedStartEvents} start-of-game event(s) were resolved during import)` : ""}.`);
+      const keywordBits = [];
+      if (report.keywordLoreTriggers) keywordBits.push(`${report.keywordLoreTriggers} lorebook entr${report.keywordLoreTriggers === 1 ? "y" : "ies"}`);
+      if (report.npcKeywordTriggers) keywordBits.push(`${report.npcKeywordTriggers} NPC sheet(s)`);
+      if (report.keywordInstructionBlockTriggers) keywordBits.push(`${report.keywordInstructionBlockTriggers} keyword instruction block(s)`);
+      if (keywordBits.length) lines.push(`Keyword-activated context (checked by the app each turn, no extra AI queries): ${keywordBits.join(", ")}. Their full text is injected automatically whenever their keywords appear in your action or recent scenes.`);
+      if (report.rpgStatCount) lines.push(`RPG skills imported: ${report.rpgStatCount}.`);
+      if (report.memoryInstructionsImported) lines.push(`The world's summary instructions now guide Infinite Quest's memory compression.`);
+      if (Array.isArray(report.unsupportedEffectTypes) && report.unsupportedEffectTypes.length) lines.push(`Unsupported Infinite Worlds effect types (kept as text guidance only): ${report.unsupportedEffectTypes.join(", ")}.`);
+      if (Array.isArray(report.unrecognizedRootKeys) && report.unrecognizedRootKeys.length) lines.push(`Unrecognized fields in this world file (imported as archived text where possible): ${report.unrecognizedRootKeys.join(", ")}.`);
+      lines.push("Browser-evaluated tracker/turn/milestone conditions and all Keyword Triggers are evaluated mechanically by the app without a trigger-check LLM query — they also work in Turn Saver Mode.");
+      return lines.join("\n\n");
+    }
+
+    function showInfiniteWorldsImportReportPopup(report) {
+      if (!report || typeof showMessagePopup !== "function") return;
+      try {
+        showMessagePopup("Infinite Worlds import report", describeInfiniteWorldsImportReport(report), 12000);
+      } catch (err) {
+        console.warn("Could not display the Infinite Worlds import report.", err);
+      }
     }
 
     function extractWorldImportPayload(imported) {
@@ -11819,6 +13250,7 @@ ${missingList}`,
           premise: world.premise || world.starting_situation || world.startingSituation || world.opening_situation || "",
           firstAction: world.firstAction || world.first_action || world.firstInput || world.first_input || world.opening_action || world.starting_action || "",
           rules: world.rules || world.story_rules || world.storyRules || world.style_guide || world.styleGuide || "",
+          memoryInstructions: world.memoryInstructions || world.memory_instructions || world.summaryInstructions || world.summary_instructions || "",
           suppressTriggers: !!(world.suppressTriggers ?? world.suppress_triggers ?? imported.suppressTriggers ?? imported.suppress_triggers ?? settings.suppressTriggers ?? settings.suppress_triggers)
         },
         useRpgStats: settings.useRpgStats ?? settings.use_rpg_stats ?? imported.useRpgStats ?? imported.use_rpg_stats,
@@ -11827,6 +13259,7 @@ ${missingList}`,
         storytellerMode: settings.storytellerMode ?? settings.storyteller_mode ?? settings.enableStorytellerMode ?? settings.enable_storyteller_mode ?? imported.storytellerMode ?? imported.storyteller_mode ?? imported.enableStorytellerMode ?? imported.enable_storyteller_mode,
         betterMemoryManagement: settings.betterMemoryManagement ?? settings.better_memory_management ?? imported.betterMemoryManagement ?? imported.better_memory_management,
         disableTextTruncation: settings.disableTextTruncation ?? settings.disable_text_truncation ?? imported.disableTextTruncation ?? imported.disable_text_truncation,
+        llmAssistedJsonRepair: settings.llmAssistedJsonRepair ?? settings.llm_assisted_json_repair ?? imported.llmAssistedJsonRepair ?? imported.llm_assisted_json_repair,
         turnSaverMode: settings.turnSaverMode ?? settings.turn_saver_mode ?? imported.turnSaverMode ?? imported.turn_saver_mode,
         rpgStats: normalizedStats,
         defaultTriggers: normalizeImportedTrackers(defaultTriggers),
@@ -11895,6 +13328,7 @@ ${missingList}`,
       state.world.premise = String(payload.world.premise || "").trim();
       state.world.firstAction = String(payload.world.firstAction || "").trim();
       state.world.rules = String(payload.world.rules || "").trim();
+      state.world.memoryInstructions = String(payload.world.memoryInstructions || payload.world.memory_instructions || "").trim();
       state.world.suppressTriggers = !!payload.world.suppressTriggers;
       if (payload.rpgStats.length) state.rpgStats = payload.rpgStats;
       if (payload.useRpgStats !== undefined) state.settings.useRpgStats = !!payload.useRpgStats;
@@ -11904,6 +13338,7 @@ ${missingList}`,
       if (payload.storytellerMode !== undefined) state.settings.storytellerMode = !!payload.storytellerMode;
       if (payload.betterMemoryManagement !== undefined) state.settings.betterMemoryManagement = !!payload.betterMemoryManagement;
       if (payload.disableTextTruncation !== undefined) state.settings.disableTextTruncation = !!payload.disableTextTruncation;
+      if (payload.llmAssistedJsonRepair !== undefined) state.settings.llmAssistedJsonRepair = !!payload.llmAssistedJsonRepair;
       if (payload.turnSaverMode !== undefined) state.settings.turnSaverMode = !!payload.turnSaverMode;
       enforceTurnSaverModeSettings();
       state.defaultTriggers = payload.defaultTriggers;
@@ -13224,7 +14659,7 @@ Rules:
     }
 
     function bindEvents() {
-      const autosaveInputs = ["apiKey", "aiHordeApiKey", "llmModel", "llmModelCustom", "addFallbackModels", "fallbackLlmModel1", "fallbackLlmModel2", "imageModel", "imageModelCustom", "imageAspectRatio", "imageSize", "temperature", "worldTitle", "genre", "tone", "backgroundStory", "character", "premise", "firstAction", "rules", "suppressTriggers", "enableResponseEditing", "enableStorytellerMode", "betterMemoryManagement", "disableTextTruncation", "turnSaverMode", "aiHordeQualityPreset", "aiHordeCandidates", "aiHordeSampler", "aiHordeSteps", "aiHordeCfgScale", "aiHordeKarras", "aiHordeHiresFix", "aiHordeModel", "aiHordeModelPreference", "aiHordeCustomModel", "aiHordeResolution", "aiHordeAspectRatio", "aiHordeCustomWidth", "aiHordeCustomHeight", "aiHordePostProcessing", "aiHordeNegativePrompt", "aiHordeEnhancePrompt", "aiHordeTrustedWorkers", "aiHordeSlowWorkers", "aiHordeValidatedBackends", "aiHordeShared", "aiHordeAllowNsfw", "aiHordeWorkerListMode", "aiHordeWorkerIds"];
+      const autosaveInputs = ["apiKey", "aiHordeApiKey", "llmModel", "llmModelCustom", "addFallbackModels", "fallbackLlmModel1", "fallbackLlmModel2", "imageModel", "imageModelCustom", "imageAspectRatio", "imageSize", "temperature", "worldTitle", "genre", "tone", "backgroundStory", "character", "premise", "firstAction", "rules", "suppressTriggers", "enableResponseEditing", "enableStorytellerMode", "betterMemoryManagement", "disableTextTruncation", "llmAssistedJsonRepair", "turnSaverMode", "aiHordeQualityPreset", "aiHordeCandidates", "aiHordeSampler", "aiHordeSteps", "aiHordeCfgScale", "aiHordeKarras", "aiHordeHiresFix", "aiHordeModel", "aiHordeModelPreference", "aiHordeCustomModel", "aiHordeResolution", "aiHordeAspectRatio", "aiHordeCustomWidth", "aiHordeCustomHeight", "aiHordePostProcessing", "aiHordeNegativePrompt", "aiHordeEnhancePrompt", "aiHordeTrustedWorkers", "aiHordeSlowWorkers", "aiHordeValidatedBackends", "aiHordeShared", "aiHordeAllowNsfw", "aiHordeWorkerListMode", "aiHordeWorkerIds"];
       autosaveInputs.forEach(id => {
         const el = $(id);
         if (!el) return;
@@ -13429,7 +14864,7 @@ Rules:
         const hasKey = !!($("apiKey")?.value.trim() || state.settings?.apiKey);
         toast(hasKey ? "Closed Getting Started." : "Key setup skipped for now. You can open Model Settings from the Menu when you are ready.");
       });
-      ["rememberKey", "generateImages", "useRpgStats", "enableResponseEditing", "enableStorytellerMode", "betterMemoryManagement", "disableTextTruncation"].forEach(id => $(id)?.addEventListener("change", () => { syncFormToState(); renderAll(); }));
+      ["rememberKey", "generateImages", "useRpgStats", "enableResponseEditing", "enableStorytellerMode", "betterMemoryManagement", "disableTextTruncation", "llmAssistedJsonRepair"].forEach(id => $(id)?.addEventListener("change", () => { syncFormToState(); renderAll(); }));
       $("manualRpgSelection")?.addEventListener("change", () => {
         state.settings.manualRpgSelection = !!$("manualRpgSelection").checked;
         syncStateToForm();

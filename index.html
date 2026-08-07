@@ -1910,7 +1910,7 @@
             <div id="eventTriggersPanel" class="setup-section-body stack hidden">
               <label id="suppressTriggersLabel" class="checkline"><input id="suppressTriggers" type="checkbox" /> Suppress Triggers</label>
               <p class="mini">When enabled, custom event triggers stay saved but the app skips all trigger-check LLM prompts and behaves as though no event triggers exist.</p>
-              <p class="mini">Define special event triggers before or after the main story response. LLM-evaluated triggers use a separate model check; Keyword Triggers and Browser-evaluated Condition Triggers are checked locally in the browser without an extra LLM query. The condition box is the single source of truth for every trigger. Selecting Keyword or Browser-evaluated mode automatically adds its browser-evaluation heading; switching modes removes the old heading without deleting the condition body. Keyword bodies are comma- or line-separated keywords. Browser-evaluated bodies are valid Infinite Worlds condition-tree JSON objects or arrays.</p>
+              <p class="mini">Define special event triggers before or after the main story response. LLM-evaluated triggers use a separate model check; Keyword Triggers and Browser-evaluated Condition Triggers are checked locally in the browser without an extra LLM query. The condition box is the single source of truth for every trigger. For a Keyword Trigger, enter only the comma- or line-separated keywords to scan for. For a Browser-evaluated Condition Trigger, enter only the valid Infinite Worlds condition-tree JSON object or array to evaluate.</p>
               <div class="row wrap event-trigger-mode-row" role="radiogroup" aria-label="When to check this event trigger">
                 <label class="checkline"><input id="eventTriggerTimingBefore" type="radio" name="eventTriggerTiming" value="before" checked /> Check before the LLM's main story response</label>
                 <label class="checkline"><input id="eventTriggerTimingAfter" type="radio" name="eventTriggerTiming" value="after" /> Check after the LLM's main story response</label>
@@ -6355,47 +6355,34 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       return "llm";
     }
 
-    const KEYWORD_TRIGGER_CONDITION_SCAFFOLD = "Automatic keyword scan (evaluated by the app, no AI check): activates while any of these keywords appear in the player's action or the last few scenes:\n";
-    const IW_CONDITION_TRIGGER_CONDITION_SCAFFOLD = "Browser-evaluated Condition Trigger (evaluated by the app, no AI check): evaluates the Infinite Worlds condition-tree JSON below against current trackers, milestones, and the turn number:\n";
     const KEYWORD_TRACKER_DIRECTIVE_PREFIX = "@tracker-keywords:";
 
-    function eventTriggerConditionScaffold(mode = "llm") {
-      const normalizedMode = normalizeEventTriggerEvaluationMode(mode);
-      if (normalizedMode === "keywords") return KEYWORD_TRIGGER_CONDITION_SCAFFOLD;
-      if (normalizedMode === "iw_conditions") return IW_CONDITION_TRIGGER_CONDITION_SCAFFOLD;
-      return "";
-    }
-
+    // Older Infinite Quest builds displayed explanatory headings inside deterministic trigger
+    // condition boxes. They were never part of the actual condition data. Strip those legacy
+    // headings on load/edit so old saves become the same clean format used by new and imported
+    // triggers: keywords only for Keyword Triggers, JSON only for Browser-evaluated Triggers.
     function stripEventTriggerConditionScaffold(text = "") {
-      const raw = String(text || "");
-      const trimmedStart = raw.trimStart();
-      for (const scaffold of [KEYWORD_TRIGGER_CONDITION_SCAFFOLD, IW_CONDITION_TRIGGER_CONDITION_SCAFFOLD]) {
-        const heading = scaffold.trimEnd();
-        if (trimmedStart.startsWith(scaffold)) return trimmedStart.slice(scaffold.length).trimStart();
-        if (trimmedStart.startsWith(heading)) return trimmedStart.slice(heading.length).trimStart();
-      }
-      return raw.trim();
+      const raw = String(text || "").trim();
+      const legacyKeywordHeading = /^Automatic keyword scan\b[^\n]*:\s*/i;
+      const legacyBrowserHeading = /^Browser-evaluated Condition Trigger\b[^\n]*:\s*/i;
+      return raw.replace(legacyKeywordHeading, "").replace(legacyBrowserHeading, "").trim();
     }
 
-    function applyEventTriggerConditionScaffold(text = "", mode = "llm") {
-      const body = stripEventTriggerConditionScaffold(text);
-      const scaffold = eventTriggerConditionScaffold(mode);
-      return scaffold ? `${scaffold}${body}` : body;
+    function cleanEventTriggerConditionText(text = "") {
+      return stripEventTriggerConditionScaffold(text);
     }
 
     function formatKeywordTriggerCondition(keywords = []) {
-      const body = [...new Set((Array.isArray(keywords) ? keywords : []).map(item => String(item || "").trim()).filter(Boolean))].join(", ");
-      return `${KEYWORD_TRIGGER_CONDITION_SCAFFOLD}${body}`.trimEnd();
+      return [...new Set((Array.isArray(keywords) ? keywords : []).map(item => String(item || "").trim()).filter(Boolean))].join(", ");
     }
 
     function formatKeywordTrackerTriggerCondition(trackerId = "") {
       const id = String(trackerId || "").trim();
-      return `${KEYWORD_TRIGGER_CONDITION_SCAFFOLD}${KEYWORD_TRACKER_DIRECTIVE_PREFIX} ${id}`.trimEnd();
+      return id ? `${KEYWORD_TRACKER_DIRECTIVE_PREFIX} ${id}` : "";
     }
 
     function formatBrowserTriggerCondition(conditions) {
-      const body = conditions && typeof conditions === "object" ? JSON.stringify(conditions, null, 2) : "";
-      return `${IW_CONDITION_TRIGGER_CONDITION_SCAFFOLD}${body}`.trimEnd();
+      return conditions && typeof conditions === "object" ? JSON.stringify(conditions, null, 2) : "";
     }
 
     function parseEventTriggerKeywordSpec(text = "") {
@@ -6445,9 +6432,9 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         const addTextAfter = timing === "after" && !!(trigger.addTextAfter || trigger.add_text_after || trigger.additionalTextAfterResponse || trigger.additional_text_after_response || trigger.appendAfterResponse || trigger.append_after_response || trigger.appendAdditionalText || trigger.append_additional_text);
         const evaluationMode = normalizeEventTriggerEvaluationMode(trigger.evaluationMode || trigger.evaluation_mode || trigger.checkMode || trigger.check_mode, trigger);
 
-        // Backward-compatibility migration: old worlds stored deterministic data in hidden
-        // keywords / keywordSourceTrackerId / iwConditions fields while showing a separate
-        // human-readable condition. Convert those legacy fields into the condition box once.
+        // Backward-compatibility migration: old worlds may store deterministic data in hidden
+        // keywords / keywordSourceTrackerId / iwConditions fields or contain obsolete explanatory
+        // headings in the condition text. Convert all of those forms to the clean visible format.
         // From this point forward the visible condition text is the only evaluation source.
         const legacyKeywords = (Array.isArray(trigger.keywords) ? trigger.keywords : []).map(item => String(item || "").trim()).filter(Boolean);
         const legacyKeywordTrackerId = String(trigger.keywordSourceTrackerId || trigger.keyword_source_tracker_id || "").trim();
@@ -6456,12 +6443,12 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         if (evaluationMode === "keywords") {
           if (legacyKeywordTrackerId) condition = formatKeywordTrackerTriggerCondition(legacyKeywordTrackerId);
           else if (legacyKeywords.length) condition = formatKeywordTriggerCondition(legacyKeywords);
-          else condition = applyEventTriggerConditionScaffold(rawCondition, "keywords");
+          else condition = cleanEventTriggerConditionText(rawCondition);
         } else if (evaluationMode === "iw_conditions") {
           if (legacyIwConditions && typeof legacyIwConditions === "object") condition = formatBrowserTriggerCondition(deepClone(legacyIwConditions));
-          else condition = applyEventTriggerConditionScaffold(rawCondition, "iw_conditions");
+          else condition = cleanEventTriggerConditionText(rawCondition);
         } else {
-          condition = applyEventTriggerConditionScaffold(rawCondition, "llm");
+          condition = cleanEventTriggerConditionText(rawCondition);
         }
 
         return {
@@ -7809,19 +7796,6 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       if (label) label.classList.toggle("disabled", !isAfter);
     }
 
-    function selectedAddEventTriggerEvaluationMode() {
-      if ($("eventTriggerEvaluationKeywords")?.checked) return "keywords";
-      if ($("eventTriggerEvaluationIwConditions")?.checked) return "iw_conditions";
-      return "llm";
-    }
-
-    function syncAddEventTriggerConditionScaffold() {
-      const area = $("eventTriggerCondition");
-      if (!area) return;
-      const next = applyEventTriggerConditionScaffold(area.value, selectedAddEventTriggerEvaluationMode());
-      if (area.value !== next) area.value = next;
-    }
-
     function renderEventTriggers() {
       const list = $("eventTriggerList");
       if (!list) return;
@@ -7882,20 +7856,20 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       if (!trigger) return;
       patch = { ...(patch || {}) };
       if (Object.prototype.hasOwnProperty.call(patch, "evaluationMode")) {
-        patch.condition = applyEventTriggerConditionScaffold(trigger.condition, patch.evaluationMode);
+        patch.condition = cleanEventTriggerConditionText(trigger.condition);
       }
       Object.assign(trigger, patch);
       trigger.timing = normalizeEventTriggerTiming(trigger.timing);
       trigger.evaluationMode = normalizeEventTriggerEvaluationMode(trigger.evaluationMode, trigger);
-      trigger.condition = applyEventTriggerConditionScaffold(trigger.condition, trigger.evaluationMode);
+      trigger.condition = cleanEventTriggerConditionText(trigger.condition);
       if (trigger.timing !== "after") trigger.addTextAfter = false;
       trigger.updatedAt = nowIso();
 
       if (trigger.evaluationMode === "iw_conditions" && !parseEventTriggerBrowserConditionInput(trigger.condition)) {
-        toast("Browser-evaluated mode uses the condition box directly. Put valid Infinite Worlds condition-tree JSON after the automatic heading.", 7000);
+        toast("Browser-evaluated mode uses the condition box directly. Put a valid Infinite Worlds condition-tree JSON object or array in the box.", 7000);
       } else if (trigger.evaluationMode === "keywords") {
         const spec = parseEventTriggerKeywordSpec(trigger.condition);
-        if (!spec.keywords.length && !spec.trackerIds.length) toast("Keyword mode uses the condition box directly. Add one or more comma- or line-separated keywords after the automatic heading.", 7000);
+        if (!spec.keywords.length && !spec.trackerIds.length) toast("Keyword mode uses the condition box directly. Add one or more comma- or line-separated keywords.", 7000);
       }
 
       state.eventTriggers = normalizeEventTriggers(state.eventTriggers);
@@ -7916,13 +7890,13 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         return;
       }
       if (evaluationMode === "iw_conditions" && !parseEventTriggerBrowserConditionInput(condition)) {
-        toast("A Browser-evaluated Condition Trigger needs valid Infinite Worlds condition-tree JSON after the automatic heading.", 7000);
+        toast("A Browser-evaluated Condition Trigger needs a valid Infinite Worlds condition-tree JSON object or array.", 7000);
         return;
       }
       if (evaluationMode === "keywords") {
         const spec = parseEventTriggerKeywordSpec(condition);
         if (!spec.keywords.length && !spec.trackerIds.length) {
-          toast("A Keyword Trigger needs one or more comma- or line-separated keywords after the automatic heading.", 7000);
+          toast("A Keyword Trigger needs one or more comma- or line-separated keywords.", 7000);
           return;
         }
       }
@@ -7930,7 +7904,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         id: uid("event_trigger"),
         timing,
         evaluationMode,
-        condition: applyEventTriggerConditionScaffold(condition, evaluationMode),
+        condition: cleanEventTriggerConditionText(condition),
         effect,
         addTextAfter,
         createdAt: nowIso(),
@@ -7948,7 +7922,6 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       if ($("eventTriggerEvaluationKeywords")) $("eventTriggerEvaluationKeywords").checked = false;
       if ($("eventTriggerEvaluationIwConditions")) $("eventTriggerEvaluationIwConditions").checked = false;
       if ($("eventTriggerAppendAfter")) $("eventTriggerAppendAfter").checked = false;
-      syncAddEventTriggerConditionScaffold();
       setAddEventTriggerAppendEnabled();
       saveState();
       renderEventTriggers();
@@ -7965,7 +7938,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       });
       document.querySelectorAll("textarea[data-event-trigger-condition]").forEach(area => {
         const trigger = state.eventTriggers.find(t => t.id === area.dataset.eventTriggerCondition);
-        if (trigger) trigger.condition = applyEventTriggerConditionScaffold(area.value.trim(), eventTriggerEvaluationMode(trigger));
+        if (trigger) trigger.condition = cleanEventTriggerConditionText(area.value.trim());
       });
       document.querySelectorAll("textarea[data-event-trigger-effect]").forEach(area => {
         const trigger = state.eventTriggers.find(t => t.id === area.dataset.eventTriggerEffect);
@@ -14993,9 +14966,6 @@ Rules:
       bindSetupSummary("btnToggleRpgStats", "rpgStatsPanel");
       $("eventTriggerTimingBefore")?.addEventListener("change", setAddEventTriggerAppendEnabled);
       $("eventTriggerTimingAfter")?.addEventListener("change", setAddEventTriggerAppendEnabled);
-      $("eventTriggerEvaluationLlm")?.addEventListener("change", syncAddEventTriggerConditionScaffold);
-      $("eventTriggerEvaluationKeywords")?.addEventListener("change", syncAddEventTriggerConditionScaffold);
-      $("eventTriggerEvaluationIwConditions")?.addEventListener("change", syncAddEventTriggerConditionScaffold);
       $("btnAddEventTrigger")?.addEventListener("click", addEventTrigger);
       $("btnAddStat").addEventListener("click", addRpgStat);
       $("btnResetStats").addEventListener("click", resetRpgStats);

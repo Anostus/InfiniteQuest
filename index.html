@@ -2844,6 +2844,8 @@
     const PROMPT_CONTEXT_SAFETY_TOKENS = 2048;
     const PROMPT_PROPORTIONAL_SEARCH_STEPS = 22;
     const PROMPT_PROPORTIONAL_MAX_SCALE = 4096;
+    const DEFAULT_STORY_OUTPUT_TOKENS = 2600;
+    const EXPANDED_STORY_OUTPUT_TOKENS = 4000;
     const CONTINUE_NARRATION_INSTRUCTION = "Continue the story naturally from where it left off.";
 
     const MEMORY_FIRST_COMPRESS_TURN_COUNT = 8;
@@ -2880,6 +2882,8 @@
         disableTextTruncation: false,
         llmAssistedJsonRepair: false,
         turnSaverMode: false,
+        lengthExpandedStoryOutputTokens: 0,
+        lengthExpandedStoryOutputSettingsSignature: "",
         temperature: 0.85
       },
       nameCorrection: deepClone(NAME_CORRECTION_DEFAULT_STATE),
@@ -4575,6 +4579,10 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         target.settings.imageModel = normalizeImageModelId(target.settings.imageModel || "") || target.settings.imageModel;
         target.settings.lastFreeImageModel = normalizeImageModelId(target.settings.lastFreeImageModel || "") || target.settings.lastFreeImageModel;
         target.settings.addContinueNarrationButton = !!target.settings.addContinueNarrationButton;
+        target.settings.lengthExpandedStoryOutputTokens = Number(target.settings.lengthExpandedStoryOutputTokens) >= EXPANDED_STORY_OUTPUT_TOKENS
+          ? EXPANDED_STORY_OUTPUT_TOKENS
+          : 0;
+        target.settings.lengthExpandedStoryOutputSettingsSignature = String(target.settings.lengthExpandedStoryOutputSettingsSignature || "");
         normalizeAiHordeSettings(target.settings);
       }
       target.modelLists.aiHordeModels = Array.isArray(target.modelLists.aiHordeModels) ? target.modelLists.aiHordeModels.map(normalizeAiHordeActiveModel).filter(model => model.name) : [];
@@ -5291,6 +5299,65 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
 
     function isCuratedFreeMixDeveloperSentinel(value = "") {
       return String(value || "").trim().toUpperCase() === CURATED_FREE_MIX_DEVELOPER_SENTINEL;
+    }
+
+    function isNemotronModelId(modelId = "") {
+      return String(modelId || "").trim().toLowerCase().includes("nemotron");
+    }
+
+    function storyOutputBudgetSettingsSignature(settings = state.settings || {}) {
+      return JSON.stringify({
+        llmModel: String(settings.llmModel || "").trim(),
+        addFallbackModels: !!settings.addFallbackModels,
+        fallbackLlmModel1: String(settings.fallbackLlmModel1 || "").trim(),
+        fallbackLlmModel2: String(settings.fallbackLlmModel2 || "").trim(),
+        filterFreeOptions: !!settings.filterFreeOptions
+      });
+    }
+
+    function resetLengthExpandedStoryOutputBudget({ save = true } = {}) {
+      state.settings ||= {};
+      const hadOverride = Number(state.settings.lengthExpandedStoryOutputTokens || 0) > 0
+        || !!String(state.settings.lengthExpandedStoryOutputSettingsSignature || "");
+      state.settings.lengthExpandedStoryOutputTokens = 0;
+      state.settings.lengthExpandedStoryOutputSettingsSignature = "";
+      if (hadOverride && save) saveState();
+      return hadOverride;
+    }
+
+    function enableLengthExpandedStoryOutputBudget() {
+      state.settings ||= {};
+      state.settings.lengthExpandedStoryOutputTokens = EXPANDED_STORY_OUTPUT_TOKENS;
+      state.settings.lengthExpandedStoryOutputSettingsSignature = storyOutputBudgetSettingsSignature();
+      saveState();
+    }
+
+    function persistedLengthExpandedStoryOutputBudget() {
+      const savedBudget = Number(state.settings?.lengthExpandedStoryOutputTokens || 0);
+      if (savedBudget < EXPANDED_STORY_OUTPUT_TOKENS) return 0;
+      const savedSignature = String(state.settings?.lengthExpandedStoryOutputSettingsSignature || "");
+      if (savedSignature && savedSignature !== storyOutputBudgetSettingsSignature()) {
+        resetLengthExpandedStoryOutputBudget();
+        return 0;
+      }
+      return EXPANDED_STORY_OUTPUT_TOKENS;
+    }
+
+    function modelRequestIncludesNemotron(modelRequest = {}) {
+      const candidates = uniqueModelIds([
+        ...(modelRequest.expanded || []),
+        ...(modelRequest.requested || []),
+        modelRequest.model || ""
+      ]);
+      return candidates.some(isNemotronModelId);
+    }
+
+    function effectiveStoryOutputTokenBudget(requestedTokens = DEFAULT_STORY_OUTPUT_TOKENS, modelRequest = {}) {
+      let budget = Math.max(1, Number(requestedTokens) || DEFAULT_STORY_OUTPUT_TOKENS);
+      if (modelRequestIncludesNemotron(modelRequest)) budget = Math.max(budget, EXPANDED_STORY_OUTPUT_TOKENS);
+      const persistedBudget = persistedLengthExpandedStoryOutputBudget();
+      if (persistedBudget) budget = Math.max(budget, persistedBudget);
+      return budget;
     }
 
     function isFreeModelId(modelId = "") {
@@ -8259,6 +8326,16 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       return err;
     }
 
+    function isCompleteStoryJsonResponse(value) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+      return typeof value.narration === "string"
+        && typeof value.image_prompt === "string"
+        && Array.isArray(value.choices)
+        && value.choices.length === 4
+        && typeof value.scratchpad === "string"
+        && Array.isArray(value.tracker_updates);
+    }
+
     function extractJson(text) {
       const cleaned = normalizeContent(text).trim().replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
       try { return JSON.parse(cleaned); } catch (err) { var firstError = err; }
@@ -8495,9 +8572,33 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         throw requestError;
       }
       const data = await res.json();
-      const content = data?.choices?.[0]?.message?.content;
-      if (!content) throw modelNoContentError(label);
-      return attachOpenRouterModelMetadata(extractJson(content), data, modelRequest);
+      const choice = data?.choices?.[0] || null;
+      const content = choice?.message?.content;
+      const finishReason = String(choice?.finish_reason || choice?.native_finish_reason || "").trim().toLowerCase();
+      if (finishReason === "length" && options.persist_length_output_budget) {
+        console.warn(`[Infinite Quest] ${label} hit the output token limit; future story turns will use a ${EXPANDED_STORY_OUTPUT_TOKENS}-token output budget until Model Settings change.`);
+        enableLengthExpandedStoryOutputBudget();
+      }
+      if (!content) {
+        const noContentError = modelNoContentError(label);
+        if (finishReason === "length") noContentError.openRouterFinishReason = "length";
+        throw noContentError;
+      }
+      try {
+        const parsed = extractJson(content);
+        if (finishReason === "length" && options.story_request && !isCompleteStoryJsonResponse(parsed)) {
+          const incompleteError = modelJsonError(new Error("The length-terminated story JSON parsed, but the required story schema was incomplete."), content);
+          incompleteError.openRouterFinishReason = "length";
+          throw incompleteError;
+        }
+        return attachOpenRouterModelMetadata(parsed, data, modelRequest);
+      } catch (err) {
+        if (err?.isModelJsonError && finishReason === "length") {
+          err.openRouterFinishReason = "length";
+          err.openRouterResponseModel = openRouterResponseModelName(data, modelRequest.expanded?.[0] || modelRequest.model || "");
+        }
+        throw err;
+      }
     }
 
     function isProviderJsonModeNotEnabledError(err) {
@@ -8506,10 +8607,27 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     }
 
     async function callOpenRouterJson(label, messages, options = {}) {
-      const prepared = await prepareAdaptiveOpenRouterMessages(messages, options);
+      let budgetedOptions = options;
+      if (options.story_request) {
+        const key = String(options.api_key ?? state.settings.apiKey ?? "").trim();
+        if (!key) throw new Error("Enter your OpenRouter API key first.");
+        const modelId = options.model || state.settings.llmModel || DEFAULT_LLM_MODEL;
+        const modelRequest = options.__resolvedModelRequest || await buildOpenRouterModelRequest(modelId, key, options);
+        const requestedBudget = Math.max(1, Number(options.max_tokens ?? DEFAULT_STORY_OUTPUT_TOKENS) || DEFAULT_STORY_OUTPUT_TOKENS);
+        const effectiveBudget = effectiveStoryOutputTokenBudget(requestedBudget, modelRequest);
+        if (effectiveBudget > requestedBudget) {
+          const reason = modelRequestIncludesNemotron(modelRequest)
+            ? "a Nemotron model is present in the active model route"
+            : "a previous story response hit finish_reason=length";
+          console.debug(`[Infinite Quest] Raising story output budget from ${requestedBudget} to ${effectiveBudget} tokens because ${reason}.`);
+        }
+        budgetedOptions = { ...options, __resolvedModelRequest: modelRequest, max_tokens: effectiveBudget };
+      }
+
+      const prepared = await prepareAdaptiveOpenRouterMessages(messages, budgetedOptions);
       const preparedOptions = prepared.modelRequest
-        ? { ...options, __resolvedModelRequest: prepared.modelRequest }
-        : options;
+        ? { ...budgetedOptions, __resolvedModelRequest: prepared.modelRequest }
+        : budgetedOptions;
       const jsonRetries = Number.isInteger(preparedOptions.json_retries) ? Math.max(0, preparedOptions.json_retries) : 0;
       const noContentRetries = Number.isInteger(preparedOptions.no_content_retries) ? Math.max(0, preparedOptions.no_content_retries) : 0;
       const maxRetries = Math.max(jsonRetries, noContentRetries);
@@ -8517,9 +8635,22 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
         try {
           return await fetchOpenRouterJsonOnce(label, prepared.messages, preparedOptions);
-        } catch (err) {
+        } catch (caughtErr) {
+          let err = caughtErr;
           if (isProviderJsonModeNotEnabledError(err) && !preparedOptions.disable_json_response_format) {
-            return await fetchOpenRouterJsonOnce(label, prepared.messages, { ...preparedOptions, disable_json_response_format: true });
+            try {
+              return await fetchOpenRouterJsonOnce(label, prepared.messages, { ...preparedOptions, disable_json_response_format: true });
+            } catch (jsonModeFallbackErr) {
+              err = jsonModeFallbackErr;
+            }
+          }
+          const lengthTruncatedJson = !!err?.isModelJsonError && err?.openRouterFinishReason === "length" && !!err.malformedJsonText;
+          if (lengthTruncatedJson && !isTurnSaverMode()) {
+            console.warn(`[Infinite Quest] ${label} returned malformed JSON with finish_reason=length; attempting one LLM-assisted JSON repair with at least ${EXPANDED_STORY_OUTPUT_TOKENS} output tokens.`);
+            return await attemptLlmAssistedJsonRepair(label, prepared.messages, err.malformedJsonText, {
+              ...preparedOptions,
+              max_tokens: Math.max(EXPANDED_STORY_OUTPUT_TOKENS, Number(preparedOptions.max_tokens) || 0)
+            });
           }
           const canRetryJson = !!err?.isModelJsonError && attempt < jsonRetries;
           const canRetryNoContent = !!err?.isModelNoContentError && attempt < noContentRetries;
@@ -9850,7 +9981,14 @@ ${addition}`.trim();
         () => (storytellerMode
           ? buildStorytellerUserPrompt(action, eventTriggerResults)
           : buildUserPrompt(action, rollResult, eventTriggerResults))
-      ), { temperature: Number(state.settings.temperature ?? 0.85), max_tokens: 2600, ...requestOptions, ...turnSaverRequestOptions });
+      ), {
+        temperature: Number(state.settings.temperature ?? 0.85),
+        max_tokens: DEFAULT_STORY_OUTPUT_TOKENS,
+        ...requestOptions,
+        story_request: true,
+        persist_length_output_budget: true,
+        ...turnSaverRequestOptions
+      });
       if (skipNameCorrection) return raw;
       return applyNameCorrectionToValue(raw, { context: "the main story response", maxTokens: 4400 });
     }
@@ -14702,6 +14840,9 @@ Rules:
         if (!el) return;
         el.addEventListener("change", syncFormToState);
         el.addEventListener("input", () => { $("autosaveStatus").textContent = "Editing"; });
+      });
+      $("modelSettingsDialog")?.addEventListener("change", event => {
+        if (event.target?.matches?.("input, select, textarea")) resetLengthExpandedStoryOutputBudget();
       });
       $("apiKey")?.addEventListener("input", scheduleSpecialApiKeyPresetCheck);
       $("apiKey")?.addEventListener("change", () => { maybeApplySpecialApiKeyPreset(); });

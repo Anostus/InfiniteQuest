@@ -1476,6 +1476,7 @@
             <button id="btnUndo">Undo latest</button>
             <button id="btnRetry">Retry latest generation</button>
             <button id="btnEditResponse" class="accent hidden" type="button">Edit Response</button>
+            <button id="btnContinueNarration" class="accent hidden" type="button">Continue Narration</button>
           </div>
         </div>
       </section>
@@ -1871,6 +1872,7 @@
               <label class="checkline"><input id="disableTextTruncation" type="checkbox" /> Disable text truncation (by default, text sent to the LLM, such as past turns, is truncated. This saves tokens, but details can sometimes be lost. Disabling truncation provides fuller context to the LLM at the cost of increased token usage)</label>
               <label id="llmAssistedJsonRepairLabel" class="checkline"><input id="llmAssistedJsonRepair" type="checkbox" /> LLM-assisted JSON Repair (if a structured-output response is still malformed after the normal retries, send the broken JSON back to the LLM with compact request context and ask it to repair/complete it once; disabled by Turn Saver Mode)</label>
               <label class="checkline"><input id="turnSaverMode" type="checkbox" /> Turn Saver Mode (disables most advanced features and ensures that only one prompt is sent per turn to reduce usage)</label>
+              <label class="checkline"><input id="addContinueNarrationButton" type="checkbox" /> Add Continue Narration Button (adds a Continue Narration button that advances the story naturally without requiring a player action, using storyteller-style continuation for that turn)</label>
             </div>
           <summary id="btnToggleAdvancedStart" class="setup-toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="advancedStartPanel">
             <span class="setup-toggle-caret" aria-hidden="true">▸</span>
@@ -2842,6 +2844,7 @@
     const PROMPT_CONTEXT_SAFETY_TOKENS = 2048;
     const PROMPT_PROPORTIONAL_SEARCH_STEPS = 22;
     const PROMPT_PROPORTIONAL_MAX_SCALE = 4096;
+    const CONTINUE_NARRATION_INSTRUCTION = "Continue the story naturally from where it left off.";
 
     const MEMORY_FIRST_COMPRESS_TURN_COUNT = 8;
     const MEMORY_SUBSEQUENT_COMPRESS_INTERVAL = 6;
@@ -2872,6 +2875,7 @@
         manualRpgSelection: false,
         enableResponseEditing: false,
         storytellerMode: false,
+        addContinueNarrationButton: false,
         betterMemoryManagement: false,
         disableTextTruncation: false,
         llmAssistedJsonRepair: false,
@@ -4208,7 +4212,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       busy = isBusy;
       const pill = $("busyPill");
       pill.innerHTML = isBusy ? `<span class="spinner"></span> ${escapeHtml(label)}` : "Ready";
-      ["btnStart", "btnTakeAction", "btnRetry", "btnEditResponse", "btnOpenWorldGen", "btnWorldGenRun", "btnGenerateCharacterSelect", "btnWorldHashGenerateCharacterSelect", "btnWorldHashImportConfirm", "btnWorldHashImportStart", "btnRegenerateImageConfirm", "btnSaveWorld", "btnCopyWorld", "btnGenerateWorldUrl", "btnLoadWorldText", "btnWorldTextImportConfirm", "btnInfiniteWorldLoadWorldFile", "btnInfiniteWorldLoadWorldText", "btnInfiniteWorldImportWorld", "btnInfiniteWorldQuickImportStory", "btnInfiniteWorldImportStory"].forEach(id => { const el = $(id); if (el) el.disabled = isBusy; });
+      ["btnStart", "btnTakeAction", "btnRetry", "btnEditResponse", "btnContinueNarration", "btnOpenWorldGen", "btnWorldGenRun", "btnGenerateCharacterSelect", "btnWorldHashGenerateCharacterSelect", "btnWorldHashImportConfirm", "btnWorldHashImportStart", "btnRegenerateImageConfirm", "btnSaveWorld", "btnCopyWorld", "btnGenerateWorldUrl", "btnLoadWorldText", "btnWorldTextImportConfirm", "btnInfiniteWorldLoadWorldFile", "btnInfiniteWorldLoadWorldText", "btnInfiniteWorldImportWorld", "btnInfiniteWorldQuickImportStory", "btnInfiniteWorldImportStory"].forEach(id => { const el = $(id); if (el) el.disabled = isBusy; });
       $$(".sample-world-button").forEach(button => { button.disabled = isBusy; });
       $("btnUndo").disabled = isBusy || state.turns.length === 0;
       renderNavButtons();
@@ -4570,6 +4574,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         if (target.settings.llmModel === LEGACY_DEFAULT_FREE_LLM_MODEL) target.settings.llmModel = DEFAULT_FREE_LLM_MODEL;
         target.settings.imageModel = normalizeImageModelId(target.settings.imageModel || "") || target.settings.imageModel;
         target.settings.lastFreeImageModel = normalizeImageModelId(target.settings.lastFreeImageModel || "") || target.settings.lastFreeImageModel;
+        target.settings.addContinueNarrationButton = !!target.settings.addContinueNarrationButton;
         normalizeAiHordeSettings(target.settings);
       }
       target.modelLists.aiHordeModels = Array.isArray(target.modelLists.aiHordeModels) ? target.modelLists.aiHordeModels.map(normalizeAiHordeActiveModel).filter(model => model.name) : [];
@@ -7104,6 +7109,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       state.settings.manualRpgSelection = !!$("manualRpgSelection")?.checked;
       state.settings.enableResponseEditing = !!$("enableResponseEditing")?.checked;
       state.settings.storytellerMode = !!$("enableStorytellerMode")?.checked;
+      state.settings.addContinueNarrationButton = !!$("addContinueNarrationButton")?.checked;
       state.settings.betterMemoryManagement = !!$("betterMemoryManagement")?.checked;
       state.settings.disableTextTruncation = !!$("disableTextTruncation")?.checked;
       state.settings.llmAssistedJsonRepair = !!$("llmAssistedJsonRepair")?.checked;
@@ -7162,6 +7168,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       if ($("manualRpgSelection")) $("manualRpgSelection").checked = !!state.settings.manualRpgSelection;
       if ($("enableResponseEditing")) $("enableResponseEditing").checked = !!state.settings.enableResponseEditing;
       if ($("enableStorytellerMode")) $("enableStorytellerMode").checked = !!state.settings.storytellerMode;
+      if ($("addContinueNarrationButton")) $("addContinueNarrationButton").checked = !!state.settings.addContinueNarrationButton;
       if ($("betterMemoryManagement")) $("betterMemoryManagement").checked = !!state.settings.betterMemoryManagement;
       if ($("disableTextTruncation")) $("disableTextTruncation").checked = !!state.settings.disableTextTruncation;
       if ($("llmAssistedJsonRepair")) $("llmAssistedJsonRepair").checked = !!state.settings.llmAssistedJsonRepair;
@@ -7505,6 +7512,12 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         editResponseButton.disabled = busy || !canEditResponse;
       }
       $("btnTakeAction").disabled = busy || !state.turns.length;
+      const continueNarrationButton = $("btnContinueNarration");
+      if (continueNarrationButton) {
+        const showContinueNarration = !!state.settings.addContinueNarrationButton;
+        continueNarrationButton.classList.toggle("hidden", !showContinueNarration);
+        continueNarrationButton.disabled = busy || !state.turns.length;
+      }
     }
 
     function scrollViewportToTop() {
@@ -9675,10 +9688,12 @@ ${beforeOnlyRule}
       return merged;
     }
 
-    function startSpeculativeStoryGeneration(action, rollResult = null, eventTriggerResults = []) {
+    function startSpeculativeStoryGeneration(action, rollResult = null, eventTriggerResults = [], options = {}) {
       const controller = typeof AbortController === "function" ? new AbortController() : null;
       let settled = false;
-      const speculativeOptions = controller ? { signal: controller.signal, skipNameCorrection: true } : { skipNameCorrection: true };
+      const speculativeOptions = controller
+        ? { signal: controller.signal, skipNameCorrection: true, forceStorytellerMode: !!options.forceStorytellerMode }
+        : { skipNameCorrection: true, forceStorytellerMode: !!options.forceStorytellerMode };
       const promise = callOpenRouterChat(action, rollResult, eventTriggerResults, speculativeOptions)
         .then(raw => {
           settled = true;
@@ -9825,8 +9840,8 @@ ${addition}`.trim();
     }
 
     async function callOpenRouterChat(action, rollResult = null, eventTriggerResults = [], options = {}) {
-      const { skipNameCorrection = false, ...requestOptions } = options || {};
-      const storytellerMode = isStorytellerMode();
+      const { skipNameCorrection = false, forceStorytellerMode = false, ...requestOptions } = options || {};
+      const storytellerMode = !!forceStorytellerMode || isStorytellerMode();
       const turnSaverRequestOptions = isTurnSaverMode()
         ? { json_retries: 0, no_content_retries: 0, disable_json_response_format: true, use_model_fallbacks: false }
         : {};
@@ -11001,7 +11016,7 @@ SVG requirements:
       throw new Error("No image URL was found in the image model response.");
     }
 
-    function normalizeTurnResult(raw, action, roll = null) {
+    function normalizeTurnResult(raw, action, roll = null, options = {}) {
       const choices = Array.isArray(raw.choices) ? raw.choices.map(String).filter(Boolean).slice(0, 4) : [];
       while (choices.length < 4) choices.push(["Look for more information", "Speak with someone nearby", "Proceed carefully", "Take a bold risk"][choices.length]);
       const narration = String(raw.narration || raw.story || raw.text || "");
@@ -11009,7 +11024,7 @@ SVG requirements:
         id: uid("turn"),
         turnNumber: state.turns.length + 1,
         action,
-        inputMode: isStorytellerMode() ? "storyteller" : "player",
+        inputMode: options.storytellerRequest || isStorytellerMode() ? "storyteller" : "player",
         narration: maybeParagraphizeStoryText(narration),
         imagePrompt: String(raw.image_prompt || raw.imagePrompt || "A cinematic fantasy adventure scene, no text."),
         imageUrl: "",
@@ -11103,10 +11118,11 @@ SVG requirements:
       return { pendingAiHordeCancellationTurns: deferAiHordeCancellation ? removedTurns : [] };
     }
 
-    async function generateTurn(action) {
+    async function generateTurn(action, options = {}) {
       syncFormToState();
+      const storytellerRequest = !!options.forceStorytellerMode || isStorytellerMode();
       const branchRollbackState = captureBranchRollbackState();
-      const waitingForManualRpgSelection = !isStorytellerMode()
+      const waitingForManualRpgSelection = !storytellerRequest
         && isRpgEnabledForTurn()
         && !!state.settings.manualRpgSelection
         && !!state.turns.length
@@ -11117,9 +11133,9 @@ SVG requirements:
       showGenerationTransition(action);
       setBusy(true, waitingForManualRpgSelection
         ? "Choose RPG roll"
-        : (!isStorytellerMode() && isRpgEnabledForTurn() && state.turns.length ? "Choosing RPG roll" : "Writing scene"));
+        : (!storytellerRequest && isRpgEnabledForTurn() && state.turns.length ? "Choosing RPG roll" : "Writing scene"));
       try {
-        const roll = await createRpgRoll(action);
+        const roll = storytellerRequest ? null : await createRpgRoll(action);
         if (roll === MANUAL_RPG_ROLL_CANCELLED) {
           restoreBranchRollbackState(branchRollbackState);
           clearGenerationTransition();
@@ -11152,23 +11168,23 @@ SVG requirements:
         if (eventTriggersForPhase("before").length) {
           setBusy(true, "Checking triggers + drafting scene");
           const currentTurn = state.turns.length + 1;
-          const speculativeStory = startSpeculativeStoryGeneration(action, roll, activatedForMainStory);
+          const speculativeStory = startSpeculativeStoryGeneration(action, roll, activatedForMainStory, { forceStorytellerMode: storytellerRequest });
           const beforeTriggerResults = await runCombinedEventTriggerChecks("before", action, { currentTurn });
           if (beforeTriggerResults.length) {
             speculativeStory.abort();
             activatedForMainStory.push(...beforeTriggerResults);
             setBusy(true, "Rewriting scene with triggers");
-            raw = await callOpenRouterChat(action, roll, activatedForMainStory);
+            raw = await callOpenRouterChat(action, roll, activatedForMainStory, { forceStorytellerMode: storytellerRequest });
           } else {
             setBusy(true, "Finishing scene");
             raw = await speculativeStory.unwrap();
           }
         } else {
           setBusy(true, "Writing scene");
-          raw = await callOpenRouterChat(action, roll, activatedForMainStory);
+          raw = await callOpenRouterChat(action, roll, activatedForMainStory, { forceStorytellerMode: storytellerRequest });
         }
         applyTurnState(raw);
-        const turn = normalizeTurnResult(raw, action, roll);
+        const turn = normalizeTurnResult(raw, action, roll, { storytellerRequest });
         if (activatedForMainStory.length) turn.eventTriggersApplied = activatedForMainStory.map(compactActivatedEventForPrompt);
         setTurnStateSnapshot(turn, state.scratchpad, state.trackers);
         state.turns.push(turn);
@@ -11278,6 +11294,7 @@ ${missingList}`,
       if (payload.manualRpgSelection !== undefined) state.settings.manualRpgSelection = !!payload.manualRpgSelection;
       if (payload.enableResponseEditing !== undefined) state.settings.enableResponseEditing = !!payload.enableResponseEditing;
       if (payload.storytellerMode !== undefined) state.settings.storytellerMode = !!payload.storytellerMode;
+      if (payload.addContinueNarrationButton !== undefined) state.settings.addContinueNarrationButton = !!payload.addContinueNarrationButton;
       if (payload.betterMemoryManagement !== undefined) state.settings.betterMemoryManagement = !!payload.betterMemoryManagement;
       if (payload.disableTextTruncation !== undefined) state.settings.disableTextTruncation = !!payload.disableTextTruncation;
       if (payload.llmAssistedJsonRepair !== undefined) state.settings.llmAssistedJsonRepair = !!payload.llmAssistedJsonRepair;
@@ -11384,14 +11401,14 @@ ${missingList}`,
       });
     }
 
-    function takeAction(action) {
+    function takeAction(action, options = {}) {
       if (!action || busy) return;
       const trimmedAction = String(action).trim();
       if (trimmedAction.includes("TEST55")) {
         showCommunityTurn55Popup();
         return;
       }
-      generateTurn(trimmedAction);
+      generateTurn(trimmedAction, options);
     }
 
     function undoLatest() {
@@ -11582,6 +11599,7 @@ ${missingList}`,
           manualRpgSelection: !!state.settings.manualRpgSelection,
           enableResponseEditing: !!state.settings.enableResponseEditing,
           storytellerMode: !!state.settings.storytellerMode,
+          addContinueNarrationButton: !!state.settings.addContinueNarrationButton,
           betterMemoryManagement: !!state.settings.betterMemoryManagement,
           disableTextTruncation: !!state.settings.disableTextTruncation,
           llmAssistedJsonRepair: !!state.settings.llmAssistedJsonRepair,
@@ -13274,6 +13292,7 @@ ${missingList}`,
         manualRpgSelection: settings.manualRpgSelection ?? settings.manual_rpg_selection ?? settings.manualRpgRollSelection ?? settings.manual_rpg_roll_selection ?? imported.manualRpgSelection ?? imported.manual_rpg_selection ?? imported.manualRpgRollSelection ?? imported.manual_rpg_roll_selection,
         enableResponseEditing: settings.enableResponseEditing ?? settings.enable_response_editing ?? imported.enableResponseEditing ?? imported.enable_response_editing,
         storytellerMode: settings.storytellerMode ?? settings.storyteller_mode ?? settings.enableStorytellerMode ?? settings.enable_storyteller_mode ?? imported.storytellerMode ?? imported.storyteller_mode ?? imported.enableStorytellerMode ?? imported.enable_storyteller_mode,
+        addContinueNarrationButton: settings.addContinueNarrationButton ?? settings.add_continue_narration_button ?? imported.addContinueNarrationButton ?? imported.add_continue_narration_button,
         betterMemoryManagement: settings.betterMemoryManagement ?? settings.better_memory_management ?? imported.betterMemoryManagement ?? imported.better_memory_management,
         disableTextTruncation: settings.disableTextTruncation ?? settings.disable_text_truncation ?? imported.disableTextTruncation ?? imported.disable_text_truncation,
         llmAssistedJsonRepair: settings.llmAssistedJsonRepair ?? settings.llm_assisted_json_repair ?? imported.llmAssistedJsonRepair ?? imported.llm_assisted_json_repair,
@@ -13353,6 +13372,7 @@ ${missingList}`,
       if (payload.manualRpgSelection !== undefined) state.settings.manualRpgSelection = !!payload.manualRpgSelection;
       if (payload.enableResponseEditing !== undefined) state.settings.enableResponseEditing = !!payload.enableResponseEditing;
       if (payload.storytellerMode !== undefined) state.settings.storytellerMode = !!payload.storytellerMode;
+      if (payload.addContinueNarrationButton !== undefined) state.settings.addContinueNarrationButton = !!payload.addContinueNarrationButton;
       if (payload.betterMemoryManagement !== undefined) state.settings.betterMemoryManagement = !!payload.betterMemoryManagement;
       if (payload.disableTextTruncation !== undefined) state.settings.disableTextTruncation = !!payload.disableTextTruncation;
       if (payload.llmAssistedJsonRepair !== undefined) state.settings.llmAssistedJsonRepair = !!payload.llmAssistedJsonRepair;
@@ -14676,7 +14696,7 @@ Rules:
     }
 
     function bindEvents() {
-      const autosaveInputs = ["apiKey", "aiHordeApiKey", "llmModel", "llmModelCustom", "addFallbackModels", "fallbackLlmModel1", "fallbackLlmModel2", "imageModel", "imageModelCustom", "imageAspectRatio", "imageSize", "temperature", "worldTitle", "genre", "tone", "backgroundStory", "character", "premise", "firstAction", "rules", "suppressTriggers", "enableResponseEditing", "enableStorytellerMode", "betterMemoryManagement", "disableTextTruncation", "llmAssistedJsonRepair", "turnSaverMode", "aiHordeQualityPreset", "aiHordeCandidates", "aiHordeSampler", "aiHordeSteps", "aiHordeCfgScale", "aiHordeKarras", "aiHordeHiresFix", "aiHordeModel", "aiHordeModelPreference", "aiHordeCustomModel", "aiHordeResolution", "aiHordeAspectRatio", "aiHordeCustomWidth", "aiHordeCustomHeight", "aiHordePostProcessing", "aiHordeNegativePrompt", "aiHordeEnhancePrompt", "aiHordeTrustedWorkers", "aiHordeSlowWorkers", "aiHordeValidatedBackends", "aiHordeShared", "aiHordeAllowNsfw", "aiHordeWorkerListMode", "aiHordeWorkerIds"];
+      const autosaveInputs = ["apiKey", "aiHordeApiKey", "llmModel", "llmModelCustom", "addFallbackModels", "fallbackLlmModel1", "fallbackLlmModel2", "imageModel", "imageModelCustom", "imageAspectRatio", "imageSize", "temperature", "worldTitle", "genre", "tone", "backgroundStory", "character", "premise", "firstAction", "rules", "suppressTriggers", "enableResponseEditing", "enableStorytellerMode", "addContinueNarrationButton", "betterMemoryManagement", "disableTextTruncation", "llmAssistedJsonRepair", "turnSaverMode", "aiHordeQualityPreset", "aiHordeCandidates", "aiHordeSampler", "aiHordeSteps", "aiHordeCfgScale", "aiHordeKarras", "aiHordeHiresFix", "aiHordeModel", "aiHordeModelPreference", "aiHordeCustomModel", "aiHordeResolution", "aiHordeAspectRatio", "aiHordeCustomWidth", "aiHordeCustomHeight", "aiHordePostProcessing", "aiHordeNegativePrompt", "aiHordeEnhancePrompt", "aiHordeTrustedWorkers", "aiHordeSlowWorkers", "aiHordeValidatedBackends", "aiHordeShared", "aiHordeAllowNsfw", "aiHordeWorkerListMode", "aiHordeWorkerIds"];
       autosaveInputs.forEach(id => {
         const el = $(id);
         if (!el) return;
@@ -14881,7 +14901,7 @@ Rules:
         const hasKey = !!($("apiKey")?.value.trim() || state.settings?.apiKey);
         toast(hasKey ? "Closed Getting Started." : "Key setup skipped for now. You can open Model Settings from the Menu when you are ready.");
       });
-      ["rememberKey", "generateImages", "useRpgStats", "enableResponseEditing", "enableStorytellerMode", "betterMemoryManagement", "disableTextTruncation", "llmAssistedJsonRepair"].forEach(id => $(id)?.addEventListener("change", () => { syncFormToState(); renderAll(); }));
+      ["rememberKey", "generateImages", "useRpgStats", "enableResponseEditing", "enableStorytellerMode", "addContinueNarrationButton", "betterMemoryManagement", "disableTextTruncation", "llmAssistedJsonRepair"].forEach(id => $(id)?.addEventListener("change", () => { syncFormToState(); renderAll(); }));
       $("manualRpgSelection")?.addEventListener("change", () => {
         state.settings.manualRpgSelection = !!$("manualRpgSelection").checked;
         syncStateToForm();
@@ -14946,6 +14966,10 @@ Rules:
             : "Type an action or choose one of the options.");
         }
         takeAction(action);
+      });
+      addClick("btnContinueNarration", () => {
+        if (!state.settings.addContinueNarrationButton || busy || !state.turns.length) return;
+        takeAction(CONTINUE_NARRATION_INSTRUCTION, { forceStorytellerMode: true });
       });
       addCtrlEnter("freeAction", () => $("btnTakeAction")?.click());
       addCtrlEnter("storytellerInstructions", () => $("btnTakeAction")?.click());

@@ -1870,7 +1870,7 @@
               <p class="mini">Optional controls for turn input, prompt context, and LLM request usage.</p>
               <label class="checkline"><input id="enableStorytellerMode" type="checkbox" /> Enable storyteller mode (grays out the player action box and adds a storyteller box where the player can dictate what happens each turn)</label>
               <label class="checkline"><input id="disableTextTruncation" type="checkbox" /> Disable text truncation (by default, text sent to the LLM, such as past turns, is truncated. This saves tokens, but details can sometimes be lost. Disabling truncation provides fuller context to the LLM at the cost of increased token usage)</label>
-              <label id="llmAssistedJsonRepairLabel" class="checkline"><input id="llmAssistedJsonRepair" type="checkbox" /> LLM-assisted JSON Repair (if a structured-output response is still malformed after the normal retries, send the broken JSON back to the LLM with compact request context and ask it to repair/complete it once; disabled by Turn Saver Mode)</label>
+              <label id="llmAssistedJsonRepairLabel" class="checkline"><input id="llmAssistedJsonRepair" type="checkbox" /> LLM-assisted JSON Repair (if structured output remains malformed, send the broken JSON back to the LLM with compact request context and ask it to repair/complete it once; also try this recovery before rejecting a story that still hits the 6,000-token response limit; disabled by Turn Saver Mode)</label>
               <label class="checkline"><input id="turnSaverMode" type="checkbox" /> Turn Saver Mode (disables most advanced features and ensures that only one prompt is sent per turn to reduce usage)</label>
               <label class="checkline"><input id="addContinueNarrationButton" type="checkbox" /> Add Continue Narration Button (adds a Continue Narration button that advances the story naturally without requiring a player action, using storyteller-style continuation for that turn)</label>
             </div>
@@ -2846,6 +2846,7 @@
     const PROMPT_PROPORTIONAL_MAX_SCALE = 4096;
     const DEFAULT_STORY_OUTPUT_TOKENS = 2600;
     const EXPANDED_STORY_OUTPUT_TOKENS = 4000;
+    const MAX_STORY_OUTPUT_TOKENS = 6000;
     const CONTINUE_NARRATION_INSTRUCTION = "Continue the story naturally from where it left off.";
 
     const MEMORY_FIRST_COMPRESS_TURN_COUNT = 8;
@@ -4579,9 +4580,10 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         target.settings.imageModel = normalizeImageModelId(target.settings.imageModel || "") || target.settings.imageModel;
         target.settings.lastFreeImageModel = normalizeImageModelId(target.settings.lastFreeImageModel || "") || target.settings.lastFreeImageModel;
         target.settings.addContinueNarrationButton = !!target.settings.addContinueNarrationButton;
-        target.settings.lengthExpandedStoryOutputTokens = Number(target.settings.lengthExpandedStoryOutputTokens) >= EXPANDED_STORY_OUTPUT_TOKENS
-          ? EXPANDED_STORY_OUTPUT_TOKENS
-          : 0;
+        const savedStoryOutputBudget = Number(target.settings.lengthExpandedStoryOutputTokens || 0);
+        target.settings.lengthExpandedStoryOutputTokens = savedStoryOutputBudget >= MAX_STORY_OUTPUT_TOKENS
+          ? MAX_STORY_OUTPUT_TOKENS
+          : (savedStoryOutputBudget >= EXPANDED_STORY_OUTPUT_TOKENS ? EXPANDED_STORY_OUTPUT_TOKENS : 0);
         target.settings.lengthExpandedStoryOutputSettingsSignature = String(target.settings.lengthExpandedStoryOutputSettingsSignature || "");
         normalizeAiHordeSettings(target.settings);
       }
@@ -5325,22 +5327,40 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       return hadOverride;
     }
 
-    function enableLengthExpandedStoryOutputBudget() {
+    function normalizedLengthExpandedStoryOutputBudget(value = 0) {
+      const budget = Number(value || 0);
+      if (budget >= MAX_STORY_OUTPUT_TOKENS) return MAX_STORY_OUTPUT_TOKENS;
+      if (budget >= EXPANDED_STORY_OUTPUT_TOKENS) return EXPANDED_STORY_OUTPUT_TOKENS;
+      return 0;
+    }
+
+    function nextStoryOutputBudgetAfterLength(currentTokens = DEFAULT_STORY_OUTPUT_TOKENS) {
+      const current = Math.max(1, Number(currentTokens) || DEFAULT_STORY_OUTPUT_TOKENS);
+      if (current < EXPANDED_STORY_OUTPUT_TOKENS) return EXPANDED_STORY_OUTPUT_TOKENS;
+      return MAX_STORY_OUTPUT_TOKENS;
+    }
+
+    function enableLengthExpandedStoryOutputBudget(tokens = EXPANDED_STORY_OUTPUT_TOKENS) {
       state.settings ||= {};
-      state.settings.lengthExpandedStoryOutputTokens = EXPANDED_STORY_OUTPUT_TOKENS;
+      const nextBudget = normalizedLengthExpandedStoryOutputBudget(tokens);
+      if (!nextBudget) return false;
+      const changed = Number(state.settings.lengthExpandedStoryOutputTokens || 0) !== nextBudget
+        || String(state.settings.lengthExpandedStoryOutputSettingsSignature || "") !== storyOutputBudgetSettingsSignature();
+      state.settings.lengthExpandedStoryOutputTokens = nextBudget;
       state.settings.lengthExpandedStoryOutputSettingsSignature = storyOutputBudgetSettingsSignature();
-      saveState();
+      if (changed) saveState();
+      return changed;
     }
 
     function persistedLengthExpandedStoryOutputBudget() {
-      const savedBudget = Number(state.settings?.lengthExpandedStoryOutputTokens || 0);
-      if (savedBudget < EXPANDED_STORY_OUTPUT_TOKENS) return 0;
+      const savedBudget = normalizedLengthExpandedStoryOutputBudget(state.settings?.lengthExpandedStoryOutputTokens);
+      if (!savedBudget) return 0;
       const savedSignature = String(state.settings?.lengthExpandedStoryOutputSettingsSignature || "");
       if (savedSignature && savedSignature !== storyOutputBudgetSettingsSignature()) {
         resetLengthExpandedStoryOutputBudget();
         return 0;
       }
-      return EXPANDED_STORY_OUTPUT_TOKENS;
+      return savedBudget;
     }
 
     function modelRequestIncludesNemotron(modelRequest = {}) {
@@ -8326,6 +8346,26 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       return err;
     }
 
+    function modelStoryOutputLengthError(maxTokens = MAX_STORY_OUTPUT_TOKENS, options = {}) {
+      const limit = Math.max(1, Number(maxTokens) || MAX_STORY_OUTPUT_TOKENS);
+      const repairAttempted = !!options.repairAttempted;
+      const repairUnavailable = !!options.repairUnavailable;
+      let detail = "";
+      if (repairAttempted) {
+        detail = " LLM-assisted JSON Repair was attempted, but it could not recover a complete response.";
+      } else if (repairUnavailable) {
+        detail = " LLM-assisted JSON Repair could not run because no partial JSON content was available to repair.";
+      } else if (!state.settings?.llmAssistedJsonRepair) {
+        detail = " You can enable LLM-assisted JSON Repair in Model Settings to let the app try to recover a partial response before rejecting it.";
+      }
+      const err = new Error(`The model ran out of response tokens at the ${limit.toLocaleString()}-token limit, so this turn was rejected instead of saving a partial story, scratchpad, or tracker update.${detail}`);
+      err.isModelStoryLengthError = true;
+      err.openRouterFinishReason = "length";
+      err.openRouterRequestedMaxTokens = limit;
+      if (options.cause) err.cause = options.cause;
+      return err;
+    }
+
     function isCompleteStoryJsonResponse(value) {
       if (!value || typeof value !== "object" || Array.isArray(value)) return false;
       return typeof value.narration === "string"
@@ -8575,26 +8615,40 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       const choice = data?.choices?.[0] || null;
       const content = choice?.message?.content;
       const finishReason = String(choice?.finish_reason || choice?.native_finish_reason || "").trim().toLowerCase();
+      const responseMaxTokens = Math.max(1, Number(payload.max_tokens) || 1);
       if (finishReason === "length" && options.persist_length_output_budget) {
-        console.warn(`[Infinite Quest] ${label} hit the output token limit; future story turns will use a ${EXPANDED_STORY_OUTPUT_TOKENS}-token output budget until Model Settings change.`);
-        enableLengthExpandedStoryOutputBudget();
+        if (responseMaxTokens < MAX_STORY_OUTPUT_TOKENS) {
+          const nextBudget = nextStoryOutputBudgetAfterLength(responseMaxTokens);
+          console.warn(`[Infinite Quest] ${label} hit the ${responseMaxTokens}-token output limit; future story turns will use a ${nextBudget}-token output budget until Model Settings change.`);
+          enableLengthExpandedStoryOutputBudget(nextBudget);
+        } else {
+          console.warn(`[Infinite Quest] ${label} hit the maximum ${MAX_STORY_OUTPUT_TOKENS}-token story output limit.`);
+        }
       }
       if (!content) {
         const noContentError = modelNoContentError(label);
-        if (finishReason === "length") noContentError.openRouterFinishReason = "length";
+        if (finishReason === "length") {
+          noContentError.openRouterFinishReason = "length";
+          noContentError.openRouterRequestedMaxTokens = responseMaxTokens;
+        }
         throw noContentError;
       }
       try {
         const parsed = extractJson(content);
-        if (finishReason === "length" && options.story_request && !isCompleteStoryJsonResponse(parsed)) {
-          const incompleteError = modelJsonError(new Error("The length-terminated story JSON parsed, but the required story schema was incomplete."), content);
+        // A story response that actually ended because of the token limit is never
+        // safe to commit, even if provider-side response healing made the partial
+        // JSON syntactically valid. Force it through the length-recovery path.
+        if (finishReason === "length" && options.story_request) {
+          const incompleteError = modelJsonError(new Error(`The story response reached its ${responseMaxTokens}-token output limit.`), content);
           incompleteError.openRouterFinishReason = "length";
+          incompleteError.openRouterRequestedMaxTokens = responseMaxTokens;
           throw incompleteError;
         }
         return attachOpenRouterModelMetadata(parsed, data, modelRequest);
       } catch (err) {
         if (err?.isModelJsonError && finishReason === "length") {
           err.openRouterFinishReason = "length";
+          err.openRouterRequestedMaxTokens = responseMaxTokens;
           err.openRouterResponseModel = openRouterResponseModelName(data, modelRequest.expanded?.[0] || modelRequest.model || "");
         }
         throw err;
@@ -8616,9 +8670,10 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         const requestedBudget = Math.max(1, Number(options.max_tokens ?? DEFAULT_STORY_OUTPUT_TOKENS) || DEFAULT_STORY_OUTPUT_TOKENS);
         const effectiveBudget = effectiveStoryOutputTokenBudget(requestedBudget, modelRequest);
         if (effectiveBudget > requestedBudget) {
-          const reason = modelRequestIncludesNemotron(modelRequest)
-            ? "a Nemotron model is present in the active model route"
-            : "a previous story response hit finish_reason=length";
+          const persistedBudget = persistedLengthExpandedStoryOutputBudget();
+          const reason = persistedBudget >= effectiveBudget
+            ? "a previous story response hit finish_reason=length"
+            : "a Nemotron model is present in the active model route";
           console.debug(`[Infinite Quest] Raising story output budget from ${requestedBudget} to ${effectiveBudget} tokens because ${reason}.`);
         }
         budgetedOptions = { ...options, __resolvedModelRequest: modelRequest, max_tokens: effectiveBudget };
@@ -8644,8 +8699,43 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
               err = jsonModeFallbackErr;
             }
           }
-          const lengthTruncatedJson = !!err?.isModelJsonError && err?.openRouterFinishReason === "length" && !!err.malformedJsonText;
-          if (lengthTruncatedJson && !isTurnSaverMode()) {
+          const hitLength = err?.openRouterFinishReason === "length";
+          const lengthBudget = Math.max(1, Number(err?.openRouterRequestedMaxTokens ?? preparedOptions.max_tokens) || DEFAULT_STORY_OUTPUT_TOKENS);
+          const lengthTruncatedJson = !!err?.isModelJsonError && hitLength && !!err.malformedJsonText;
+
+          if (preparedOptions.story_request && hitLength) {
+            const atMaximumStoryBudget = lengthBudget >= MAX_STORY_OUTPUT_TOKENS;
+            const repairAllowedAtThisBudget = !atMaximumStoryBudget || !!state.settings.llmAssistedJsonRepair;
+            const canRepairPartialStory = lengthTruncatedJson && !isTurnSaverMode() && repairAllowedAtThisBudget;
+
+            if (canRepairPartialStory) {
+              const repairFloor = atMaximumStoryBudget
+                ? MAX_STORY_OUTPUT_TOKENS
+                : nextStoryOutputBudgetAfterLength(lengthBudget);
+              console.warn(`[Infinite Quest] ${label} hit finish_reason=length at ${lengthBudget} tokens; attempting one LLM-assisted JSON repair with at least ${repairFloor} output tokens.`);
+              try {
+                return await attemptLlmAssistedJsonRepair(label, prepared.messages, err.malformedJsonText, {
+                  ...preparedOptions,
+                  max_tokens: Math.max(repairFloor, Number(preparedOptions.max_tokens) || 0)
+                });
+              } catch (repairErr) {
+                if (atMaximumStoryBudget) {
+                  throw modelStoryOutputLengthError(lengthBudget, { repairAttempted: true, cause: repairErr });
+                }
+                throw repairErr;
+              }
+            }
+
+            if (atMaximumStoryBudget) {
+              throw modelStoryOutputLengthError(lengthBudget, {
+                repairUnavailable: !!state.settings.llmAssistedJsonRepair && !lengthTruncatedJson
+              });
+            }
+          }
+
+          // Preserve the existing automatic length-repair behavior for other
+          // structured helper calls that returned malformed JSON.
+          if (lengthTruncatedJson && !preparedOptions.story_request && !isTurnSaverMode()) {
             console.warn(`[Infinite Quest] ${label} returned malformed JSON with finish_reason=length; attempting one LLM-assisted JSON repair with at least ${EXPANDED_STORY_OUTPUT_TOKENS} output tokens.`);
             return await attemptLlmAssistedJsonRepair(label, prepared.messages, err.malformedJsonText, {
               ...preparedOptions,

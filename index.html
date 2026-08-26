@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Infinite Quest - OpenRouter CYOA Engine v2.63</title>
+  <title>Infinite Quest - OpenRouter CYOA Engine v2.635</title>
   <style>
     :root {
       --bg: #07131d;
@@ -2847,6 +2847,15 @@
     const DEFAULT_STORY_OUTPUT_TOKENS = 2600;
     const EXPANDED_STORY_OUTPUT_TOKENS = 4000;
     const MAX_STORY_OUTPUT_TOKENS = 6000;
+    // Non-story helper reasoning policy for Nemotron-like routes.
+    // - Below 2000 tokens: reasoning none.
+    // - Above 2000 through 2600: raise the normal helper attempt to 4000 and keep reasoning low.
+    // - Native/direct helper calls from 3000 through 8000 inclusive: reasoning none.
+    // Main story requests remain on their existing dedicated low-reasoning path.
+    const NEMOTRON_SHORT_HELPER_REASONING_CUTOFF_TOKENS = 2000;
+    const NEMOTRON_SHORT_HELPER_POLICY_MAX_TOKENS = 2600;
+    const NEMOTRON_NO_REASONING_HELPER_MIN_TOKENS = 3000;
+    const NEMOTRON_NO_REASONING_HELPER_MAX_TOKENS = 8000;
     const CONTINUE_NARRATION_INSTRUCTION = "Continue the story naturally from where it left off.";
 
     const MEMORY_FIRST_COMPRESS_TURN_COUNT = 8;
@@ -5384,6 +5393,32 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       // Curated Free Mix receives low reasoning whenever it is the selected route,
       // even if the current catalog expansion happens not to contain Nemotron.
       return modelRequestIncludesNemotron(modelRequest) || candidates.some(isCuratedFreeMixModelId);
+    }
+
+    function openRouterReasoningEffortForRequest(modelRequest = {}, options = {}) {
+      if (!modelRequestUsesLowReasoning(modelRequest)) return "";
+      // Main story requests keep their existing low-reasoning behavior unchanged.
+      if (options.story_request) return "low";
+
+      // Helpers originally in the >2000 through 2600 band are intentionally raised
+      // to 4000 for Nemotron-like routes, but their normal attempt remains low reasoning.
+      if (Number(options.__nemotronShortHelperRaisedFromTokens || 0) > 0) return "low";
+
+      const outputBudget = Math.max(1, Number(options.max_tokens ?? 1200) || 1200);
+      if (outputBudget < NEMOTRON_SHORT_HELPER_REASONING_CUTOFF_TOKENS) return "none";
+      if (outputBudget >= NEMOTRON_NO_REASONING_HELPER_MIN_TOKENS
+          && outputBudget <= NEMOTRON_NO_REASONING_HELPER_MAX_TOKENS) return "none";
+      return "low";
+    }
+
+    function effectiveNemotronShortHelperOutputTokenBudget(requestedTokens = 1200, modelRequest = {}, options = {}) {
+      const budget = Math.max(1, Number(requestedTokens) || 1200);
+      if (options.story_request || !modelRequestUsesLowReasoning(modelRequest)) return budget;
+      if (budget > NEMOTRON_SHORT_HELPER_REASONING_CUTOFF_TOKENS
+          && budget <= NEMOTRON_SHORT_HELPER_POLICY_MAX_TOKENS) {
+        return Math.max(budget, EXPANDED_STORY_OUTPUT_TOKENS);
+      }
+      return budget;
     }
 
     function effectiveStoryOutputTokenBudget(requestedTokens = DEFAULT_STORY_OUTPUT_TOKENS, modelRequest = {}) {
@@ -8438,6 +8473,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       };
       delete repairOptions.json_retries;
       delete repairOptions.no_content_retries;
+      delete repairOptions.__nemotronShortHelperRaisedFromTokens;
       try {
         return await fetchOpenRouterJsonOnce(`${label} JSON repair`, repairMessages, repairOptions);
       } catch (repairErr) {
@@ -8598,8 +8634,9 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       } else {
         payload.model = modelRequest.model;
       }
-      if (modelRequestUsesLowReasoning(modelRequest)) {
-        payload.reasoning = { effort: "low" };
+      const reasoningEffort = openRouterReasoningEffortForRequest(modelRequest, options);
+      if (reasoningEffort) {
+        payload.reasoning = { effort: reasoningEffort };
       }
       if (!disableJsonResponseFormat) {
         payload.response_format = { type: "json_object" };
@@ -8694,6 +8731,25 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
           console.debug(`[Infinite Quest] Raising story output budget from ${requestedBudget} to ${effectiveBudget} tokens because ${reason}.`);
         }
         budgetedOptions = { ...options, __resolvedModelRequest: modelRequest, max_tokens: effectiveBudget };
+      } else {
+        const requestedBudget = Math.max(1, Number(options.max_tokens ?? 1200) || 1200);
+        if (requestedBudget > NEMOTRON_SHORT_HELPER_REASONING_CUTOFF_TOKENS
+            && requestedBudget <= NEMOTRON_SHORT_HELPER_POLICY_MAX_TOKENS) {
+          const key = String(options.api_key ?? state.settings.apiKey ?? "").trim();
+          if (!key) throw new Error("Enter your OpenRouter API key first.");
+          const modelId = options.model || state.settings.llmModel || DEFAULT_LLM_MODEL;
+          const modelRequest = options.__resolvedModelRequest || await buildOpenRouterModelRequest(modelId, key, options);
+          const effectiveBudget = effectiveNemotronShortHelperOutputTokenBudget(requestedBudget, modelRequest, options);
+          if (effectiveBudget > requestedBudget) {
+            console.debug(`[Infinite Quest] Raising short helper output budget from ${requestedBudget} to ${effectiveBudget} tokens because a Nemotron-like model route is active.`);
+          }
+          budgetedOptions = {
+            ...options,
+            __resolvedModelRequest: modelRequest,
+            max_tokens: effectiveBudget,
+            __nemotronShortHelperRaisedFromTokens: effectiveBudget > requestedBudget ? requestedBudget : 0
+          };
+        }
       }
 
       const prepared = await prepareAdaptiveOpenRouterMessages(messages, budgetedOptions);
@@ -10285,7 +10341,8 @@ SVG requirements:
       };
       if (modelRequest.useModelsPayload) payload.models = modelRequest.expanded;
       else payload.model = modelRequest.model;
-      if (modelRequestUsesLowReasoning(modelRequest)) payload.reasoning = { effort: "low" };
+      const reasoningEffort = openRouterReasoningEffortForRequest(modelRequest, { max_tokens: payload.max_tokens });
+      if (reasoningEffort) payload.reasoning = { effort: reasoningEffort };
 
       const res = await withLlmResponseWait(() => fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",

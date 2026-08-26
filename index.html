@@ -5304,7 +5304,10 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     }
 
     function isNemotronModelId(modelId = "") {
-      return String(modelId || "").trim().toLowerCase().includes("nemotron");
+      const id = String(modelId || "").trim().toLowerCase();
+      // Treat openrouter/free as an honorary Nemotron route because OpenRouter may
+      // resolve it to a Nemotron model after the client has already chosen a budget.
+      return id === "openrouter/free" || id.includes("nemotron");
     }
 
     function storyOutputBudgetSettingsSignature(settings = state.settings || {}) {
@@ -5370,6 +5373,17 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         modelRequest.model || ""
       ]);
       return candidates.some(isNemotronModelId);
+    }
+
+    function modelRequestUsesLowReasoning(modelRequest = {}) {
+      const candidates = uniqueModelIds([
+        ...(modelRequest.expanded || []),
+        ...(modelRequest.requested || []),
+        modelRequest.model || ""
+      ]);
+      // Curated Free Mix receives low reasoning whenever it is the selected route,
+      // even if the current catalog expansion happens not to contain Nemotron.
+      return modelRequestIncludesNemotron(modelRequest) || candidates.some(isCuratedFreeMixModelId);
     }
 
     function effectiveStoryOutputTokenBudget(requestedTokens = DEFAULT_STORY_OUTPUT_TOKENS, modelRequest = {}) {
@@ -8584,6 +8598,9 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       } else {
         payload.model = modelRequest.model;
       }
+      if (modelRequestUsesLowReasoning(modelRequest)) {
+        payload.reasoning = { effort: "low" };
+      }
       if (!disableJsonResponseFormat) {
         payload.response_format = { type: "json_object" };
       }
@@ -10268,6 +10285,7 @@ SVG requirements:
       };
       if (modelRequest.useModelsPayload) payload.models = modelRequest.expanded;
       else payload.model = modelRequest.model;
+      if (modelRequestUsesLowReasoning(modelRequest)) payload.reasoning = { effort: "low" };
 
       const res = await withLlmResponseWait(() => fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",

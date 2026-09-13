@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Infinite Quest - OpenRouter CYOA Engine v2.635</title>
+  <title>Infinite Quest - OpenRouter CYOA Engine v2.636</title>
   <style>
     :root {
       --bg: #07131d;
@@ -1870,7 +1870,8 @@
               <p class="mini">Optional controls for turn input, prompt context, and LLM request usage.</p>
               <label class="checkline"><input id="enableStorytellerMode" type="checkbox" /> Enable storyteller mode (grays out the player action box and adds a storyteller box where the player can dictate what happens each turn)</label>
               <label class="checkline"><input id="disableTextTruncation" type="checkbox" /> Disable text truncation (by default, text sent to the LLM, such as past turns, is truncated. This saves tokens, but details can sometimes be lost. Disabling truncation provides fuller context to the LLM at the cost of increased token usage)</label>
-              <label id="llmAssistedJsonRepairLabel" class="checkline"><input id="llmAssistedJsonRepair" type="checkbox" /> LLM-assisted JSON Repair (if structured output remains malformed, send the broken JSON back to the LLM with compact request context and ask it to repair/complete it once; also try this recovery before rejecting a story that still hits the 6,000-token response limit; disabled by Turn Saver Mode)</label>
+              <label class="checkline"><input id="useModelResponseTokenCap" type="checkbox" /> Use the model's maximum response token cap (skips the normal 2,600 → 4,000 → 6,000 story-response ramp and immediately requests the maximum completion tokens reported by OpenRouter; when fallbacks are enabled, the smallest reported cap in the active route is used; if no cap is reported, 6,000 tokens is used)</label>
+              <label id="llmAssistedJsonRepairLabel" class="checkline"><input id="llmAssistedJsonRepair" type="checkbox" /> LLM-assisted JSON Repair (if structured output remains malformed, send the broken JSON back to the LLM with compact request context and ask it to repair/complete it once; also try this recovery before rejecting a story that still hits its response-token limit; disabled by Turn Saver Mode)</label>
               <label class="checkline"><input id="turnSaverMode" type="checkbox" /> Turn Saver Mode (disables most advanced features and ensures that only one prompt is sent per turn to reduce usage)</label>
               <label class="checkline"><input id="addContinueNarrationButton" type="checkbox" /> Add Continue Narration Button (adds a Continue Narration button that advances the story naturally without requiring a player action, using storyteller-style continuation for that turn)</label>
             </div>
@@ -2890,6 +2891,7 @@
         addContinueNarrationButton: false,
         betterMemoryManagement: false,
         disableTextTruncation: false,
+        useModelResponseTokenCap: false,
         llmAssistedJsonRepair: false,
         turnSaverMode: false,
         lengthExpandedStoryOutputTokens: 0,
@@ -2909,7 +2911,7 @@
         memoryInstructions: "",
         suppressTriggers: false
       },
-      modelLists: { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS, llmContextLengths: {}, aiHordeModels: [], aiHordeModelsLoadedAt: 0 },
+      modelLists: { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS, llmContextLengths: {}, llmMaxCompletionTokens: {}, aiHordeModels: [], aiHordeModelsLoadedAt: 0 },
       rpgStats: deepClone(DEFAULT_RPG_STATS),
       defaultTriggers: [],
       eventTriggers: [],
@@ -4464,6 +4466,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
           llms: [...(source.modelLists?.llms || DEFAULT_LLM_MODELS)],
           images: [...(source.modelLists?.images || DEFAULT_IMAGE_MODELS)],
           llmContextLengths: normalizeModelContextLengths(source.modelLists?.llmContextLengths),
+          llmMaxCompletionTokens: normalizeModelCompletionTokenCaps(source.modelLists?.llmMaxCompletionTokens),
           llmsLoadedAt: source.modelLists?.llmsLoadedAt || 0,
           aiHordeModels: (source.modelLists?.aiHordeModels || []).slice(0, 800).map(model => ({
             name: truncateText(model?.name || "", 240),
@@ -4579,8 +4582,9 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         target.world = { title: "", genre: "", tone: "", backgroundStory: "", character: "", premise: "", firstAction: "", rules: "", memoryInstructions: "", suppressTriggers: false };
       }
       delete target.collapsedPanels;
-      target.modelLists ||= { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS, llmContextLengths: {}, aiHordeModels: [], aiHordeModelsLoadedAt: 0 };
+      target.modelLists ||= { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS, llmContextLengths: {}, llmMaxCompletionTokens: {}, aiHordeModels: [], aiHordeModelsLoadedAt: 0 };
       target.modelLists.llmContextLengths = normalizeModelContextLengths(target.modelLists.llmContextLengths);
+      target.modelLists.llmMaxCompletionTokens = normalizeModelCompletionTokenCaps(target.modelLists.llmMaxCompletionTokens);
       if (target.settings && typeof target.settings === "object") {
         delete target.settings.freeModelsOnly;
         delete target.settings.freeModelsWithPollinations;
@@ -4589,6 +4593,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         target.settings.imageModel = normalizeImageModelId(target.settings.imageModel || "") || target.settings.imageModel;
         target.settings.lastFreeImageModel = normalizeImageModelId(target.settings.lastFreeImageModel || "") || target.settings.lastFreeImageModel;
         target.settings.addContinueNarrationButton = !!target.settings.addContinueNarrationButton;
+        target.settings.useModelResponseTokenCap = !!target.settings.useModelResponseTokenCap;
         const savedStoryOutputBudget = Number(target.settings.lengthExpandedStoryOutputTokens || 0);
         target.settings.lengthExpandedStoryOutputTokens = savedStoryOutputBudget >= MAX_STORY_OUTPUT_TOKENS
           ? MAX_STORY_OUTPUT_TOKENS
@@ -4610,6 +4615,17 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     }
 
     function normalizeModelContextLengths(value = {}) {
+      const normalized = {};
+      if (!value || typeof value !== "object" || Array.isArray(value)) return normalized;
+      Object.entries(value).forEach(([modelId, rawLimit]) => {
+        const id = String(modelId || "").trim().toLowerCase();
+        const limit = Math.floor(Number(rawLimit));
+        if (id && Number.isFinite(limit) && limit > 0) normalized[id] = limit;
+      });
+      return normalized;
+    }
+
+    function normalizeModelCompletionTokenCaps(value = {}) {
       const normalized = {};
       if (!value || typeof value !== "object" || Array.isArray(value)) return normalized;
       Object.entries(value).forEach(([modelId, rawLimit]) => {
@@ -5296,11 +5312,30 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       return contextLengths;
     }
 
+    function openRouterModelMaxCompletionTokens(model = {}) {
+      const topProviderLimit = Math.floor(Number(model?.top_provider?.max_completion_tokens));
+      return Number.isFinite(topProviderLimit) && topProviderLimit > 0 ? topProviderLimit : 0;
+    }
+
+    function extractOpenRouterModelCompletionTokenCaps(models = []) {
+      const caps = {};
+      (models || []).forEach(model => {
+        const id = String(model?.id || "").trim().toLowerCase();
+        const cap = openRouterModelMaxCompletionTokens(model);
+        if (id && cap > 0) caps[id] = cap;
+      });
+      return caps;
+    }
+
     function cacheOpenRouterModelCatalog(models = []) {
-      state.modelLists ||= { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS, llmContextLengths: {}, aiHordeModels: [], aiHordeModelsLoadedAt: 0 };
+      state.modelLists ||= { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS, llmContextLengths: {}, llmMaxCompletionTokens: {}, aiHordeModels: [], aiHordeModelsLoadedAt: 0 };
       state.modelLists.llmContextLengths = {
         ...normalizeModelContextLengths(state.modelLists.llmContextLengths),
         ...extractOpenRouterModelContextLengths(models)
+      };
+      state.modelLists.llmMaxCompletionTokens = {
+        ...normalizeModelCompletionTokenCaps(state.modelLists.llmMaxCompletionTokens),
+        ...extractOpenRouterModelCompletionTokenCaps(models)
       };
     }
 
@@ -5346,10 +5381,11 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       return 0;
     }
 
-    function nextStoryOutputBudgetAfterLength(currentTokens = DEFAULT_STORY_OUTPUT_TOKENS) {
+    function nextStoryOutputBudgetAfterLength(currentTokens = DEFAULT_STORY_OUTPUT_TOKENS, maximumTokens = MAX_STORY_OUTPUT_TOKENS) {
       const current = Math.max(1, Number(currentTokens) || DEFAULT_STORY_OUTPUT_TOKENS);
-      if (current < EXPANDED_STORY_OUTPUT_TOKENS) return EXPANDED_STORY_OUTPUT_TOKENS;
-      return MAX_STORY_OUTPUT_TOKENS;
+      const maximum = Math.max(1, Number(maximumTokens) || MAX_STORY_OUTPUT_TOKENS);
+      if (current < EXPANDED_STORY_OUTPUT_TOKENS) return Math.min(EXPANDED_STORY_OUTPUT_TOKENS, maximum);
+      return maximum;
     }
 
     function enableLengthExpandedStoryOutputBudget(tokens = EXPANDED_STORY_OUTPUT_TOKENS) {
@@ -5421,7 +5457,35 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       return budget;
     }
 
+    function cachedModelMaxCompletionTokens(modelId = "") {
+      const id = String(modelId || "").trim().toLowerCase();
+      const reportedLimit = Number(state.modelLists?.llmMaxCompletionTokens?.[id]);
+      return Number.isFinite(reportedLimit) && reportedLimit > 0 ? Math.floor(reportedLimit) : 0;
+    }
+
+    function modelRequestMaxCompletionTokenCap(modelRequest = {}) {
+      const models = uniqueModelIds(modelRequest.expanded?.length ? modelRequest.expanded : [modelRequest.model || ""]);
+      if (!models.length) return 0;
+      const caps = models.map(cachedModelMaxCompletionTokens);
+      // A single max_tokens value is shared by OpenRouter's fallback route. Only use
+      // a reported model cap when every candidate has one, then choose the smallest
+      // so every model in the route can accept the request.
+      if (caps.some(cap => cap <= 0)) return 0;
+      return Math.min(...caps);
+    }
+
+    function storyOutputBudgetCeiling(modelRequest = {}) {
+      if (state.settings?.useModelResponseTokenCap) {
+        const reportedCap = modelRequestMaxCompletionTokenCap(modelRequest);
+        return reportedCap > 0 ? reportedCap : MAX_STORY_OUTPUT_TOKENS;
+      }
+      return MAX_STORY_OUTPUT_TOKENS;
+    }
+
     function effectiveStoryOutputTokenBudget(requestedTokens = DEFAULT_STORY_OUTPUT_TOKENS, modelRequest = {}) {
+      if (state.settings?.useModelResponseTokenCap) {
+        return storyOutputBudgetCeiling(modelRequest);
+      }
       let budget = Math.max(1, Number(requestedTokens) || DEFAULT_STORY_OUTPUT_TOKENS);
       if (modelRequestIncludesNemotron(modelRequest)) budget = Math.max(budget, EXPANDED_STORY_OUTPUT_TOKENS);
       const persistedBudget = persistedLengthExpandedStoryOutputBudget();
@@ -5584,6 +5648,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
           ...(state.modelLists || {}),
           llms,
           llmContextLengths: normalizeModelContextLengths(state.modelLists?.llmContextLengths),
+          llmMaxCompletionTokens: normalizeModelCompletionTokenCaps(state.modelLists?.llmMaxCompletionTokens),
           llmsLoadedAt: Date.now()
         };
         populateModelSelects();
@@ -7248,6 +7313,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       state.settings.addContinueNarrationButton = !!$("addContinueNarrationButton")?.checked;
       state.settings.betterMemoryManagement = !!$("betterMemoryManagement")?.checked;
       state.settings.disableTextTruncation = !!$("disableTextTruncation")?.checked;
+      state.settings.useModelResponseTokenCap = !!$("useModelResponseTokenCap")?.checked;
       state.settings.llmAssistedJsonRepair = !!$("llmAssistedJsonRepair")?.checked;
       state.settings.turnSaverMode = !!$("turnSaverMode")?.checked;
       syncAiHordeFormToSettings();
@@ -7307,6 +7373,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       if ($("addContinueNarrationButton")) $("addContinueNarrationButton").checked = !!state.settings.addContinueNarrationButton;
       if ($("betterMemoryManagement")) $("betterMemoryManagement").checked = !!state.settings.betterMemoryManagement;
       if ($("disableTextTruncation")) $("disableTextTruncation").checked = !!state.settings.disableTextTruncation;
+      if ($("useModelResponseTokenCap")) $("useModelResponseTokenCap").checked = !!state.settings.useModelResponseTokenCap;
       if ($("llmAssistedJsonRepair")) $("llmAssistedJsonRepair").checked = !!state.settings.llmAssistedJsonRepair;
       if ($("turnSaverMode")) $("turnSaverMode").checked = !!state.settings.turnSaverMode;
       $("temperature").value = state.settings.temperature ?? 0.85;
@@ -8671,12 +8738,16 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       const finishReason = String(choice?.finish_reason || choice?.native_finish_reason || "").trim().toLowerCase();
       const responseMaxTokens = Math.max(1, Number(payload.max_tokens) || 1);
       if (finishReason === "length" && options.persist_length_output_budget) {
-        if (responseMaxTokens < MAX_STORY_OUTPUT_TOKENS) {
-          const nextBudget = nextStoryOutputBudgetAfterLength(responseMaxTokens);
+        const storyMaximum = storyOutputBudgetCeiling(modelRequest);
+        if (!state.settings?.useModelResponseTokenCap && responseMaxTokens < storyMaximum) {
+          const nextBudget = nextStoryOutputBudgetAfterLength(responseMaxTokens, storyMaximum);
           console.warn(`[Infinite Quest] ${label} hit the ${responseMaxTokens}-token output limit; future story turns will use a ${nextBudget}-token output budget until Model Settings change.`);
           enableLengthExpandedStoryOutputBudget(nextBudget);
         } else {
-          console.warn(`[Infinite Quest] ${label} hit the maximum ${MAX_STORY_OUTPUT_TOKENS}-token story output limit.`);
+          const source = state.settings?.useModelResponseTokenCap && modelRequestMaxCompletionTokenCap(modelRequest) > 0
+            ? "model-reported maximum"
+            : "maximum story output";
+          console.warn(`[Infinite Quest] ${label} hit the ${source} limit of ${storyMaximum.toLocaleString()} tokens.`);
         }
       }
       if (!content) {
@@ -8723,12 +8794,15 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         const modelRequest = options.__resolvedModelRequest || await buildOpenRouterModelRequest(modelId, key, options);
         const requestedBudget = Math.max(1, Number(options.max_tokens ?? DEFAULT_STORY_OUTPUT_TOKENS) || DEFAULT_STORY_OUTPUT_TOKENS);
         const effectiveBudget = effectiveStoryOutputTokenBudget(requestedBudget, modelRequest);
-        if (effectiveBudget > requestedBudget) {
+        if (effectiveBudget !== requestedBudget) {
           const persistedBudget = persistedLengthExpandedStoryOutputBudget();
-          const reason = persistedBudget >= effectiveBudget
-            ? "a previous story response hit finish_reason=length"
-            : "a Nemotron model is present in the active model route";
-          console.debug(`[Infinite Quest] Raising story output budget from ${requestedBudget} to ${effectiveBudget} tokens because ${reason}.`);
+          const reportedCap = modelRequestMaxCompletionTokenCap(modelRequest);
+          const reason = state.settings?.useModelResponseTokenCap
+            ? (reportedCap > 0 ? "Use Model Response Token Cap is enabled" : "Use Model Response Token Cap is enabled and no route-wide cap metadata is available, so the legacy 6,000-token ceiling is used immediately")
+            : (persistedBudget >= effectiveBudget
+              ? "a previous story response hit finish_reason=length"
+              : "a Nemotron model is present in the active model route");
+          console.debug(`[Infinite Quest] Setting story output budget from ${requestedBudget} to ${effectiveBudget} tokens because ${reason}.`);
         }
         budgetedOptions = { ...options, __resolvedModelRequest: modelRequest, max_tokens: effectiveBudget };
       } else {
@@ -8777,14 +8851,15 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
           const lengthTruncatedJson = !!err?.isModelJsonError && hitLength && !!err.malformedJsonText;
 
           if (preparedOptions.story_request && hitLength) {
-            const atMaximumStoryBudget = lengthBudget >= MAX_STORY_OUTPUT_TOKENS;
+            const maximumStoryBudget = storyOutputBudgetCeiling(preparedOptions.__resolvedModelRequest || {});
+            const atMaximumStoryBudget = lengthBudget >= maximumStoryBudget;
             const repairAllowedAtThisBudget = !atMaximumStoryBudget || !!state.settings.llmAssistedJsonRepair;
             const canRepairPartialStory = lengthTruncatedJson && !isTurnSaverMode() && repairAllowedAtThisBudget;
 
             if (canRepairPartialStory) {
               const repairFloor = atMaximumStoryBudget
-                ? MAX_STORY_OUTPUT_TOKENS
-                : nextStoryOutputBudgetAfterLength(lengthBudget);
+                ? maximumStoryBudget
+                : nextStoryOutputBudgetAfterLength(lengthBudget, maximumStoryBudget);
               console.warn(`[Infinite Quest] ${label} hit finish_reason=length at ${lengthBudget} tokens; attempting one LLM-assisted JSON repair with at least ${repairFloor} output tokens.`);
               try {
                 return await attemptLlmAssistedJsonRepair(label, prepared.messages, err.malformedJsonText, {
@@ -11600,6 +11675,7 @@ ${missingList}`,
       if (payload.addContinueNarrationButton !== undefined) state.settings.addContinueNarrationButton = !!payload.addContinueNarrationButton;
       if (payload.betterMemoryManagement !== undefined) state.settings.betterMemoryManagement = !!payload.betterMemoryManagement;
       if (payload.disableTextTruncation !== undefined) state.settings.disableTextTruncation = !!payload.disableTextTruncation;
+      if (payload.useModelResponseTokenCap !== undefined) state.settings.useModelResponseTokenCap = !!payload.useModelResponseTokenCap;
       if (payload.llmAssistedJsonRepair !== undefined) state.settings.llmAssistedJsonRepair = !!payload.llmAssistedJsonRepair;
       if (payload.turnSaverMode !== undefined) state.settings.turnSaverMode = !!payload.turnSaverMode;
       enforceTurnSaverModeSettings();
@@ -11813,6 +11889,7 @@ ${missingList}`,
           llms: uniqueModelIds(catalogModels.map(m => m.id).sort(), DEFAULT_LLM_MODELS),
           images: uniqueModelIds(imageIds, DEFAULT_IMAGE_MODELS),
           llmContextLengths: normalizeModelContextLengths(state.modelLists?.llmContextLengths),
+          llmMaxCompletionTokens: normalizeModelCompletionTokenCaps(state.modelLists?.llmMaxCompletionTokens),
           llmsLoadedAt: Date.now(),
           aiHordeModels: state.modelLists?.aiHordeModels || [],
           aiHordeModelsLoadedAt: state.modelLists?.aiHordeModelsLoadedAt || 0
@@ -11905,6 +11982,7 @@ ${missingList}`,
           addContinueNarrationButton: !!state.settings.addContinueNarrationButton,
           betterMemoryManagement: !!state.settings.betterMemoryManagement,
           disableTextTruncation: !!state.settings.disableTextTruncation,
+          useModelResponseTokenCap: !!state.settings.useModelResponseTokenCap,
           llmAssistedJsonRepair: !!state.settings.llmAssistedJsonRepair,
           turnSaverMode: !!state.settings.turnSaverMode
         },
@@ -13598,6 +13676,7 @@ ${missingList}`,
         addContinueNarrationButton: settings.addContinueNarrationButton ?? settings.add_continue_narration_button ?? imported.addContinueNarrationButton ?? imported.add_continue_narration_button,
         betterMemoryManagement: settings.betterMemoryManagement ?? settings.better_memory_management ?? imported.betterMemoryManagement ?? imported.better_memory_management,
         disableTextTruncation: settings.disableTextTruncation ?? settings.disable_text_truncation ?? imported.disableTextTruncation ?? imported.disable_text_truncation,
+        useModelResponseTokenCap: settings.useModelResponseTokenCap ?? settings.use_model_response_token_cap ?? imported.useModelResponseTokenCap ?? imported.use_model_response_token_cap,
         llmAssistedJsonRepair: settings.llmAssistedJsonRepair ?? settings.llm_assisted_json_repair ?? imported.llmAssistedJsonRepair ?? imported.llm_assisted_json_repair,
         turnSaverMode: settings.turnSaverMode ?? settings.turn_saver_mode ?? imported.turnSaverMode ?? imported.turn_saver_mode,
         rpgStats: normalizedStats,
@@ -13678,6 +13757,7 @@ ${missingList}`,
       if (payload.addContinueNarrationButton !== undefined) state.settings.addContinueNarrationButton = !!payload.addContinueNarrationButton;
       if (payload.betterMemoryManagement !== undefined) state.settings.betterMemoryManagement = !!payload.betterMemoryManagement;
       if (payload.disableTextTruncation !== undefined) state.settings.disableTextTruncation = !!payload.disableTextTruncation;
+      if (payload.useModelResponseTokenCap !== undefined) state.settings.useModelResponseTokenCap = !!payload.useModelResponseTokenCap;
       if (payload.llmAssistedJsonRepair !== undefined) state.settings.llmAssistedJsonRepair = !!payload.llmAssistedJsonRepair;
       if (payload.turnSaverMode !== undefined) state.settings.turnSaverMode = !!payload.turnSaverMode;
       enforceTurnSaverModeSettings();
@@ -14999,7 +15079,7 @@ Rules:
     }
 
     function bindEvents() {
-      const autosaveInputs = ["apiKey", "aiHordeApiKey", "llmModel", "llmModelCustom", "addFallbackModels", "fallbackLlmModel1", "fallbackLlmModel2", "imageModel", "imageModelCustom", "imageAspectRatio", "imageSize", "temperature", "worldTitle", "genre", "tone", "backgroundStory", "character", "premise", "firstAction", "rules", "suppressTriggers", "enableResponseEditing", "enableStorytellerMode", "addContinueNarrationButton", "betterMemoryManagement", "disableTextTruncation", "llmAssistedJsonRepair", "turnSaverMode", "aiHordeQualityPreset", "aiHordeCandidates", "aiHordeSampler", "aiHordeSteps", "aiHordeCfgScale", "aiHordeKarras", "aiHordeHiresFix", "aiHordeModel", "aiHordeModelPreference", "aiHordeCustomModel", "aiHordeResolution", "aiHordeAspectRatio", "aiHordeCustomWidth", "aiHordeCustomHeight", "aiHordePostProcessing", "aiHordeNegativePrompt", "aiHordeEnhancePrompt", "aiHordeTrustedWorkers", "aiHordeSlowWorkers", "aiHordeValidatedBackends", "aiHordeShared", "aiHordeAllowNsfw", "aiHordeWorkerListMode", "aiHordeWorkerIds"];
+      const autosaveInputs = ["apiKey", "aiHordeApiKey", "llmModel", "llmModelCustom", "addFallbackModels", "fallbackLlmModel1", "fallbackLlmModel2", "imageModel", "imageModelCustom", "imageAspectRatio", "imageSize", "temperature", "worldTitle", "genre", "tone", "backgroundStory", "character", "premise", "firstAction", "rules", "suppressTriggers", "enableResponseEditing", "enableStorytellerMode", "addContinueNarrationButton", "betterMemoryManagement", "disableTextTruncation", "useModelResponseTokenCap", "llmAssistedJsonRepair", "turnSaverMode", "aiHordeQualityPreset", "aiHordeCandidates", "aiHordeSampler", "aiHordeSteps", "aiHordeCfgScale", "aiHordeKarras", "aiHordeHiresFix", "aiHordeModel", "aiHordeModelPreference", "aiHordeCustomModel", "aiHordeResolution", "aiHordeAspectRatio", "aiHordeCustomWidth", "aiHordeCustomHeight", "aiHordePostProcessing", "aiHordeNegativePrompt", "aiHordeEnhancePrompt", "aiHordeTrustedWorkers", "aiHordeSlowWorkers", "aiHordeValidatedBackends", "aiHordeShared", "aiHordeAllowNsfw", "aiHordeWorkerListMode", "aiHordeWorkerIds"];
       autosaveInputs.forEach(id => {
         const el = $(id);
         if (!el) return;
@@ -15208,6 +15288,15 @@ Rules:
         toast(hasKey ? "Closed Getting Started." : "Key setup skipped for now. You can open Model Settings from the Menu when you are ready.");
       });
       ["rememberKey", "generateImages", "useRpgStats", "enableResponseEditing", "enableStorytellerMode", "addContinueNarrationButton", "betterMemoryManagement", "disableTextTruncation", "llmAssistedJsonRepair"].forEach(id => $(id)?.addEventListener("change", () => { syncFormToState(); renderAll(); }));
+      $("useModelResponseTokenCap")?.addEventListener("change", () => {
+        state.settings.useModelResponseTokenCap = !!$("useModelResponseTokenCap").checked;
+        resetLengthExpandedStoryOutputBudget({ save: false });
+        saveState();
+        renderAll();
+        toast(state.settings.useModelResponseTokenCap
+          ? "Model response token cap enabled: story requests will start at the model-reported maximum instead of ramping up."
+          : "Model response token cap disabled: story requests will use the normal adaptive output-token ramp.");
+      });
       $("manualRpgSelection")?.addEventListener("change", () => {
         state.settings.manualRpgSelection = !!$("manualRpgSelection").checked;
         syncStateToForm();

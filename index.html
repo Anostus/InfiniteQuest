@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Infinite Quest - OpenRouter CYOA Engine v2.64</title>
+  <title>Infinite Quest - OpenRouter CYOA Engine v2.7</title>
   <style>
     :root {
       --bg: #07131d;
@@ -419,6 +419,9 @@
     }
 
     .ai-horde-settings > h4 { margin: 0; color: var(--gold2); }
+    .settings-section-heading { margin: 4px 0 0; color: var(--gold2); }
+    .video-model-settings { display: grid; gap: 10px; padding-top: 4px; }
+    .video-model-settings > h4 { margin: 0; color: var(--gold2); }
     .ai-horde-settings details { background: rgba(0,0,0,.12); }
     .ai-horde-settings details > div { display: grid; gap: 10px; }
     .ai-horde-setting-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -960,6 +963,22 @@
       background: rgba(7, 14, 24, .88);
     }
 
+    .image-wrap video {
+      width: 100%;
+      height: 100%;
+      max-width: 100%;
+      max-height: 100%;
+      display: block;
+      object-fit: contain;
+      background: #000;
+    }
+
+    .video-status-badge {
+      position: absolute; left: 12px; bottom: 12px; z-index: 5;
+      padding: 7px 10px; border-radius: 11px; background: rgba(7,14,24,.9);
+      border: 1px solid rgba(255,255,255,.15); color: var(--muted); font-size: .78rem;
+    }
+
     .image-actions button {
       backdrop-filter: blur(10px);
       box-shadow: 0 8px 18px rgba(0,0,0,.28);
@@ -1406,6 +1425,37 @@
       align-self: center;
       min-width: 120px;
     }
+    .video-generation-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 6;
+      display: grid;
+      place-items: center;
+      background: rgba(5, 10, 18, .52);
+      backdrop-filter: blur(2px);
+      pointer-events: none;
+    }
+
+    .video-generation-overlay-inner {
+      display: grid;
+      justify-items: center;
+      gap: 10px;
+      padding: 16px 18px;
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 16px;
+      background: rgba(7, 13, 24, .88);
+      box-shadow: 0 14px 36px rgba(0,0,0,.35);
+      color: var(--text);
+      text-align: center;
+      font-size: .86rem;
+    }
+
+    .video-generation-overlay .spinner {
+      width: 28px;
+      height: 28px;
+      border-width: 3px;
+    }
+
   </style>
 </head>
 <body>
@@ -1510,6 +1560,50 @@
     </form>
   </dialog>
 
+  <dialog id="videoGenerationDialog" class="world-gen-dialog app-dialog">
+    <div class="world-gen-card">
+      <div class="dialog-header"><div><h3>🎥 Generate Video</h3><p class="mini">Animate this turn's generated image with OpenRouter.</p></div><button id="btnCloseVideoDialog" class="small ghost" type="button">✕</button></div>
+      <div class="dialog-scroll stack">
+        <label>Video prompt<textarea id="videoPromptEditor" placeholder="Describe motion, camera movement, dialogue, ambience, and action..."></textarea></label>
+        <div class="row wrap"><button id="btnAiVideoSceneDescription" class="accent" type="button">✨ AI Generate Scene Description</button><span id="aiVideoSceneSpinner" class="spinner hidden" aria-hidden="true"></span></div>
+        <div class="ai-horde-setting-grid three">
+          <label>Duration (seconds)<input id="videoDialogDuration" type="number" min="1" max="60" step="1" /></label>
+          <label>Resolution<select id="videoDialogResolution"><option>480p</option><option>720p</option><option>1080p</option><option>1K</option><option>2K</option></select></label>
+          <label>Aspect ratio<select id="videoDialogAspectRatio"><option>16:9</option><option>9:16</option><option>3:2</option><option>2:3</option><option>1:1</option><option>4:3</option><option>3:4</option></select></label>
+        </div>
+        <label class="checkline"><input id="videoDialogAudio" type="checkbox" /> Generate audio</label>
+        <p id="videoDialogStatus" class="mini"></p>
+      </div>
+      <div class="row wrap dialog-actions"><button id="btnCancelVideo" type="button">Cancel</button><button id="btnGenerateVideoConfirm" class="primary" type="button">🎥 Generate Video</button></div>
+    </div>
+  </dialog>
+  <dialog id="existingVideoDialog" class="world-gen-dialog app-dialog getting-started-dialog">
+    <div class="world-gen-card">
+      <div class="dialog-header"><div><h3>🎥 Video</h3><p class="mini">This turn already has a generated video.</p></div><button id="btnCloseExistingVideoDialog" class="small ghost" type="button">✕</button></div>
+      <div class="world-gen-box"><p>Would you like to download the current video or generate a new video from this turn's original image?</p></div>
+      <div class="row wrap dialog-actions"><button id="btnExistingVideoDownload" class="accent" type="button">⬇ Download Current Video</button><button id="btnExistingVideoGenerateNew" class="primary" type="button">🎥 Generate New Video</button></div>
+    </div>
+  </dialog>
+  <dialog id="videoZipLoadDialog" class="world-gen-dialog app-dialog getting-started-dialog">
+    <div class="world-gen-card">
+      <div class="dialog-header">
+        <div>
+          <h3>🎥 Load Story Videos</h3>
+          <p class="mini">This story includes video references.</p>
+        </div>
+        <button id="btnCloseVideoZipLoadDialog" class="small ghost" type="button" aria-label="Close video ZIP prompt">✕</button>
+      </div>
+      <div class="world-gen-box">
+        <p>Select the separate video ZIP you downloaded with the .story file?</p>
+      </div>
+      <div class="row wrap dialog-actions">
+        <button id="btnSkipVideoZipLoad" type="button">Continue Without Videos</button>
+        <button id="btnUploadVideoZip" class="primary" type="button">📂 Upload Video ZIP</button>
+      </div>
+    </div>
+  </dialog>
+  <input id="videoZipImportFile" type="file" accept=".zip,application/zip" class="hidden" />
+
   <dialog id="responseCapOfferDialog" class="world-gen-dialog app-dialog getting-started-dialog">
     <div class="world-gen-card">
       <div class="dialog-header">
@@ -1553,7 +1647,7 @@
       <div class="dialog-header">
         <div>
           <h3 id="modelSettingsTitle">Model Settings</h3>
-          <p class="mini" id="modelSettingsSubtitle">Set your OpenRouter key, model preferences, and image generation options.</p>
+          <p class="mini" id="modelSettingsSubtitle">Set your OpenRouter key, model preferences, image generation, and video generation options.</p>
         </div>
         <button id="btnCloseModelSettings" class="small ghost" type="button" aria-label="Close model settings">✕</button>
       </div>
@@ -1595,6 +1689,7 @@
             <input id="llmModelCustom" placeholder="e.g. deepseek/deepseek-v3.2" />
           </label>
 
+          <h4 class="settings-section-heading">Image Settings</h4>
           <label>Image model
             <select id="imageModel"></select>
           </label>
@@ -1602,6 +1697,9 @@
             <input id="imageModelCustom" placeholder="e.g. black-forest-labs/flux.2-klein-4b" />
           </label>
           <p class="mini">Pollinations.ai generates a free square image directly from the scene prompt. SVG mode asks the selected Story LLM to return a standalone vector illustration; the SVG is validated, stripped of scripts and external resources, and displayed directly in the story. AI Horde+SVG Placeholder launches the SVG request and AI Horde request together, shows a notice that you can keep playing while both generate, and lets you swap between the latest available versions. SVG generation uses one additional Story LLM request per image.</p>
+
+
+
           <label>AI Horde API key, optional
             <input id="aiHordeApiKey" type="password" autocomplete="off" placeholder="Leave blank to use anonymous free access" />
           </label>
@@ -1787,7 +1885,29 @@
               </select>
             </label>
           </div>
-          <label id="generateImagesLabel" class="checkline"><input id="generateImages" type="checkbox" /> Generate an image each turn</label>
+          <div id="generateImagesAndVideoSettings">
+            <label id="generateImagesLabel" class="checkline"><input id="generateImages" type="checkbox" /> Generate an image each turn</label>
+
+            <section class="video-model-settings" aria-label="OpenRouter video settings">
+            <h4>Video Model Settings</h4>
+            <p class="mini">Videos use OpenRouter's asynchronous video API. The generated image for a turn is sent as the first frame.</p>
+            <div class="ai-horde-setting-grid">
+              <label>Video model
+                <select id="videoModel"><option value="alibaba/wan-3.0" selected>Alibaba: Wan 3.0</option><option value="bytedance/seedance-2.5">ByteDance: Seedance 2.5</option><option value="google/veo-3.1-lite">Google: Veo 3.1 Lite</option><option value="alibaba/wan-2.7">Alibaba: Wan 2.7</option></select>
+              </label>
+              <label>Custom video model ID, optional
+                <input id="videoModelCustom" placeholder="e.g. alibaba/wan-3.0" />
+              </label>
+            </div>
+            <div class="ai-horde-setting-grid three">
+              <label>Default duration (seconds)<input id="videoDuration" type="number" min="1" max="60" step="1" value="5" /></label>
+              <label>Default resolution<select id="videoResolution"><option selected>480p</option><option>720p</option><option>1080p</option><option>1K</option><option>2K</option></select></label>
+              <label>Default aspect ratio<select id="videoAspectRatio"><option>16:9</option><option>9:16</option><option selected>3:2</option><option>2:3</option><option>1:1</option><option>4:3</option><option>3:4</option></select></label>
+            </div>
+            <label class="checkline"><input id="videoGenerateAudio" type="checkbox" checked /> Generate audio when the selected model supports it</label>
+            <div class="row wrap"><button id="btnRefreshVideoModels" class="small" type="button">↻ Refresh OpenRouter video models</button><span id="videoModelStatus" class="mini">The list can be refreshed from OpenRouter.</span></div>
+            </section>
+          </div>
       </div>
       <div class="row wrap dialog-actions">
         <button id="btnModelSettingsDone" type="button">Done</button>
@@ -2241,6 +2361,9 @@
       <label>Image prompt
         <textarea id="imagePromptEditor" placeholder="Describe the scene you want the image model to render."></textarea>
       </label>
+      <div class="row wrap">
+        <button id="btnImportCurrentTurnImagePrompt" type="button">Import Current Turn's Image Prompt</button>
+      </div>
       <div class="row wrap" style="justify-content:flex-end;">
         <button id="btnImagePromptCancel" type="button">Cancel</button>
         <button id="btnRegenerateImageConfirm" class="primary" type="button">🖼️ Regenerate image</button>
@@ -2897,6 +3020,11 @@
         pollinationsLastFailureTurnNumber: 0,
         imageAspectRatio: "3:2",
         imageSize: "1K",
+        videoModel: "alibaba/wan-3.0",
+        videoDuration: 5,
+        videoResolution: "480p",
+        videoAspectRatio: "3:2",
+        videoGenerateAudio: true,
         generateImages: true,
         filterFreeOptions: false,
         addFallbackModels: false,
@@ -4451,6 +4579,15 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         clean.imageNotAutosaved = true;
         clean.imageError = clean.imageError || "Image was generated but was too large to autosave in browser storage. Use Save Full Story, Export to HTML, or Export to Markdown before closing if you need to preserve images.";
       }
+      // Generated videos are kept alive as Blob/object URLs for the lifetime of this
+      // page, but browser object URLs cannot survive a reload. Never autosave a blob:
+      // URL as though it were reloadable; keep the videoAsset metadata so the UI can
+      // explain what happened and a saved video ZIP can restore it later.
+      if (String(clean.videoUrl || "").startsWith("blob:")) {
+        clean.videoUrl = "";
+        clean.videoNotAutosaved = true;
+      }
+      clean.videoGenerating = false;
       return clean;
     }
 
@@ -4575,6 +4712,20 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       normalizeDefaultTriggerState();
       normalizePerTurnSnapshots();
       normalizeNameCorrectionState();
+      // Video generation/blob data only lives in the current page session. Clear any
+      // stale loading state after a refresh. If metadata says a completed video existed
+      // but its bytes are no longer available, do not leave a dead <video> element in
+      // the story. Fall back to the turn image and retain a clear restoration error.
+      for (const turn of (state.turns || [])) {
+        turn.videoGenerating = false;
+        const savedVideoUrl = String(turn.videoUrl || "");
+        if (savedVideoUrl.startsWith("blob:") || (turn.videoAsset?.fileName && !savedVideoUrl)) {
+          turn.videoUrl = "";
+          turn.videoNotAutosaved = true;
+          turn.videoError = "The generated video is no longer loaded because browser video data does not survive a page refresh. The turn image is shown instead. To restore the video, load the story's saved video ZIP, or generate a new video.";
+          if (turn.mediaDisplayMode === "video") turn.mediaDisplayMode = "image";
+        }
+      }
       syncStateToForm();
       renderAll();
       dirtySinceFullExport = !!state.unsavedFullExport;
@@ -7080,7 +7231,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         ? (sharedWorldStart
           ? "Choose a key option, confirm model settings, then start the loaded shared world."
           : "Choose a key option, confirm model settings, then continue to world setup.")
-        : "Set your OpenRouter key, model preferences, and image generation options.";
+        : "Set your OpenRouter key, model preferences, image generation, and video generation options.";
       if (noteEl) noteEl.textContent = note || (sharedWorldStart ? "Shared world loaded. Confirm your key and model settings, then start the adventure." : "");
     }
 
@@ -7089,7 +7240,9 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       setModelSettingsGettingStartedMode(!!options.gettingStarted, note);
       syncAiHordeSettingsToForm();
       updateAiHordeSettingsVisibility();
+      populateVideoModelSelect(state.modelLists?.videoModels || []);
       openDialog("modelSettingsDialog", "apiKey");
+      if (!(state.modelLists?.videoModels || []).length) refreshVideoModels({ showError: false });
     }
 
     function closeModelSettingsDialog() {
@@ -7323,6 +7476,11 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       if ($("imageAspectRatio")) $("imageAspectRatio").value = selectedAspectRatio;
       if ($("aiHordeAspectRatio")) $("aiHordeAspectRatio").value = selectedAspectRatio;
       state.settings.imageSize = $("imageSize").value;
+      if ($("videoModel")) state.settings.videoModel = String($("videoModelCustom")?.value || $("videoModel")?.value || "alibaba/wan-3.0").trim();
+      if ($("videoDuration")) state.settings.videoDuration = Math.max(1, Number($("videoDuration").value || 5));
+      if ($("videoResolution")) state.settings.videoResolution = $("videoResolution").value || "480p";
+      if ($("videoAspectRatio")) state.settings.videoAspectRatio = $("videoAspectRatio").value || "3:2";
+      if ($("videoGenerateAudio")) state.settings.videoGenerateAudio = !!$("videoGenerateAudio").checked;
       state.settings.generateImages = $("generateImages").checked;
       state.settings.filterFreeOptions = filterFreeOptions;
       state.settings.useRpgStats = $("useRpgStats").checked;
@@ -7367,6 +7525,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       coerceFreeModelSettings();
       if (isCommunityApiKey(state.settings.apiKey)) state.settings.filterFreeOptions = true;
       populateModelSelects();
+      populateVideoModelSelect(state.modelLists?.videoModels || []);
       $("apiKey").value = state.settings.apiKey || "";
       if ($("aiHordeApiKey")) $("aiHordeApiKey").value = state.settings.aiHordeApiKey || "";
       $("rememberKey").checked = !!state.settings.rememberKey;
@@ -7379,6 +7538,16 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       $("imageAspectRatio").value = state.settings.imageAspectRatio || "3:2";
       if ($("aiHordeAspectRatio")) $("aiHordeAspectRatio").value = state.settings.imageAspectRatio || "3:2";
       $("imageSize").value = state.settings.imageSize || "1K";
+      if ($("videoModel")) {
+        const vm = state.settings.videoModel || "alibaba/wan-3.0";
+        const has = Array.from($("videoModel").options).some(o => o.value === vm);
+        if (has) { $("videoModel").value = vm; if ($("videoModelCustom")) $("videoModelCustom").value = ""; }
+        else if ($("videoModelCustom")) $("videoModelCustom").value = vm;
+      }
+      if ($("videoDuration")) $("videoDuration").value = state.settings.videoDuration || 5;
+      if ($("videoResolution")) $("videoResolution").value = state.settings.videoResolution || "480p";
+      if ($("videoAspectRatio")) $("videoAspectRatio").value = state.settings.videoAspectRatio || "3:2";
+      if ($("videoGenerateAudio")) $("videoGenerateAudio").checked = state.settings.videoGenerateAudio !== false;
       syncAiHordeSettingsToForm();
       $("generateImages").checked = state.settings.generateImages !== false;
       if ($("filterFreeOptions")) $("filterFreeOptions").checked = !!state.settings.filterFreeOptions;
@@ -7633,17 +7802,26 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
             ? (turn.imageStatusText || (isPollinationsImageMode() ? "Generating the Pollinations.ai image..." : isAiHordeImageMode() ? "Generating the AI Horde image..." : "Generating the image..."))
             : "";
       const combinedErrors = [turn.svgPlaceholderError, turn.imageError].filter(Boolean).join(" ");
-      const imageHtml = isSafeDisplayImageUrl(displayImageUrl)
+      const missingVideoError = turn.videoAsset?.fileName && !turn.videoUrl && turn.videoError ? String(turn.videoError) : "";
+      const imageHtml = (turn.videoUrl && turn.mediaDisplayMode !== "image")
+        ? `<video src="${escapeHtml(turn.videoUrl)}" controls playsinline preload="metadata" data-turn-video="true"></video>`
+        : isSafeDisplayImageUrl(displayImageUrl)
         ? `<img src="${escapeHtml(displayImageUrl)}" alt="${displayAsset?.kind === "svg" ? "SVG placeholder" : "Scene illustration"} from turn ${escapeHtml(displayAsset.turn.turnNumber)}" data-turn-image="true">`
         : `<div class="image-placeholder">${turn.imageCandidates?.length > 1 ? `${turn.imageCandidates.length} candidates are ready.<br><br>Choose one using the image action below.` : combinedGenerating ? `<span class="spinner"></span><br><br>${escapeHtml(combinedStatus || "Generating next scene...")}` : turn.imageUrl ? escapeHtml(invalidImageUrlMessage(turn.imageUrl)) : combinedErrors ? "Image generation issue: " + escapeHtml(combinedErrors) : "No image for this turn yet."}<br><br><span class="mini">Prompt: ${escapeHtml(turn.imagePrompt || "")}</span></div>`;
       const rollHtml = renderRollCard(turn.roll);
       const modelResponseHtml = renderModelResponseCard(turn);
       const statsHtml = rpgStatsSummaryHtml();
       const hasAnyTurnImage = !!(turn.imageUrl || turn.aiHordeImageUrl || turn.svgPlaceholderUrl || turn.imageCandidates?.length);
+      const videoGeneratingOverlayHtml = turn.videoGenerating
+        ? `<div class="video-generation-overlay" role="status" aria-live="polite"><div class="video-generation-overlay-inner"><span class="spinner" aria-hidden="true"></span><strong>Generating video…</strong><span class="mini">This can take a few minutes.</span></div></div>`
+        : "";
       const imageActionsHtml = `
+            ${videoGeneratingOverlayHtml}
+            ${missingVideoError ? `<div class="image-error" role="status" style="margin:8px 0 0;">Video unavailable: ${escapeHtml(missingVideoError)}</div>` : ""}
             <div class="image-actions">
               ${turn.imageCandidates?.length > 1 ? `<button id="btnChooseImageCandidate" type="button" class="small primary">🖼️ Choose candidates</button>` : ""}
-              <button id="btnRegenImage" type="button" class="small accent">🖼️ ${hasAnyTurnImage ? "Regenerate images" : "Generate images"}</button>
+              <button id="btnGenerateVideo" type="button" class="small primary" ${(isSafeDisplayImageUrl(displayImageUrl) || turn.videoUrl) ? "" : "disabled"} title="${turn.videoUrl ? "Video options" : "Generate a video from this turn's image"}" aria-label="${turn.videoUrl ? "Video options" : "Generate video"}">🎥</button>
+              <button id="btnRegenImage" type="button" class="small accent" title="${hasAnyTurnImage ? "Regenerate images" : "Generate images"}" aria-label="${hasAnyTurnImage ? "Regenerate images" : "Generate images"}">🖼️</button>
             </div>`;
       const combinedAssets = isAiHordeSvgImageMode() ? combinedImageAssetsForTurn(turn) : { horde: null, svg: null };
       const swapActionsHtml = isAiHordeSvgImageMode() && combinedAssets.horde && combinedAssets.svg
@@ -7854,6 +8032,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       try {
         const result = await callOpenRouterImageWithPg13Retry(finalPrompt, { previousImageUrl, turn, background: false, combinedMode });
         if (result.imageUrl && !result.usedCombined) turn.imageUrl = result.imageUrl;
+        turn.mediaDisplayMode = "image";
         turn.imagePrompt = result.prompt;
         if (!result.usedCombined || result.hordeSucceeded) turn.imageError = "";
         markUnsavedForFullExport();
@@ -7905,6 +8084,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         const result = await callOpenRouterImageWithPg13Retry(promptText, { previousImageUrl: turnAiHordeImageUrl(turn) || turn.imageUrl || "", turn, background: true, combinedMode });
         if (!state.turns.some(t => t.id === turn.id)) return;
         if (result.imageUrl && !result.usedCombined) turn.imageUrl = result.imageUrl;
+        turn.mediaDisplayMode = "image";
         turn.imagePrompt = result.prompt;
         if (!result.usedCombined || result.hordeSucceeded) turn.imageError = "";
         markUnsavedForFullExport();
@@ -11318,6 +11498,7 @@ SVG requirements:
       const height = Number(candidate.height) || Number(turn.imageHeight) || 0;
       const generatedAt = Date.now();
       turn.imageUrl = candidate.url;
+      turn.mediaDisplayMode = "image";
       turn.imageWidth = width;
       turn.imageHeight = height;
       if (width && height) turn.imageAspectRatio = `${width}:${height}`;
@@ -12032,9 +12213,11 @@ ${missingList}`,
         selectModelValue("fallbackLlmModel1", state.settings.fallbackLlmModel1 || "");
         selectModelValue("fallbackLlmModel2", state.settings.fallbackLlmModel2 || "");
         selectModelValue("imageModel", state.settings.imageModel || DEFAULT_IMAGE_MODEL);
+        const loadedVideoModels = await refreshVideoModels({ showError: false });
         saveState();
         if (showSuccessToast) {
-          toast(loadedImages ? "Loaded OpenRouter model dropdowns." : "Loaded text models; kept the existing image dropdown.");
+          const videoNote = loadedVideoModels.length ? " Video models loaded too." : " Kept the existing video dropdown.";
+          toast((loadedImages ? "Loaded OpenRouter text and image model dropdowns." : "Loaded text models; kept the existing image dropdown.") + videoNote);
         }
       } catch (err) {
         console.error(err);
@@ -14743,6 +14926,7 @@ Rules:
       try {
         const result = await callOpenRouterImageWithPg13Retry(turn.imagePrompt, { previousImageUrl: turnAiHordeImageUrl(turn) || turn.imageUrl || "", turn, combinedMode });
         if (result.imageUrl && !result.usedCombined) turn.imageUrl = result.imageUrl;
+        turn.mediaDisplayMode = "image";
         turn.imagePrompt = result.prompt;
         if (!result.usedCombined || result.hordeSucceeded) turn.imageError = "";
         markUnsavedForFullExport();
@@ -14973,7 +15157,7 @@ Rules:
       return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     }
 
-    function exportJson() {
+    async function exportJson() {
       syncFormToState();
       if ($("scratchpad")) setViewedScratchpad($("scratchpad").value);
       syncInlineWorldEditorState();
@@ -14982,7 +15166,19 @@ Rules:
       clone.settings.apiKey = "";
       clone.settings.aiHordeApiKey = "";
       clone.unsavedFullExport = false;
-      downloadBlob(JSON.stringify(clone, null, 2), safeFileName(state.world.title || "adventure") + ".story", "application/json");
+      clone.turns = (clone.turns || []).map(t => { if (t.videoUrl) t.videoUrl = ""; return t; });
+      const base = safeFileName(state.world.title || "adventure");
+      downloadBlob(JSON.stringify(clone, null, 2), base + ".story", "application/json");
+      const videoEntries = [];
+      for (const turn of state.turns || []) {
+        const blob = videoBlobStore.get(turn.id);
+        if (blob && turn.videoAsset?.fileName) videoEntries.push({ name: turn.videoAsset.fileName, blob });
+      }
+      if (videoEntries.length) {
+        const zipBlob = await buildStoredZip(videoEntries);
+        downloadBlob(zipBlob, base + "-videos.zip", "application/zip");
+        toast(`Saved story and ${videoEntries.length} video${videoEntries.length === 1 ? "" : "s"} in a separate ZIP.`, 6000);
+      }
       markFullExportSaved();
     }
 
@@ -15106,7 +15302,7 @@ Rules:
     }
 
     function downloadBlob(text, filename, type) {
-      const blob = new Blob([text], { type });
+      const blob = text instanceof Blob ? text : new Blob([text], { type });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -15122,6 +15318,7 @@ Rules:
     }
 
     const UNSAVED_CLOSE_WARNING = "You have not saved this adventure. Your pictures will be lost if you do not save. Are you sure you want to close the window?";
+    const VIDEO_RELOAD_WARNING = "One or more generated videos are currently stored only in this page session and will no longer be loaded after reloading or closing this page. Save the story and its video ZIP first if you want to preserve them. Reload site?";
     let dirtySinceFullExport = false;
 
     function hasAdventureContentToSave() {
@@ -15140,11 +15337,21 @@ Rules:
       toast("Saved full story. Browser autosave is still local-only.", 3200);
     }
 
+    function hasSessionOnlyVideos() {
+      return (state.turns || []).some(turn => {
+        const blob = videoBlobStore.get(turn?.id);
+        return !!(blob && turn?.videoAsset?.fileName);
+      });
+    }
+
     function handleBeforeUnload(event) {
-      if (!(dirtySinceFullExport || state.unsavedFullExport) || !hasAdventureContentToSave()) return;
+      const losingVideo = hasSessionOnlyVideos();
+      const unsavedAdventure = (dirtySinceFullExport || state.unsavedFullExport) && hasAdventureContentToSave();
+      if (!losingVideo && !unsavedAdventure) return;
+      const warning = losingVideo ? VIDEO_RELOAD_WARNING : UNSAVED_CLOSE_WARNING;
       event.preventDefault();
-      event.returnValue = UNSAVED_CLOSE_WARNING;
-      return UNSAVED_CLOSE_WARNING;
+      event.returnValue = warning;
+      return warning;
     }
 
     function loadStory(file) {
@@ -15174,6 +15381,12 @@ Rules:
           saveState();
           renderAll();
           toast("Loaded story.");
+          if (storyHasVideoRefs(state)) {
+            setTimeout(() => {
+              const dialog = $("videoZipLoadDialog");
+              if (dialog && !dialog.open) dialog.showModal();
+            }, 50);
+          }
         } catch (err) {
           toast("Load failed: " + (err.message || String(err)));
         }
@@ -15211,7 +15424,281 @@ Rules:
       });
     }
 
+
+    // ---- OpenRouter video generation + portable video ZIP support ----
+    const videoBlobStore = new Map();
+    let videoDialogTurnId = null;
+
+    function activeVideoModel() {
+      return String($("videoModelCustom")?.value || state.settings.videoModel || $("videoModel")?.value || "alibaba/wan-3.0").trim();
+    }
+
+    function populateVideoModelSelect(models = state.modelLists?.videoModels || []) {
+      const select = $("videoModel");
+      if (!select || !Array.isArray(models) || !models.length) return;
+      const current = String(state.settings.videoModel || select.value || "alibaba/wan-3.0").trim();
+      const sortedModels = models
+        .filter(m => String(m?.id || "").trim())
+        .slice()
+        .sort((a, b) => String(a?.id || "").localeCompare(String(b?.id || ""), undefined, { sensitivity: "base" }));
+      select.innerHTML = sortedModels.map(m => {
+        const id = String(m?.id || "").trim();
+        return `<option value="${escapeHtml(id)}">${escapeHtml(id)}</option>`;
+      }).join("");
+      if (models.some(m => String(m?.id || "") === current)) {
+        select.value = current;
+        if ($("videoModelCustom")) $("videoModelCustom").value = "";
+      } else if (current && $("videoModelCustom")) {
+        $("videoModelCustom").value = current;
+      }
+    }
+
+    async function refreshVideoModels({ showError = true } = {}) {
+      const key = String($("apiKey")?.value || state.settings.apiKey || "").trim();
+      const status = $("videoModelStatus");
+      if (status) status.textContent = "Loading OpenRouter video models…";
+      try {
+        const res = await fetch("https://openrouter.ai/api/v1/videos/models", { headers: key ? { "Authorization": `Bearer ${key}` } : {} });
+        if (!res.ok) throw new Error(`OpenRouter video model list failed (${res.status}).`);
+        const data = await res.json();
+        const models = Array.isArray(data?.data) ? data.data : [];
+        state.modelLists ||= {};
+        state.modelLists.videoModels = models;
+        state.modelLists.videoModelsLoadedAt = Date.now();
+        populateVideoModelSelect(models);
+        if (status) status.textContent = `${models.length} video models loaded from OpenRouter. Duration/resolution support varies by model.`;
+        saveState();
+        return models;
+      } catch (err) {
+        if (status) status.textContent = err.message || String(err);
+        if (showError) console.warn("Video model list failed. Keeping existing video dropdown.", err);
+        return [];
+      }
+    }
+
+    let existingVideoDialogTurnId = null;
+
+    function openExistingVideoDialog(turn) {
+      if (!turn?.videoUrl) return openVideoDialog(turn);
+      existingVideoDialogTurnId = turn.id;
+      $("existingVideoDialog")?.showModal();
+    }
+
+    function closeExistingVideoDialog() {
+      try { if ($("existingVideoDialog")?.open) $("existingVideoDialog").close(); } catch (_) {}
+      existingVideoDialogTurnId = null;
+    }
+
+    async function generateAiVideoSceneDescription() {
+      const turn = (state.turns || []).find(t => t.id === videoDialogTurnId);
+      if (!turn) return;
+      const key = String($("apiKey")?.value || state.settings.apiKey || "").trim();
+      if (!key) return toast("Add your OpenRouter API key in Model Settings first.");
+      const button = $("btnAiVideoSceneDescription");
+      const spinner = $("aiVideoSceneSpinner");
+      if (button) button.disabled = true;
+      spinner?.classList.remove("hidden");
+      try {
+        const contextText = `Create a concise, vivid video scene description for animating the representative image from this story turn. Use the story context and image prompt as canon. Describe visible action, character movement/expression, environmental motion, camera movement, ambience, and any appropriate dialogue/sound. Preserve identities, clothing, setting, and composition. Do not mention that you are analyzing an image. Return only the ready-to-use video prompt.\n\nTurn action: ${turn.action || ""}\n\nTurn narration: ${turn.narration || ""}\n\nImage prompt: ${turn.imagePrompt || ""}`;
+        const payload = {
+          model: state.settings.llmModel || DEFAULT_LLM_MODEL,
+          messages: [{ role: "user", content: contextText }],
+          stream: false,
+          temperature: Math.min(1, Math.max(0.2, Number(state.settings.temperature ?? 0.7))),
+          max_tokens: 700
+        };
+        const res = await withLlmResponseWait(() => fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json", "HTTP-Referer": location.href.startsWith("http") ? location.origin : "http://localhost", "X-OpenRouter-Title": "Infinite Quest CYOA Engine" },
+          body: JSON.stringify(payload)
+        }));
+        if (!res.ok) throw new Error(`OpenRouter scene-description request failed (${res.status}): ${(await res.text()).slice(0,700)}`);
+        const data = await res.json();
+        const text = normalizeContent(data?.choices?.[0]?.message?.content).trim();
+        if (!text) throw new Error("The AI returned an empty scene description.");
+        $("videoPromptEditor").value = text;
+        turn.videoPrompt = text;
+        saveState();
+        toast("AI scene description added to the video prompt.", 4000);
+      } catch (err) {
+        console.error(err);
+        toast("AI scene description failed: " + (err?.message || String(err)), 9000);
+      } finally {
+        if (button) button.disabled = false;
+        spinner?.classList.add("hidden");
+      }
+    }
+
+    function openVideoDialog(turn) {
+      if (!turn) return;
+      const asset = imageAssetToDisplay(turn);
+      if (!asset?.url || !isSafeDisplayImageUrl(asset.url)) return toast("Generate an image for this turn before making a video.");
+      videoDialogTurnId = turn.id;
+      const prompt = [turn.imagePrompt || "", "Animate this exact scene naturally. Preserve the character identity, clothing, setting, and composition. Add coherent motion and cinematic camera movement."].filter(Boolean).join("\n\n");
+      $("videoPromptEditor").value = turn.videoPrompt || prompt;
+      $("videoDialogDuration").value = state.settings.videoDuration || 5;
+      $("videoDialogResolution").value = state.settings.videoResolution || "480p";
+      $("videoDialogAspectRatio").value = state.settings.videoAspectRatio || state.settings.imageAspectRatio || "3:2";
+      $("videoDialogAudio").checked = state.settings.videoGenerateAudio !== false;
+      $("videoDialogStatus").textContent = `Model: ${activeVideoModel()}. The turn image will be used as the first frame.`;
+      $("videoGenerationDialog").showModal();
+    }
+
+    function closeVideoDialog() { if ($("videoGenerationDialog")?.open) $("videoGenerationDialog").close(); videoDialogTurnId = null; }
+    const videoSleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+    async function generateVideoForTurn(turn) {
+      const key = String($("apiKey")?.value || state.settings.apiKey || "").trim();
+      if (!key) throw new Error("Add your OpenRouter API key in Model Settings first.");
+      const asset = imageAssetToDisplay(turn);
+      if (!asset?.url || !isSafeDisplayImageUrl(asset.url)) throw new Error("This turn does not have a usable generated image.");
+      const model = activeVideoModel();
+      const prompt = String($("videoPromptEditor")?.value || turn.imagePrompt || "Animate this scene naturally.").trim();
+      const duration = Math.max(1, Math.round(Number($("videoDialogDuration")?.value || state.settings.videoDuration || 5)));
+      const resolution = $("videoDialogResolution")?.value || state.settings.videoResolution || "480p";
+      const aspect_ratio = $("videoDialogAspectRatio")?.value || state.settings.videoAspectRatio || "3:2";
+      const generate_audio = !!$("videoDialogAudio")?.checked;
+      const payload = { model, prompt, duration, resolution, aspect_ratio, generate_audio, frame_images: [{ type: "image_url", image_url: { url: asset.url }, frame_type: "first_frame" }] };
+      turn.videoGenerating = true; turn.videoError = ""; turn.videoPrompt = prompt; turn.videoJobId = "";
+      renderAll(); saveState();
+      const headers = { "Authorization": `Bearer ${key}`, "Content-Type": "application/json", "HTTP-Referer": location.href.startsWith("http") ? location.origin : "http://localhost", "X-OpenRouter-Title": "Infinite Quest CYOA Engine" };
+      const submit = await fetch("https://openrouter.ai/api/v1/videos", { method: "POST", headers, body: JSON.stringify(payload) });
+      if (!submit.ok) throw new Error(`OpenRouter video request failed (${submit.status}): ${(await submit.text()).slice(0,900)}`);
+      let job = await submit.json();
+      turn.videoJobId = job.id || ""; saveState();
+      const deadline = Date.now() + 60 * 60 * 1000;
+      while (job.status !== "completed") {
+        if (["failed","cancelled","expired"].includes(job.status)) throw new Error(job.error || `Video generation ${job.status}.`);
+        if (Date.now() > deadline) throw new Error("Video generation timed out after one hour.");
+        $("videoDialogStatus").textContent = `OpenRouter job ${job.status || "pending"}. Waiting for the video…`;
+        await videoSleep(30000);
+        const pollUrl = job.polling_url ? new URL(job.polling_url, "https://openrouter.ai").href : `https://openrouter.ai/api/v1/videos/${encodeURIComponent(job.id)}`;
+        const poll = await fetch(pollUrl, { headers: { "Authorization": `Bearer ${key}` } });
+        if (!poll.ok) throw new Error(`Video status check failed (${poll.status}): ${(await poll.text()).slice(0,500)}`);
+        job = await poll.json();
+      }
+      const contentUrl = job.unsigned_urls?.[0] || `https://openrouter.ai/api/v1/videos/${encodeURIComponent(job.id)}/content?index=0`;
+      const videoRes = await fetch(new URL(contentUrl, "https://openrouter.ai").href, { headers: { "Authorization": `Bearer ${key}` } });
+      if (!videoRes.ok) throw new Error(`Video download failed (${videoRes.status}): ${(await videoRes.text()).slice(0,500)}`);
+      const blob = await videoRes.blob();
+      const oldUrl = turn.videoUrl;
+      if (oldUrl?.startsWith("blob:")) URL.revokeObjectURL(oldUrl);
+      const url = URL.createObjectURL(blob);
+      const fileName = `turn-${String(turn.turnNumber || 0).padStart(4,"0")}-${String(turn.id || Date.now()).replace(/[^a-zA-Z0-9_-]/g,"_")}.mp4`;
+      videoBlobStore.set(turn.id, blob);
+      turn.videoUrl = url;
+      turn.mediaDisplayMode = "video";
+      turn.videoAsset = { fileName, mimeType: blob.type || "video/mp4", size: blob.size, model, duration, resolution, aspectRatio: aspect_ratio, generateAudio: generate_audio, openRouterJobId: job.id || "", cost: job.usage?.cost ?? null };
+      turn.videoNotAutosaved = true;
+      turn.videoGenerating = false; turn.videoError = "";
+      markUnsavedForFullExport(); saveState(); renderAll();
+      return turn;
+    }
+
+    async function confirmGenerateVideo() {
+      const turn = (state.turns || []).find(t => t.id === videoDialogTurnId);
+      if (!turn) return closeVideoDialog();
+      const btn = $("btnGenerateVideoConfirm");
+      const cancelBtn = $("btnCancelVideo");
+      try {
+        btn.disabled = true;
+        if (cancelBtn) cancelBtn.disabled = true;
+        // Close immediately after the user starts generation. The turn itself now shows
+        // a loading overlay while the OpenRouter job is submitted and polled.
+        if ($("videoGenerationDialog")?.open) $("videoGenerationDialog").close();
+        videoDialogTurnId = null;
+        await generateVideoForTurn(turn);
+        toast("Video generated. It now replaces the image for this turn.", 6000);
+      } catch (err) {
+        turn.videoGenerating = false;
+        turn.videoError = err?.message || String(err);
+        saveState();
+        renderAll();
+        toast("Video generation failed: " + turn.videoError, 9000);
+      } finally {
+        btn.disabled = false;
+        if (cancelBtn) cancelBtn.disabled = false;
+      }
+    }
+
+    function downloadTurnVideo(turn) {
+      const blob = videoBlobStore.get(turn?.id);
+      if (!blob) return toast("This video's bytes are not loaded. Reload the story's video ZIP first.");
+      downloadBlob(blob, turn.videoAsset?.fileName || `turn-${turn.turnNumber}.mp4`, blob.type || "video/mp4");
+    }
+
+    function crc32(bytes) {
+      let c = 0xffffffff;
+      for (let i=0;i<bytes.length;i++) { c ^= bytes[i]; for (let k=0;k<8;k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1)); }
+      return (c ^ 0xffffffff) >>> 0;
+    }
+    function u16(n){ return [n&255,(n>>>8)&255]; }
+    function u32(n){ return [n&255,(n>>>8)&255,(n>>>16)&255,(n>>>24)&255]; }
+    async function buildStoredZip(entries) {
+      const enc = new TextEncoder(), parts=[], central=[]; let offset=0;
+      for (const entry of entries) {
+        const name=enc.encode(entry.name), data=new Uint8Array(await entry.blob.arrayBuffer()), crc=crc32(data);
+        const local=new Uint8Array([...u32(0x04034b50),...u16(20),...u16(0),...u16(0),...u16(0),...u16(0),...u32(crc),...u32(data.length),...u32(data.length),...u16(name.length),...u16(0),...name]);
+        parts.push(local,data);
+        const cen=new Uint8Array([...u32(0x02014b50),...u16(20),...u16(20),...u16(0),...u16(0),...u16(0),...u16(0),...u32(crc),...u32(data.length),...u32(data.length),...u16(name.length),...u16(0),...u16(0),...u16(0),...u16(0),...u32(0),...u32(offset),...name]);
+        central.push(cen); offset += local.length + data.length;
+      }
+      const centralSize=central.reduce((n,a)=>n+a.length,0), centralOffset=offset;
+      const end=new Uint8Array([...u32(0x06054b50),...u16(0),...u16(0),...u16(entries.length),...u16(entries.length),...u32(centralSize),...u32(centralOffset),...u16(0)]);
+      return new Blob([...parts,...central,end],{type:"application/zip"});
+    }
+    function readU16(v,o){ return v.getUint16(o,true); } function readU32(v,o){ return v.getUint32(o,true); }
+    async function importVideoZip(file) {
+      const buf=await file.arrayBuffer(), view=new DataView(buf), bytes=new Uint8Array(buf), dec=new TextDecoder(); let off=0, loaded=0;
+      const byName=new Map((state.turns||[]).filter(t=>t.videoAsset?.fileName).map(t=>[t.videoAsset.fileName,t]));
+      while (off+30<=bytes.length && readU32(view,off)===0x04034b50) {
+        const method=readU16(view,off+8), comp=readU32(view,off+18), nameLen=readU16(view,off+26), extraLen=readU16(view,off+28);
+        const name=dec.decode(bytes.slice(off+30,off+30+nameLen)), start=off+30+nameLen+extraLen;
+        if (method!==0) throw new Error("This ZIP uses compression that this portable loader does not support. Please use the video ZIP exported by Infinite Quest.");
+        const turn=byName.get(name);
+        if (turn) { const blob=new Blob([bytes.slice(start,start+comp)],{type:turn.videoAsset.mimeType||"video/mp4"}); videoBlobStore.set(turn.id,blob); if(turn.videoUrl?.startsWith("blob:"))URL.revokeObjectURL(turn.videoUrl); turn.videoUrl=URL.createObjectURL(blob); turn.videoNotAutosaved=true; turn.videoError=""; loaded++; }
+        off=start+comp;
+      }
+      saveState(); renderAll(); toast(`Loaded ${loaded} story video${loaded===1?"":"s"} from the ZIP.`,6000);
+    }
+
+    function storyHasVideoRefs(obj=state){ return (obj.turns||[]).some(t=>t.videoAsset?.fileName); }
+
     function bindEvents() {
+      $("btnRefreshVideoModels")?.addEventListener("click", refreshVideoModels);
+      $("btnCloseVideoDialog")?.addEventListener("click", closeVideoDialog);
+      $("btnCancelVideo")?.addEventListener("click", closeVideoDialog);
+      $("btnGenerateVideoConfirm")?.addEventListener("click", confirmGenerateVideo);
+      $("btnAiVideoSceneDescription")?.addEventListener("click", generateAiVideoSceneDescription);
+      $("btnCloseExistingVideoDialog")?.addEventListener("click", closeExistingVideoDialog);
+      $("btnExistingVideoDownload")?.addEventListener("click", () => {
+        const turn = (state.turns || []).find(t => t.id === existingVideoDialogTurnId);
+        if (turn) downloadTurnVideo(turn);
+        closeExistingVideoDialog();
+      });
+      $("btnExistingVideoGenerateNew")?.addEventListener("click", () => {
+        const turn = (state.turns || []).find(t => t.id === existingVideoDialogTurnId);
+        closeExistingVideoDialog();
+        if (turn) openVideoDialog(turn);
+      });
+      $("btnCloseVideoZipLoadDialog")?.addEventListener("click", () => $("videoZipLoadDialog")?.close());
+      $("btnSkipVideoZipLoad")?.addEventListener("click", () => $("videoZipLoadDialog")?.close());
+      $("btnUploadVideoZip")?.addEventListener("click", () => $("videoZipImportFile")?.click());
+      $("videoZipImportFile")?.addEventListener("change", async e => {
+        try {
+          if (e.target.files?.[0]) {
+            await importVideoZip(e.target.files[0]);
+            $("videoZipLoadDialog")?.close();
+          }
+        } catch(err) {
+          showMessagePopup("Video ZIP load failed", err?.message || String(err));
+        }
+        e.target.value="";
+      });
+      $("storyArea")?.addEventListener("click", e => {
+        const button=e.target.closest("button"); if(!button)return; const turn=viewedTurn();
+        if(button.id==="btnGenerateVideo") (turn?.videoUrl || turn?.videoAsset?.fileName) ? openExistingVideoDialog(turn) : openVideoDialog(turn);
+      });
       addClick("btnResponseCapOfferYes", acceptModelResponseTokenCapOffer);
       addClick("btnResponseCapOfferNo", declineModelResponseTokenCapOffer);
       $("responseCapOfferDialog")?.addEventListener("cancel", event => {
@@ -15536,7 +16023,7 @@ Rules:
         settleManualRpgRollDialog(null);
       });
       $("btnAddDefaultTrigger").addEventListener("click", addDefaultTrigger);
-      $("btnExportJson").addEventListener("click", () => { closeMenu(); exportJson(); });
+      $("btnExportJson").addEventListener("click", () => { closeMenu(); exportJson().catch(err => showMessagePopup("Save failed", err?.message || String(err))); });
       $("btnExportMarkdown").addEventListener("click", () => { closeMenu(); exportMarkdown(); });
       $("btnExportHtml").addEventListener("click", () => { closeMenu(); exportHtml().catch(err => showMessagePopup("HTML export failed", err?.message || String(err || "Something went wrong."))); });
       $("importFile").addEventListener("change", e => { if (e.target.files?.[0]) loadStory(e.target.files[0]); e.target.value = ""; });
@@ -15567,6 +16054,12 @@ Rules:
       $("btnAddTracker").addEventListener("click", addTracker);
       $("btnSaveScratch").addEventListener("click", () => { setViewedScratchpad($("scratchpad").value); markUnsavedForFullExport(); saveState(); renderAll(); toast("Scratchpad updated for the viewed turn."); });
       $("btnImagePromptCancel").addEventListener("click", closeImagePromptDialog);
+      $("btnImportCurrentTurnImagePrompt")?.addEventListener("click", () => {
+        const turn = state.turns.find(item => item.id === transientUi.editingImageTurnId) || state.turns[state.viewIndex];
+        if (!turn) return toast("No current turn image prompt is available.");
+        $("imagePromptEditor").value = turn.imagePrompt || "";
+        $("imagePromptEditor").focus();
+      });
       $("btnRegenerateImageConfirm").addEventListener("click", () => regenerateImageForTurn(transientUi.editingImageTurnId, $("imagePromptEditor").value));
       addCtrlEnter("imagePromptEditor", () => $("btnRegenerateImageConfirm")?.click());
       $$(".tab").forEach(btn => btn.addEventListener("click", () => {

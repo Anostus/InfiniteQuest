@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Infinite Quest - OpenRouter CYOA Engine v2.636</title>
+  <title>Infinite Quest - OpenRouter CYOA Engine v2.64</title>
   <style>
     :root {
       --bg: #07131d;
@@ -1508,6 +1508,25 @@
         <button id="btnMessagePopupClose" class="primary" type="submit">OK</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="responseCapOfferDialog" class="world-gen-dialog app-dialog getting-started-dialog">
+    <div class="world-gen-card">
+      <div class="dialog-header">
+        <div>
+          <h3>Response reached the 6,000-token limit</h3>
+          <p class="mini">This story response was too long to finish within the current maximum story-response limit.</p>
+        </div>
+      </div>
+      <div class="world-gen-box stack">
+        <p>Would you like to turn on <strong>Use the model's maximum response token cap</strong>?</p>
+        <p class="mini">If enabled, future story requests can use the maximum completion-token cap reported by OpenRouter for the active model route. You can change this setting at any time in <strong>World Set Up → Advanced General Features</strong>.</p>
+      </div>
+      <div class="row wrap dialog-actions">
+        <button id="btnResponseCapOfferNo" type="button">No</button>
+        <button id="btnResponseCapOfferYes" class="primary" type="button">Yes, turn it on</button>
+      </div>
+    </div>
   </dialog>
 
   <dialog id="gettingStartedDialog" class="world-gen-dialog app-dialog getting-started-dialog">
@@ -8462,6 +8481,63 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       return err;
     }
 
+    let responseCapOfferDeclinedForTitle = null;
+
+    function currentStoryTitleForResponseCapOffer() {
+      return String(state.world?.title || $("worldTitle")?.value || "").trim();
+    }
+
+    function resetResponseCapOfferSuppression() {
+      responseCapOfferDeclinedForTitle = null;
+    }
+
+    function shouldOfferModelResponseTokenCapForError(err) {
+      if (!err?.isModelStoryLengthError || state.settings?.useModelResponseTokenCap) return false;
+      const limit = Math.max(0, Number(err.openRouterRequestedMaxTokens) || 0);
+      if (limit !== MAX_STORY_OUTPUT_TOKENS) return false;
+      const title = currentStoryTitleForResponseCapOffer();
+      return responseCapOfferDeclinedForTitle !== title;
+    }
+
+    function closeResponseCapOfferDialog() {
+      const dialog = $("responseCapOfferDialog");
+      try { if (dialog?.open) dialog.close(); } catch (_) {}
+    }
+
+    function declineModelResponseTokenCapOffer() {
+      responseCapOfferDeclinedForTitle = currentStoryTitleForResponseCapOffer();
+      closeResponseCapOfferDialog();
+      toast("Kept the 6,000-token story-response limit. This prompt will not appear again for this story unless its title changes or another story is loaded.", 6500);
+    }
+
+    function acceptModelResponseTokenCapOffer() {
+      state.settings ||= {};
+      state.settings.useModelResponseTokenCap = true;
+      if ($("useModelResponseTokenCap")) $("useModelResponseTokenCap").checked = true;
+      resetResponseCapOfferSuppression();
+      saveState();
+      closeResponseCapOfferDialog();
+      toast("Use the model's maximum response token cap is now enabled. You can change it at any time in World Set Up → Advanced General Features.", 7500);
+    }
+
+    function showModelResponseTokenCapOffer() {
+      const dialog = $("responseCapOfferDialog");
+      if (!dialog || typeof dialog.showModal !== "function") {
+        const enabled = window.confirm("This story response reached the 6,000-token limit. Turn on ‘Use the model's maximum response token cap’ for future turns? You can change this setting at any time in World Set Up → Advanced General Features.");
+        if (enabled) acceptModelResponseTokenCapOffer();
+        else declineModelResponseTokenCapOffer();
+        return;
+      }
+      try {
+        if (dialog.open) dialog.close();
+        dialog.showModal();
+      } catch (_) {
+        const enabled = window.confirm("This story response reached the 6,000-token limit. Turn on ‘Use the model's maximum response token cap’ for future turns? You can change this setting at any time in World Set Up → Advanced General Features.");
+        if (enabled) acceptModelResponseTokenCapOffer();
+        else declineModelResponseTokenCapOffer();
+      }
+    }
+
     function modelStoryOutputLengthError(maxTokens = MAX_STORY_OUTPUT_TOKENS, options = {}) {
       const limit = Math.max(1, Number(maxTokens) || MAX_STORY_OUTPUT_TOKENS);
       const repairAttempted = !!options.repairAttempted;
@@ -8664,10 +8740,54 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
 
       const contextLimit = promptContextLimitTokensForModels(modelRequest.expanded || [modelRequest.model]);
       const requestedOutputTokens = Math.max(0, Number(options.max_tokens ?? 1200) || 0);
-      const safeInputLimit = Math.max(1, contextLimit - requestedOutputTokens - PROMPT_CONTEXT_SAFETY_TOKENS);
-
       const fullMessages = messages.build({ mode: "full", scale: 1 });
       const fullEstimatedTokens = estimateMessageTokensFromCharacters(fullMessages);
+
+      // When "Use the model's maximum response token cap" is enabled, the reported
+      // completion cap is a ceiling, not a reason to erase prompt context. A model can
+      // report an output cap that consumes most or all of its context window. Reserving
+      // that entire amount before sizing the prompt previously drove the proportional
+      // scale to 0x, which blanked world fields, tracker text, actions, and memory.
+      // Preserve the complete prompt whenever it can fit, and reduce max_tokens only
+      // enough to leave room for that prompt plus the existing safety margin.
+      if (state.settings?.useModelResponseTokenCap) {
+        const maxOutputTokensWithFullPrompt = Math.max(0, contextLimit - fullEstimatedTokens - PROMPT_CONTEXT_SAFETY_TOKENS);
+        if (maxOutputTokensWithFullPrompt >= 1) {
+          const contextAdjustedMaxTokens = Math.max(1, Math.min(requestedOutputTokens || 1, maxOutputTokensWithFullPrompt));
+          if (contextAdjustedMaxTokens < requestedOutputTokens) {
+            console.debug(`[Infinite Quest] Model response-token cap ${requestedOutputTokens.toLocaleString()} would crowd out the ${fullEstimatedTokens.toLocaleString()}-token prompt inside the ${contextLimit.toLocaleString()}-token context window; using a request-specific completion ceiling of ${contextAdjustedMaxTokens.toLocaleString()} tokens instead.`);
+          } else {
+            console.debug(`[Infinite Quest] Text truncation disabled: full ${fullEstimatedTokens.toLocaleString()}-token estimated prompt fits alongside the requested ${requestedOutputTokens.toLocaleString()} completion tokens.`);
+          }
+          return {
+            messages: fullMessages,
+            modelRequest,
+            maxTokens: contextAdjustedMaxTokens,
+            contextAdjustedMaxTokens: contextAdjustedMaxTokens < requestedOutputTokens ? contextAdjustedMaxTokens : 0
+          };
+        }
+
+        // The prompt itself is larger than the usable context window. Scale only as
+        // much as necessary to fit the prompt while reserving one completion token;
+        // this is the genuine oversized-prompt case, rather than an oversized output
+        // reservation blanking otherwise valid prompt fields.
+        const safeInputLimit = Math.max(1, contextLimit - 1 - PROMPT_CONTEXT_SAFETY_TOKENS);
+        const proportional = findLargestProportionalPromptThatFits(messages, safeInputLimit);
+        const contextAdjustedMaxTokens = Math.max(1, contextLimit - proportional.estimatedTokens - PROMPT_CONTEXT_SAFETY_TOKENS);
+        if (proportional.estimatedTokens > safeInputLimit) {
+          console.warn(`[Infinite Quest] Even the minimum proportional prompt estimate ${proportional.estimatedTokens.toLocaleString()} exceeds safe input budget ${safeInputLimit.toLocaleString()}. The request may be rejected by the provider.`);
+        } else {
+          console.debug(`[Infinite Quest] Full prompt estimate ${fullEstimatedTokens.toLocaleString()} exceeds the usable context window; proportionally scaled field limits by ${proportional.scale.toFixed(3)}x and set a request-specific completion ceiling of ${contextAdjustedMaxTokens.toLocaleString()} tokens.`);
+        }
+        return {
+          messages: proportional.messages,
+          modelRequest,
+          maxTokens: Math.min(requestedOutputTokens || 1, contextAdjustedMaxTokens),
+          contextAdjustedMaxTokens: Math.min(requestedOutputTokens || 1, contextAdjustedMaxTokens)
+        };
+      }
+
+      const safeInputLimit = Math.max(1, contextLimit - requestedOutputTokens - PROMPT_CONTEXT_SAFETY_TOKENS);
       if (fullEstimatedTokens <= safeInputLimit) {
         console.debug(`[Infinite Quest] Text truncation disabled: full ${fullEstimatedTokens.toLocaleString()}-token estimated prompt fits the ${contextLimit.toLocaleString()}-token context budget; sending untruncated text.`);
         return { messages: fullMessages, modelRequest };
@@ -8827,9 +8947,15 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       }
 
       const prepared = await prepareAdaptiveOpenRouterMessages(messages, budgetedOptions);
-      const preparedOptions = prepared.modelRequest
+      let preparedOptions = prepared.modelRequest
         ? { ...budgetedOptions, __resolvedModelRequest: prepared.modelRequest }
         : budgetedOptions;
+      if (Number.isFinite(Number(prepared.maxTokens)) && Number(prepared.maxTokens) > 0) {
+        preparedOptions = { ...preparedOptions, max_tokens: Math.floor(Number(prepared.maxTokens)) };
+      }
+      if (Number.isFinite(Number(prepared.contextAdjustedMaxTokens)) && Number(prepared.contextAdjustedMaxTokens) > 0) {
+        preparedOptions = { ...preparedOptions, __contextAdjustedMaxTokens: Math.floor(Number(prepared.contextAdjustedMaxTokens)) };
+      }
       const jsonRetries = Number.isInteger(preparedOptions.json_retries) ? Math.max(0, preparedOptions.json_retries) : 0;
       const noContentRetries = Number.isInteger(preparedOptions.no_content_retries) ? Math.max(0, preparedOptions.no_content_retries) : 0;
       const maxRetries = Math.max(jsonRetries, noContentRetries);
@@ -8851,7 +8977,11 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
           const lengthTruncatedJson = !!err?.isModelJsonError && hitLength && !!err.malformedJsonText;
 
           if (preparedOptions.story_request && hitLength) {
-            const maximumStoryBudget = storyOutputBudgetCeiling(preparedOptions.__resolvedModelRequest || {});
+            const routeMaximumStoryBudget = storyOutputBudgetCeiling(preparedOptions.__resolvedModelRequest || {});
+            const contextAdjustedMaximum = Math.max(0, Number(preparedOptions.__contextAdjustedMaxTokens) || 0);
+            const maximumStoryBudget = contextAdjustedMaximum > 0
+              ? Math.min(routeMaximumStoryBudget, contextAdjustedMaximum)
+              : routeMaximumStoryBudget;
             const atMaximumStoryBudget = lengthBudget >= maximumStoryBudget;
             const repairAllowedAtThisBudget = !atMaximumStoryBudget || !!state.settings.llmAssistedJsonRepair;
             const canRepairPartialStory = lengthTruncatedJson && !isTurnSaverMode() && repairAllowedAtThisBudget;
@@ -11620,8 +11750,10 @@ SVG requirements:
         clearGenerationTransition();
         renderAll();
         console.error(err);
-        if (!err?.isCommunityDailyLimitError) toast(err.message || String(err), 9000);
+        const offeredResponseCap = shouldOfferModelResponseTokenCapForError(err);
+        if (!err?.isCommunityDailyLimitError && !offeredResponseCap) toast(err.message || String(err), 9000);
         setBusy(false);
+        if (offeredResponseCap) showModelResponseTokenCapOffer();
       } finally {
         hideLlmWaitIndicator();
       }
@@ -13811,6 +13943,7 @@ ${missingList}`,
     function importWorld(file) {
       const reader = new FileReader();
       reader.onload = () => {
+        resetResponseCapOfferSuppression();
         try {
           const imported = parseJsonTextForImport(reader.result);
           const kind = worldImportSourceKind(imported);
@@ -15079,6 +15212,14 @@ Rules:
     }
 
     function bindEvents() {
+      addClick("btnResponseCapOfferYes", acceptModelResponseTokenCapOffer);
+      addClick("btnResponseCapOfferNo", declineModelResponseTokenCapOffer);
+      $("responseCapOfferDialog")?.addEventListener("cancel", event => {
+        event.preventDefault();
+        declineModelResponseTokenCapOffer();
+      });
+      $("worldTitle")?.addEventListener("input", resetResponseCapOfferSuppression);
+
       const autosaveInputs = ["apiKey", "aiHordeApiKey", "llmModel", "llmModelCustom", "addFallbackModels", "fallbackLlmModel1", "fallbackLlmModel2", "imageModel", "imageModelCustom", "imageAspectRatio", "imageSize", "temperature", "worldTitle", "genre", "tone", "backgroundStory", "character", "premise", "firstAction", "rules", "suppressTriggers", "enableResponseEditing", "enableStorytellerMode", "addContinueNarrationButton", "betterMemoryManagement", "disableTextTruncation", "useModelResponseTokenCap", "llmAssistedJsonRepair", "turnSaverMode", "aiHordeQualityPreset", "aiHordeCandidates", "aiHordeSampler", "aiHordeSteps", "aiHordeCfgScale", "aiHordeKarras", "aiHordeHiresFix", "aiHordeModel", "aiHordeModelPreference", "aiHordeCustomModel", "aiHordeResolution", "aiHordeAspectRatio", "aiHordeCustomWidth", "aiHordeCustomHeight", "aiHordePostProcessing", "aiHordeNegativePrompt", "aiHordeEnhancePrompt", "aiHordeTrustedWorkers", "aiHordeSlowWorkers", "aiHordeValidatedBackends", "aiHordeShared", "aiHordeAllowNsfw", "aiHordeWorkerListMode", "aiHordeWorkerIds"];
       autosaveInputs.forEach(id => {
         const el = $(id);

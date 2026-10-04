@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Infinite Quest - OpenRouter CYOA Engine v2.71</title>
+  <title>Infinite Quest - OpenRouter CYOA Engine v2.72</title>
   <style>
     :root {
       --bg: #07131d;
@@ -422,6 +422,8 @@
     .settings-section-heading { margin: 4px 0 0; color: var(--gold2); }
     .video-model-settings { display: grid; gap: 10px; padding-top: 4px; }
     .video-model-settings > h4 { margin: 0; color: var(--gold2); }
+    .video-model-settings.community-video-disabled { opacity: .48; }
+    .video-model-settings.community-video-disabled .community-video-note { opacity: 1; color: var(--gold2); font-weight: 750; }
     .ai-horde-settings details { background: rgba(0,0,0,.12); }
     .ai-horde-settings details > div { display: grid; gap: 10px; }
     .ai-horde-setting-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -973,11 +975,42 @@
       background: #000;
     }
 
-    .video-status-badge {
-      position: absolute; left: 12px; bottom: 12px; z-index: 5;
-      padding: 7px 10px; border-radius: 11px; background: rgba(7,14,24,.9);
-      border: 1px solid rgba(255,255,255,.15); color: var(--muted); font-size: .78rem;
+    .video-chain-nav {
+      position: absolute;
+      left: 12px;
+      bottom: 12px;
+      z-index: 5;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      max-width: calc(100% - 24px);
     }
+
+    .video-status-badge {
+      position: static;
+      padding: 7px 10px;
+      border-radius: 11px;
+      background: rgba(7,14,24,.92);
+      border: 1px solid rgba(255,255,255,.15);
+      color: var(--muted);
+      font-size: .78rem;
+      white-space: nowrap;
+      box-shadow: 0 8px 18px rgba(0,0,0,.28);
+      backdrop-filter: blur(10px);
+    }
+
+    .video-chain-nav button {
+      min-width: 32px;
+      min-height: 32px;
+      padding: 5px 8px;
+      border-radius: 10px;
+      background: rgba(7,14,24,.92);
+      box-shadow: 0 8px 18px rgba(0,0,0,.28);
+      backdrop-filter: blur(10px);
+      font-weight: 850;
+    }
+
+    .video-chain-nav button:disabled { opacity: .36; }
 
     .image-actions button {
       backdrop-filter: blur(10px);
@@ -1456,6 +1489,118 @@
       border-width: 3px;
     }
 
+    .video-chain-mode-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 9px;
+    }
+
+    .video-chain-choice {
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      min-height: 92px;
+      padding: 12px;
+      border: 1px solid rgba(255,255,255,.13);
+      border-radius: 14px;
+      background: rgba(255,255,255,.04);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .video-chain-choice:has(input:checked) {
+      border-color: rgba(201,156,255,.62);
+      background: linear-gradient(135deg, rgba(201,156,255,.12), rgba(116,228,255,.055));
+      box-shadow: 0 0 0 3px rgba(201,156,255,.07);
+    }
+
+    .video-chain-choice input { width: auto; margin-top: 3px; flex: 0 0 auto; }
+    .video-chain-choice span { display: grid; gap: 5px; min-width: 0; }
+    .video-chain-choice strong { color: #fff; font-size: .92rem; line-height: 1.35; }
+    .video-chain-choice small { color: var(--dim); font-size: .78rem; line-height: 1.42; }
+    .video-chain-summary { border-color: rgba(201,156,255,.28); background: linear-gradient(135deg, rgba(201,156,255,.09), rgba(116,228,255,.045)); }
+    .video-chain-summary strong { color: #f0d8ff; }
+
+    .video-parts-carousel-shell {
+      display: grid;
+      gap: 8px;
+    }
+
+    .video-parts-carousel-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .video-parts-carousel-heading strong { color: var(--gold2); }
+
+    .video-parts-carousel {
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(230px, 285px);
+      gap: 10px;
+      overflow-x: auto;
+      overscroll-behavior-inline: contain;
+      scroll-snap-type: x proximity;
+      padding: 2px 2px 9px;
+    }
+
+    .video-part-card {
+      scroll-snap-align: start;
+      min-width: 0;
+      display: grid;
+      gap: 8px;
+      padding: 10px;
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 15px;
+      background: rgba(255,255,255,.04);
+    }
+
+    .video-part-card.current {
+      border-color: rgba(241,194,50,.52);
+      box-shadow: 0 0 0 3px rgba(241,194,50,.07);
+    }
+
+    .video-part-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .video-part-card-header strong { color: #fff; }
+    .video-part-card-header span { color: var(--dim); font-size: .74rem; }
+
+    .video-part-preview {
+      aspect-ratio: 16 / 9;
+      border-radius: 11px;
+      overflow: hidden;
+      background: #000;
+      border: 1px solid rgba(255,255,255,.1);
+      display: grid;
+      place-items: center;
+    }
+
+    .video-part-preview video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+    }
+
+    .video-part-preview .mini { padding: 12px; text-align: center; }
+    .video-part-card button { width: 100%; }
+
+    @media (max-width: 640px) {
+      .video-chain-mode-grid { grid-template-columns: 1fr; }
+      .video-parts-carousel { grid-auto-columns: minmax(210px, 82vw); }
+      .video-chain-nav { left: 8px; bottom: 8px; max-width: calc(100% - 16px); }
+      .video-status-badge { max-width: 62vw; overflow: hidden; text-overflow: ellipsis; }
+    }
+
   </style>
 </head>
 <body>
@@ -1579,9 +1724,42 @@
   </dialog>
   <dialog id="existingVideoDialog" class="world-gen-dialog app-dialog getting-started-dialog">
     <div class="world-gen-card">
-      <div class="dialog-header"><div><h3>🎥 Video</h3><p class="mini">This turn already has a generated video.</p></div><button id="btnCloseExistingVideoDialog" class="small ghost" type="button">✕</button></div>
-      <div class="world-gen-box"><p>Would you like to download the current video or generate a new video from this turn's original image?</p></div>
-      <div class="row wrap dialog-actions"><button id="btnExistingVideoDownload" class="accent" type="button">⬇ Download Current Video</button><button id="btnExistingVideoGenerateNew" class="primary" type="button">🎥 Generate New Video</button></div>
+      <div class="dialog-header"><div><h3>🎥 Video</h3><p id="existingVideoDialogSubtitle" class="mini">This turn already has a generated video.</p></div><button id="btnCloseExistingVideoDialog" class="small ghost" type="button">✕</button></div>
+      <div class="world-gen-box"><p id="existingVideoDialogMessage">Download the current video, generate a new version from this turn's original image, or continue from the end of the latest video part.</p></div>
+      <div class="row wrap dialog-actions"><button id="btnExistingVideoDownload" class="accent" type="button">⬇ Download Current Video</button><button id="btnExistingVideoLoadZip" type="button">📂 Load Video ZIP</button><button id="btnExistingVideoGenerateNew" class="primary" type="button">🎥 Generate New Video</button><button id="btnExistingVideoContinue" class="accent" type="button">🔗 Continue From Last Part</button></div>
+    </div>
+  </dialog>
+
+  <dialog id="videoContinueDialog" class="world-gen-dialog app-dialog">
+    <div class="world-gen-card">
+      <div class="dialog-header">
+        <div><h3 id="videoContinueTitle">🔗 Continue Video</h3><p id="videoContinueSubtitle" class="mini">Create a new part that starts on the final frame of the current video.</p></div>
+        <button id="btnCloseVideoContinueDialog" class="small ghost" type="button">✕</button>
+      </div>
+      <div class="dialog-scroll stack">
+        <div class="video-parts-carousel-shell">
+          <div class="video-parts-carousel-heading"><strong>Video chain so far</strong><span id="videoContinueCarouselStatus" class="mini"></span></div>
+          <div id="videoContinuePartsCarousel" class="video-parts-carousel" aria-label="Video parts in this chain"></div>
+        </div>
+        <div class="world-gen-box video-chain-summary">
+          <strong id="videoContinuePartLabel">Part 2 starts where Part 1 ends.</strong>
+          <p class="mini" style="margin-top:6px;">Generate Next captures the final frame of the latest video and extends the chain. Regenerate Latest uses the same starting point as the current final part and replaces only that final part.</p>
+        </div>
+        <div class="video-chain-mode-grid" role="radiogroup" aria-label="What happens in the next video part">
+          <label class="video-chain-choice"><input id="videoContinueModeAuto" type="radio" name="videoContinueMode" value="auto" checked /><span><strong>✨ Let the AI decide what happens next</strong><small>Uses the story, the previous video prompt, and the chained starting frame to carry the scene forward.</small></span></label>
+          <label class="video-chain-choice"><input id="videoContinueModeManual" type="radio" name="videoContinueMode" value="manual" /><span><strong>✎ Tell the AI what happens next</strong><small>Describe the next action, camera movement, dialogue, ambience, or scene direction in your own words.</small></span></label>
+        </div>
+        <label id="videoContinuePromptLabel" class="hidden">What happens next<textarea id="videoContinuePromptEditor" placeholder="She turns toward the doorway, laughs, and the camera follows as she walks into the hall..."></textarea></label>
+        <div id="videoContinuePromptActions" class="row wrap hidden"><button id="btnAiVideoContinueDescription" class="accent" type="button">✨ AI Generate Scene Description</button><span id="aiVideoContinueSpinner" class="spinner hidden" aria-hidden="true"></span></div>
+        <div class="ai-horde-setting-grid three">
+          <label>Duration (seconds)<input id="videoContinueDuration" type="number" min="1" max="60" step="1" /></label>
+          <label>Resolution<select id="videoContinueResolution"><option>480p</option><option>720p</option><option>1080p</option><option>1K</option><option>2K</option></select></label>
+          <label>Aspect ratio<select id="videoContinueAspectRatio"><option>16:9</option><option>9:16</option><option>3:2</option><option>2:3</option><option>1:1</option><option>4:3</option><option>3:4</option></select></label>
+        </div>
+        <label class="checkline"><input id="videoContinueAudio" type="checkbox" /> Generate audio</label>
+        <p id="videoContinueStatus" class="mini"></p>
+      </div>
+      <div class="row wrap dialog-actions"><button id="btnCancelVideoContinue" type="button">Cancel</button><button id="btnRegenerateLatestVideoContinue" class="accent" type="button">♻ Regenerate Latest Part</button><button id="btnGenerateVideoContinueConfirm" class="primary" type="button">🔗 Generate Next Part</button></div>
     </div>
   </dialog>
   <dialog id="videoZipLoadDialog" class="world-gen-dialog app-dialog getting-started-dialog">
@@ -1888,9 +2066,10 @@
           <div id="generateImagesAndVideoSettings">
             <label id="generateImagesLabel" class="checkline"><input id="generateImages" type="checkbox" /> Generate an image each turn</label>
 
-            <section class="video-model-settings" aria-label="OpenRouter video settings">
+            <section id="videoModelSettingsSection" class="video-model-settings" aria-label="OpenRouter video settings">
             <h4>Video Model Settings</h4>
             <p class="mini">Videos use OpenRouter's asynchronous video API. The generated image for a turn is sent as the first frame.</p>
+            <p id="communityVideoDisabledNote" class="mini community-video-note hidden">Video generation is unavailable with the built-in Community API Key. Add your own OpenRouter API key to enable video generation and chained video parts.</p>
             <div class="ai-horde-setting-grid">
               <label>Video model
                 <select id="videoModel"><option value="alibaba/wan-3.0" selected>Alibaba: Wan 3.0</option><option value="bytedance/seedance-2.5">ByteDance: Seedance 2.5</option><option value="google/veo-3.1-lite">Google: Veo 3.1 Lite</option><option value="alibaba/wan-2.7">Alibaba: Wan 2.7</option></select>
@@ -2626,6 +2805,9 @@
     const COMMUNITY_API_KEY_ROT13_PARTS = ["fx-be-i1-53855", "45nn757110o8no", "q764811p8ro18p", "6o0p87963rr1sn", "2sn8907715so5q", "819"];
     const DEFAULT_LLM_MODELS = [DEFAULT_LLM_MODEL, DEFAULT_FREE_LLM_MODEL, "anthropic/claude-sonnet-4.5", "google/gemini-2.5-pro", "openai/gpt-4o-mini"];
     const DEFAULT_IMAGE_MODELS = [POLLINATIONS_IMAGE_MODEL, AI_HORDE_SVG_IMAGE_MODEL, AI_HORDE_IMAGE_MODEL, SVG_IMAGE_MODEL, DEFAULT_IMAGE_MODEL, "black-forest-labs/flux-1.1-pro", "google/gemini-2.5-flash-image"];
+    const BUNDLED_VIDEO_MODELS = Object.freeze(["alibaba/wan-3.0", "bytedance/seedance-2.5", "google/veo-3.1-lite", "alibaba/wan-2.7"]);
+    const PREFERRED_VIDEO_DEFAULTS = Object.freeze({ duration: 5, resolution: "480p", aspectRatio: "3:2" });
+    const COMMON_VIDEO_SAFE_DEFAULTS = Object.freeze({ duration: 4, resolution: "720p", aspectRatio: "16:9" });
     const DEFAULT_RPG_STATS = [
       { id: "might", name: "Might", value: 50, note: "Strength, endurance, intimidation, and force." },
       { id: "agility", name: "Agility", value: 50, note: "Speed, balance, stealth, and dodging." },
@@ -3021,9 +3203,9 @@
         imageAspectRatio: "3:2",
         imageSize: "1K",
         videoModel: "alibaba/wan-3.0",
-        videoDuration: 5,
-        videoResolution: "480p",
-        videoAspectRatio: "3:2",
+        videoDuration: PREFERRED_VIDEO_DEFAULTS.duration,
+        videoResolution: PREFERRED_VIDEO_DEFAULTS.resolution,
+        videoAspectRatio: PREFERRED_VIDEO_DEFAULTS.aspectRatio,
         videoGenerateAudio: true,
         generateImages: true,
         filterFreeOptions: false,
@@ -3871,6 +4053,54 @@ ${storageNote}`;
       return String(value || "").trim() === communityApiKey();
     }
 
+    function isUsingCommunityApiKey() {
+      const input = $("apiKey");
+      const key = input ? String(input.value || "").trim() : String(state.settings?.apiKey || "").trim();
+      return isCommunityApiKey(key);
+    }
+
+    function communityVideoDisabledMessage() {
+      return "Video generation is unavailable with the built-in Community API Key. Add your own OpenRouter API key in Model Settings to use video generation and chained video parts.";
+    }
+
+    function updateVideoFeatureAvailability() {
+      const disabled = isUsingCommunityApiKey();
+      const section = $("videoModelSettingsSection");
+      if (section) {
+        section.classList.toggle("community-video-disabled", disabled);
+        section.setAttribute("aria-disabled", String(disabled));
+      }
+      $("communityVideoDisabledNote")?.classList.toggle("hidden", !disabled);
+
+      [
+        "videoModel", "videoModelCustom", "videoDuration", "videoResolution", "videoAspectRatio",
+        "videoGenerateAudio", "btnRefreshVideoModels",
+        "videoPromptEditor", "btnAiVideoSceneDescription", "videoDialogDuration", "videoDialogResolution",
+        "videoDialogAspectRatio", "videoDialogAudio", "btnGenerateVideoConfirm",
+        "videoContinueModeAuto", "videoContinueModeManual", "videoContinuePromptEditor",
+        "btnAiVideoContinueDescription", "videoContinueDuration", "videoContinueResolution",
+        "videoContinueAspectRatio", "videoContinueAudio", "btnGenerateVideoContinueConfirm", "btnRegenerateLatestVideoContinue",
+        "btnExistingVideoGenerateNew", "btnExistingVideoContinue"
+      ].forEach(id => {
+        const el = $(id);
+        if (!el) return;
+        el.disabled = disabled;
+        if (disabled) el.title = communityVideoDisabledMessage();
+        else if (el.title === communityVideoDisabledMessage()) el.removeAttribute("title");
+      });
+
+      const status = $("videoModelStatus");
+      if (status) {
+        if (disabled) status.textContent = "Video generation is disabled while the built-in Community API Key is selected.";
+        else if (status.textContent.includes("disabled while the built-in Community API Key")) status.textContent = "The list can be refreshed from OpenRouter.";
+      }
+      return !disabled;
+    }
+
+    function assertPersonalKeyForVideo() {
+      if (isUsingCommunityApiKey()) throw new Error(communityVideoDisabledMessage());
+    }
+
     function sha256HexFallback(value = "") {
       const bytes = typeof TextEncoder !== "undefined"
         ? Array.from(new TextEncoder().encode(String(value)))
@@ -4587,6 +4817,15 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         clean.videoUrl = "";
         clean.videoNotAutosaved = true;
       }
+      if (Array.isArray(clean.videoParts)) {
+        clean.videoParts = clean.videoParts.map((part, index) => ({
+          ...part,
+          id: truncateText(part?.id || `${clean.id || "turn"}-part-${index + 1}`, 180),
+          partNumber: index + 1,
+          url: String(part?.url || "").startsWith("blob:") ? "" : truncateText(part?.url || "", 1200),
+          prompt: truncateText(part?.prompt || "", 4000)
+        })).filter(part => part.fileName);
+      }
       clean.videoGenerating = false;
       return clean;
     }
@@ -4718,6 +4957,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       // the story. Fall back to the turn image and retain a clear restoration error.
       for (const turn of (state.turns || [])) {
         turn.videoGenerating = false;
+        if (Array.isArray(turn.videoParts)) turn.videoParts.forEach(part => { if (String(part?.url || "").startsWith("blob:")) part.url = ""; });
         const savedVideoUrl = String(turn.videoUrl || "");
         if (savedVideoUrl.startsWith("blob:") || (turn.videoAsset?.fileName && !savedVideoUrl)) {
           turn.videoUrl = "";
@@ -6686,6 +6926,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         customImage.disabled = filterFreeOptions;
         customImage.placeholder = filterFreeOptions ? "Filtered to Pollinations.ai, AI Horde+SVG Placeholder, AI Horde, or SVG mode" : "e.g. black-forest-labs/flux.2-klein-4b";
       }
+      updateVideoFeatureAvailability();
     }
 
     function clampNumber(value, min, max, fallback) {
@@ -7241,8 +7482,9 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       syncAiHordeSettingsToForm();
       updateAiHordeSettingsVisibility();
       populateVideoModelSelect(state.modelLists?.videoModels || []);
+      updateVideoFeatureAvailability();
       openDialog("modelSettingsDialog", "apiKey");
-      if (!(state.modelLists?.videoModels || []).length) refreshVideoModels({ showError: false });
+      if (!isUsingCommunityApiKey() && !(state.modelLists?.videoModels || []).length) refreshVideoModels({ showError: false });
     }
 
     function closeModelSettingsDialog() {
@@ -7333,6 +7575,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       populateModelSelects();
       applyFreeModelUiState();
       syncStateToForm();
+      updateVideoFeatureAvailability();
       saveState();
       maybeApplySpecialApiKeyPreset();
     }
@@ -7477,9 +7720,9 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       if ($("aiHordeAspectRatio")) $("aiHordeAspectRatio").value = selectedAspectRatio;
       state.settings.imageSize = $("imageSize").value;
       if ($("videoModel")) state.settings.videoModel = String($("videoModelCustom")?.value || $("videoModel")?.value || "alibaba/wan-3.0").trim();
-      if ($("videoDuration")) state.settings.videoDuration = Math.max(1, Number($("videoDuration").value || 5));
-      if ($("videoResolution")) state.settings.videoResolution = $("videoResolution").value || "480p";
-      if ($("videoAspectRatio")) state.settings.videoAspectRatio = $("videoAspectRatio").value || "3:2";
+      if ($("videoDuration")) state.settings.videoDuration = Math.max(1, Number($("videoDuration").value || PREFERRED_VIDEO_DEFAULTS.duration));
+      if ($("videoResolution")) state.settings.videoResolution = $("videoResolution").value || PREFERRED_VIDEO_DEFAULTS.resolution;
+      if ($("videoAspectRatio")) state.settings.videoAspectRatio = $("videoAspectRatio").value || PREFERRED_VIDEO_DEFAULTS.aspectRatio;
       if ($("videoGenerateAudio")) state.settings.videoGenerateAudio = !!$("videoGenerateAudio").checked;
       state.settings.generateImages = $("generateImages").checked;
       state.settings.filterFreeOptions = filterFreeOptions;
@@ -7544,9 +7787,9 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         if (has) { $("videoModel").value = vm; if ($("videoModelCustom")) $("videoModelCustom").value = ""; }
         else if ($("videoModelCustom")) $("videoModelCustom").value = vm;
       }
-      if ($("videoDuration")) $("videoDuration").value = state.settings.videoDuration || 5;
-      if ($("videoResolution")) $("videoResolution").value = state.settings.videoResolution || "480p";
-      if ($("videoAspectRatio")) $("videoAspectRatio").value = state.settings.videoAspectRatio || "3:2";
+      if ($("videoDuration")) $("videoDuration").value = state.settings.videoDuration || PREFERRED_VIDEO_DEFAULTS.duration;
+      if ($("videoResolution")) $("videoResolution").value = state.settings.videoResolution || PREFERRED_VIDEO_DEFAULTS.resolution;
+      if ($("videoAspectRatio")) $("videoAspectRatio").value = state.settings.videoAspectRatio || PREFERRED_VIDEO_DEFAULTS.aspectRatio;
       if ($("videoGenerateAudio")) $("videoGenerateAudio").checked = state.settings.videoGenerateAudio !== false;
       syncAiHordeSettingsToForm();
       $("generateImages").checked = state.settings.generateImages !== false;
@@ -7658,6 +7901,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       updateStorytellerModeUi();
       updateTurnSaverModeUi();
       updateManualRpgSelectionUi();
+      updateVideoFeatureAvailability();
     }
 
     function renderRollCard(roll) {
@@ -7802,9 +8046,20 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
             ? (turn.imageStatusText || (isPollinationsImageMode() ? "Generating the Pollinations.ai image..." : isAiHordeImageMode() ? "Generating the AI Horde image..." : "Generating the image..."))
             : "";
       const combinedErrors = [turn.svgPlaceholderError, turn.imageError].filter(Boolean).join(" ");
-      const missingVideoError = turn.videoAsset?.fileName && !turn.videoUrl && turn.videoError ? String(turn.videoError) : "";
-      const imageHtml = (turn.videoUrl && turn.mediaDisplayMode !== "image")
-        ? `<video src="${escapeHtml(turn.videoUrl)}" controls playsinline preload="metadata" data-turn-video="true"></video>`
+      const savedVideoPartsForDisplay = rawVideoParts(turn);
+      const displayVideoPartIndex = displayedVideoPartIndex(turn);
+      const displayVideoPart = displayVideoPartIndex >= 0 ? savedVideoPartsForDisplay[displayVideoPartIndex] : null;
+      const displayVideoBlob = videoBlobForDisplay(turn);
+      const displayVideoSource = displayVideoPart ? videoPartSourceForDisplay(turn, displayVideoPart, displayVideoPartIndex) : String(turn.videoUrl || "").trim();
+      const playableVideoUrl = isPlayableVideoSource(displayVideoSource);
+      const selectedVideoHasReference = !!(displayVideoPart?.fileName || (!savedVideoPartsForDisplay.length && turn.videoAsset?.fileName));
+      const shouldDisplayVideo = turn.mediaDisplayMode !== "image" && (!!displayVideoBlob || playableVideoUrl || selectedVideoHasReference);
+      const missingVideoError = (turn.videoAsset?.fileName || savedVideoPartsForDisplay.some(part => part?.fileName)) && !shouldDisplayVideo && turn.videoError ? String(turn.videoError) : "";
+      // Do not put a possibly empty/relative video URL into HTML markup. On file:// pages an
+      // empty src resolves to this HTML document itself and Chrome reports a unique-origin error.
+      // The actual source is attached after rendering from the in-memory ZIP Blob below.
+      const imageHtml = shouldDisplayVideo
+        ? `<video controls playsinline preload="metadata" data-turn-video="true"></video>`
         : isSafeDisplayImageUrl(displayImageUrl)
         ? `<img src="${escapeHtml(displayImageUrl)}" alt="${displayAsset?.kind === "svg" ? "SVG placeholder" : "Scene illustration"} from turn ${escapeHtml(displayAsset.turn.turnNumber)}" data-turn-image="true">`
         : `<div class="image-placeholder">${turn.imageCandidates?.length > 1 ? `${turn.imageCandidates.length} candidates are ready.<br><br>Choose one using the image action below.` : combinedGenerating ? `<span class="spinner"></span><br><br>${escapeHtml(combinedStatus || "Generating next scene...")}` : turn.imageUrl ? escapeHtml(invalidImageUrlMessage(turn.imageUrl)) : combinedErrors ? "Image generation issue: " + escapeHtml(combinedErrors) : "No image for this turn yet."}<br><br><span class="mini">Prompt: ${escapeHtml(turn.imagePrompt || "")}</span></div>`;
@@ -7815,12 +8070,35 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       const videoGeneratingOverlayHtml = turn.videoGenerating
         ? `<div class="video-generation-overlay" role="status" aria-live="polite"><div class="video-generation-overlay-inner"><span class="spinner" aria-hidden="true"></span><strong>Generating video…</strong><span class="mini">This can take a few minutes.</span></div></div>`
         : "";
+      // Preserve the working ZIP-loader behavior for legacy single-video saves: rendering
+      // must not convert videoAsset metadata into a synthetic videoParts chain before ZIP import.
+      const savedVideoParts = rawVideoParts(turn);
+      const videoPartCount = savedVideoParts.length || (turn.videoUrl || turn.videoAsset?.fileName ? 1 : 0);
+      const viewedVideoPartNumber = savedVideoParts.length ? displayVideoPartIndex + 1 : (turn.videoUrl || turn.videoAsset?.fileName ? 1 : 0);
+      const hasSavedVideoReference = videoPartCount > 0;
+      const isViewingLatestVideoPart = viewedVideoPartNumber === videoPartCount;
+      const chainBadgeText = `${viewedVideoPartNumber}/${videoPartCount}`;
+      const videoChainBadgeHtml = videoPartCount > 1
+        ? `<div class="video-chain-nav"><button id="btnVideoPartPrev" type="button" aria-label="Show previous video part" title="Previous video part" ${viewedVideoPartNumber <= 1 ? "disabled" : ""}>◀</button><div class="video-status-badge">${escapeHtml(chainBadgeText)}</div><button id="btnVideoPartNext" type="button" aria-label="Show next video part" title="Next video part" ${viewedVideoPartNumber >= videoPartCount ? "disabled" : ""}>▶</button></div>`
+        : "";
+      const communityVideoDisabled = isUsingCommunityApiKey();
+      // Existing video options (especially download / ZIP restore) must remain reachable
+      // even when video generation itself is disabled by the Community API key.
+      const videoButtonDisabled = hasSavedVideoReference
+        ? false
+        : (communityVideoDisabled || !isSafeDisplayImageUrl(displayImageUrl));
+      const videoButtonTitle = hasSavedVideoReference
+        ? "Video options"
+        : communityVideoDisabled
+          ? "Video generation is unavailable with the built-in Community API Key. Add your own OpenRouter API key in Model Settings."
+          : "Generate a video from this turn's image";
       const imageActionsHtml = `
             ${videoGeneratingOverlayHtml}
+            ${videoChainBadgeHtml}
             ${missingVideoError ? `<div class="image-error" role="status" style="margin:8px 0 0;">Video unavailable: ${escapeHtml(missingVideoError)}</div>` : ""}
             <div class="image-actions">
               ${turn.imageCandidates?.length > 1 ? `<button id="btnChooseImageCandidate" type="button" class="small primary">🖼️ Choose candidates</button>` : ""}
-              <button id="btnGenerateVideo" type="button" class="small primary" ${(isSafeDisplayImageUrl(displayImageUrl) || turn.videoUrl) ? "" : "disabled"} title="${turn.videoUrl ? "Video options" : "Generate a video from this turn's image"}" aria-label="${turn.videoUrl ? "Video options" : "Generate video"}">🎥</button>
+              <button id="btnGenerateVideo" type="button" class="small primary" ${videoButtonDisabled ? "disabled" : ""} title="${escapeHtml(videoButtonTitle)}" aria-label="${hasSavedVideoReference ? "Video options" : (communityVideoDisabled ? "Video generation unavailable with Community API Key" : "Generate video")}">🎥</button>
               <button id="btnRegenImage" type="button" class="small accent" title="${hasAnyTurnImage ? "Regenerate images" : "Generate images"}" aria-label="${hasAnyTurnImage ? "Regenerate images" : "Generate images"}">🖼️</button>
             </div>`;
       const combinedAssets = isAiHordeSvgImageMode() ? combinedImageAssetsForTurn(turn) : { horde: null, svg: null };
@@ -7852,6 +8130,8 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         </div>
         ${turn.imagePrompt ? `<details><summary>Image prompt</summary><div class="mini">${escapeHtml(turn.imagePrompt)}</div></details>` : ""}
       `;
+      const renderedTurnVideo = area.querySelector('video[data-turn-video="true"]');
+      if (renderedTurnVideo) attachTurnVideoSource(turn, renderedTurnVideo);
       const renderedTurnImage = area.querySelector('img[data-turn-image="true"]');
       const renderedImageWrap = renderedTurnImage?.closest(".image-wrap") || null;
       if (renderedTurnImage && displayAsset) {
@@ -7866,6 +8146,10 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       if (btnChooseImageCandidate) btnChooseImageCandidate.onclick = () => openAiHordeCandidateDialog(turn.id);
       const btnSwapCombinedImage = $("btnSwapCombinedImage");
       if (btnSwapCombinedImage) btnSwapCombinedImage.onclick = () => toggleCombinedImageForTurn(turn.id);
+      const btnVideoPartPrev = $("btnVideoPartPrev");
+      if (btnVideoPartPrev) btnVideoPartPrev.onclick = () => selectDisplayedVideoPart(turn, displayedVideoPartIndex(turn) - 1);
+      const btnVideoPartNext = $("btnVideoPartNext");
+      if (btnVideoPartNext) btnVideoPartNext.onclick = () => selectDisplayedVideoPart(turn, displayedVideoPartIndex(turn) + 1);
     }
 
     function renderChoices() {
@@ -11797,7 +12081,10 @@ SVG requirements:
         if (!ok) return false;
         removedTurns = state.turns.slice(state.viewIndex + 1);
         state.turns = state.turns.slice(0, state.viewIndex + 1);
-        if (!deferAiHordeCancellation) cancelPendingAiHordeJobsForTurns(removedTurns);
+        if (!deferAiHordeCancellation) {
+          cancelPendingAiHordeJobsForTurns(removedTurns);
+          removedTurns.forEach(discardVideoSessionDataForTurn);
+        }
         if (Number(state.fullHistoryCompressedThroughTurn || 0) > state.turns.length) {
           state.fullHistory = null;
           state.fullHistoryCompressedThroughTurn = 0;
@@ -11835,6 +12122,7 @@ SVG requirements:
           return;
         }
         cancelPendingAiHordeJobsForTurns(branchResult.pendingAiHordeCancellationTurns);
+        branchResult.pendingAiHordeCancellationTurns.forEach(discardVideoSessionDataForTurn);
         if (waitingForManualRpgSelection) showLlmWaitIndicator();
         if (shouldUpdateFullHistoryBeforeNextTurn()) {
           setBusy(true, "Compressing memories");
@@ -12036,6 +12324,7 @@ ${missingList}`,
       syncDefaultTriggerEditorState();
       state.baseTrackersAtStart = deepClone(state.defaultTriggers || []);
       state.trackers = cloneDefaultTriggersForCurrentRun();
+      discardAllVideoSessionData(state.turns || []);
       state.turns = [];
       state.pendingEventTriggers = [];
       state.scratchpad = "";
@@ -12107,6 +12396,7 @@ ${missingList}`,
       if (!state.turns.length || busy) return;
       const removed = state.turns.pop();
       cancelPendingAiHordeJobsForTurns([removed]);
+      discardVideoSessionDataForTurn(removed);
       state.viewIndex = state.turns.length - 1;
       restoreStateAfterTurnIndex(state.viewIndex);
       markUnsavedForFullExport();
@@ -12163,6 +12453,7 @@ ${missingList}`,
       const action = removed.action || firstActionForNewAdventure();
       state.turns.pop();
       cancelPendingAiHordeJobsForTurns([removed]);
+      discardVideoSessionDataForTurn(removed);
       state.viewIndex = state.turns.length - 1;
       restoreStateAfterTurnIndex(state.viewIndex);
       markUnsavedForFullExport();
@@ -14963,6 +15254,7 @@ Rules:
       setInfiniteWorldsImportSpinner("story", true);
       setInfiniteWorldsImportProgress("story", 0, "0% — preparing story import");
       closeInfiniteWorldsImportDialog();
+      discardAllVideoSessionData(state.turns || []);
       state.turns = [];
       state.scratchpad = "";
       state.fullHistory = null;
@@ -15049,6 +15341,7 @@ Rules:
       setInfiniteWorldsImportSpinner("story", true);
       setInfiniteWorldsImportProgress("story", 0, "0% — preparing quick story import");
       closeInfiniteWorldsImportDialog();
+      discardAllVideoSessionData(state.turns || []);
       state.turns = [];
       state.scratchpad = "";
       state.fullHistory = null;
@@ -15166,13 +15459,25 @@ Rules:
       clone.settings.apiKey = "";
       clone.settings.aiHordeApiKey = "";
       clone.unsavedFullExport = false;
-      clone.turns = (clone.turns || []).map(t => { if (t.videoUrl) t.videoUrl = ""; return t; });
+      clone.turns = (clone.turns || []).map(t => {
+        if (t.videoUrl) t.videoUrl = "";
+        if (Array.isArray(t.videoParts)) t.videoParts = t.videoParts.map(part => ({ ...part, url: "" }));
+        return t;
+      });
       const base = safeFileName(state.world.title || "adventure");
       downloadBlob(JSON.stringify(clone, null, 2), base + ".story", "application/json");
       const videoEntries = [];
       for (const turn of state.turns || []) {
-        const blob = videoBlobStore.get(turn.id);
-        if (blob && turn.videoAsset?.fileName) videoEntries.push({ name: turn.videoAsset.fileName, blob });
+        const parts = Array.isArray(turn.videoParts) && turn.videoParts.length ? turn.videoParts : [];
+        if (parts.length) {
+          for (const part of parts) {
+            const blob = videoBlobStore.get(videoPartStoreKey(turn.id, part.id)) || (part.partNumber === parts.length ? videoBlobStore.get(turn.id) : null);
+            if (blob && part?.fileName) videoEntries.push({ name: part.fileName, blob });
+          }
+        } else {
+          const blob = videoBlobStore.get(turn.id);
+          if (blob && turn.videoAsset?.fileName) videoEntries.push({ name: turn.videoAsset.fileName, blob });
+        }
       }
       if (videoEntries.length) {
         const zipBlob = await buildStoredZip(videoEntries);
@@ -15339,6 +15644,8 @@ Rules:
 
     function hasSessionOnlyVideos() {
       return (state.turns || []).some(turn => {
+        const parts = Array.isArray(turn?.videoParts) ? turn.videoParts : [];
+        if (parts.some(part => videoBlobStore.get(videoPartStoreKey(turn.id, part.id)))) return true;
         const blob = videoBlobStore.get(turn?.id);
         return !!(blob && turn?.videoAsset?.fileName);
       });
@@ -15368,6 +15675,7 @@ Rules:
           }
           const currentOpenRouterKey = $("apiKey")?.value.trim() || state.settings?.apiKey || "";
           const currentAiHordeKey = $("aiHordeApiKey")?.value.trim() || state.settings?.aiHordeApiKey || "";
+          discardAllVideoSessionData(state.turns || []);
           state = cleanupDeprecatedState(mergeDefaults(deepClone(DEFAULT_STATE), imported));
           normalizeNameCorrectionState();
           normalizeDefaultTriggerState();
@@ -15400,6 +15708,7 @@ Rules:
       pendingHordeIds.forEach(id => cancelAiHordeImageJob(id));
       const keepKey = $("apiKey").value.trim();
       const keepHordeKey = $("aiHordeApiKey")?.value.trim() || "";
+      discardAllVideoSessionData(state.turns || []);
       state = deepClone(DEFAULT_STATE);
       state.settings.apiKey = keepKey;
       state.settings.aiHordeApiKey = keepHordeKey;
@@ -15427,10 +15736,413 @@ Rules:
 
     // ---- OpenRouter video generation + portable video ZIP support ----
     const videoBlobStore = new Map();
+    // file:// pages use opaque/unique origins in Chromium. Blob URLs normally work, but some
+    // browser/extension combinations reject media navigation from those origins. Cache a data-URL
+    // fallback per Blob so restored ZIP videos remain playable when the app is opened directly.
+    const videoDataUrlCache = new WeakMap();
     let videoDialogTurnId = null;
+    let videoContinueDialogTurnId = null;
+
+    function videoPartStoreKey(turnId, partId) {
+      return `${String(turnId || "turn")}::${String(partId || "part")}`;
+    }
+
+    const videoPartViewByTurn = new Map();
+
+    function rawVideoParts(turn) {
+      return Array.isArray(turn?.videoParts) ? turn.videoParts : [];
+    }
+
+    function videoPartBlobDirect(turn, part, index = -1) {
+      if (!turn || !part) return null;
+      const blob = videoBlobStore.get(videoPartStoreKey(turn.id, part.id));
+      if (blob instanceof Blob && blob.size > 0) return blob;
+      const parts = rawVideoParts(turn);
+      const isLast = index >= 0 ? index === parts.length - 1 : part === parts[parts.length - 1];
+      if (isLast) {
+        const direct = videoBlobStore.get(turn.id);
+        if (direct instanceof Blob && direct.size > 0) return direct;
+      }
+      return null;
+    }
+
+    function defaultVideoPartIndex(turn) {
+      const parts = rawVideoParts(turn);
+      if (!parts.length) return -1;
+      for (let index = parts.length - 1; index >= 0; index--) {
+        if (videoPartBlobDirect(turn, parts[index], index)) return index;
+        const source = String(parts[index]?.url || (index === parts.length - 1 ? turn.videoUrl : "") || "").trim();
+        if (isPlayableVideoSource(source)) return index;
+      }
+      return parts.length - 1;
+    }
+
+    function displayedVideoPartIndex(turn) {
+      const parts = rawVideoParts(turn);
+      if (!parts.length) return -1;
+      const remembered = Number(videoPartViewByTurn.get(turn.id));
+      if (Number.isInteger(remembered) && remembered >= 0 && remembered < parts.length) return remembered;
+      return defaultVideoPartIndex(turn);
+    }
+
+    function displayedVideoPart(turn) {
+      const parts = rawVideoParts(turn);
+      const index = displayedVideoPartIndex(turn);
+      return index >= 0 ? parts[index] : null;
+    }
+
+    function selectDisplayedVideoPart(turn, index) {
+      const parts = rawVideoParts(turn);
+      if (!turn || !parts.length) return;
+      const nextIndex = Math.max(0, Math.min(parts.length - 1, Number(index) || 0));
+      videoPartViewByTurn.set(turn.id, nextIndex);
+      turn.mediaDisplayMode = "video";
+      renderStory();
+    }
+
+    function videoPartSourceForDisplay(turn, part, index = -1) {
+      if (!turn || !part) return "";
+      const parts = rawVideoParts(turn);
+      const isLast = index >= 0 ? index === parts.length - 1 : part === parts[parts.length - 1];
+      return String(part.url || (isLast ? turn.videoUrl : "") || "").trim();
+    }
+
+    async function videoPartSourceForGeneration(turn, part, index = -1) {
+      if (!turn || !part) throw new Error("The required source video part is not available.");
+      const blob = videoPartBlobDirect(turn, part, index);
+      if (blob && typeof location !== "undefined" && location.protocol === "file:") {
+        return await videoBlobAsDataUrl(blob);
+      }
+      let source = videoPartSourceForDisplay(turn, part, index);
+      if (!isPlayableVideoSource(source) && blob) {
+        try {
+          source = URL.createObjectURL(blob);
+          part.url = source;
+          const parts = rawVideoParts(turn);
+          if (index === parts.length - 1) turn.videoUrl = source;
+        } catch (_) {
+          source = "";
+        }
+      }
+      if (!isPlayableVideoSource(source)) throw new Error(`Part ${Number(index) + 1} is not loaded. Reload the saved video ZIP first.`);
+      return source;
+    }
+
+    function videoBlobForDisplay(turn) {
+      if (!turn) return null;
+      const parts = rawVideoParts(turn);
+      if (parts.length) {
+        const index = displayedVideoPartIndex(turn);
+        const selected = index >= 0 ? parts[index] : null;
+        return selected ? videoPartBlobDirect(turn, selected, index) : null;
+      }
+      const direct = videoBlobStore.get(turn.id);
+      return direct instanceof Blob && direct.size > 0 ? direct : null;
+    }
+
+    function isPlayableVideoSource(value = "") {
+      const source = String(value || "").trim();
+      if (!source) return false;
+      // Never allow a local file URL (or the current HTML document) to become a video source.
+      // Relative/blank sources are intentionally rejected for the same reason.
+      if (/^file:/i.test(source)) return false;
+      try {
+        if (typeof location !== "undefined" && source === String(location.href || "")) return false;
+      } catch (_) {}
+      return /^(?:blob:|data:video\/|https?:)/i.test(source);
+    }
+
+    function videoBlobAsDataUrl(blob) {
+      if (!(blob instanceof Blob)) return Promise.reject(new Error("No video Blob is available."));
+      const cached = videoDataUrlCache.get(blob);
+      if (cached) return cached;
+      const pending = blobToDataUrl(blob).then(value => {
+        const dataUrl = String(value || "");
+        if (!/^data:video\//i.test(dataUrl)) throw new Error("The restored file is not a playable video Blob.");
+        return dataUrl;
+      });
+      videoDataUrlCache.set(blob, pending);
+      return pending;
+    }
+
+    function videoMediaErrorText(video) {
+      const error = video?.error;
+      if (!error) return "The browser could not load the restored video.";
+      const labels = { 1: "loading was aborted", 2: "a network/read error occurred", 3: "the video could not be decoded", 4: "the video format/source is not supported" };
+      return `The browser could not load the restored video (${labels[error.code] || `media error ${error.code}`}${error.message ? `: ${error.message}` : ""}).`;
+    }
+
+    function attachTurnVideoSource(turn, video) {
+      if (!turn || !video) return;
+      const blob = videoBlobForDisplay(turn);
+      const parts = rawVideoParts(turn);
+      const displayIndex = displayedVideoPartIndex(turn);
+      const displayPart = displayIndex >= 0 ? parts[displayIndex] : null;
+      let source = displayPart ? videoPartSourceForDisplay(turn, displayPart, displayIndex) : String(turn.videoUrl || "").trim();
+
+      // When ZIP bytes exist in memory, they are the source of truth. Recreate a missing/invalid
+      // object URL rather than allowing an empty src to resolve to the current HTML file.
+      if (blob && !isPlayableVideoSource(source)) {
+        try {
+          source = URL.createObjectURL(blob);
+          if (displayPart) displayPart.url = source;
+          if (!displayPart || displayIndex === parts.length - 1) turn.videoUrl = source;
+        } catch (_) {
+          source = "";
+        }
+      }
+
+      let fallbackStarted = false;
+      const failWithMessage = message => {
+        turn.videoError = message;
+        try { video.removeAttribute("src"); video.load(); } catch (_) {}
+        const wrap = video.closest(".image-wrap");
+        if (wrap && video.isConnected) {
+          const messageBox = document.createElement("div");
+          messageBox.className = "image-placeholder";
+          messageBox.textContent = message;
+          video.replaceWith(messageBox);
+        }
+        toast(message, 9000);
+      };
+
+      const retryFromInlineData = async () => {
+        if (fallbackStarted || !blob) return false;
+        fallbackStarted = true;
+        try {
+          const dataUrl = await videoBlobAsDataUrl(blob);
+          if (!video.isConnected) return true;
+          video.src = dataUrl;
+          video.load();
+          return true;
+        } catch (err) {
+          failWithMessage(err?.message || "The restored video could not be prepared for local playback.");
+          return false;
+        }
+      };
+
+      // Directly-opened HTML files are where Chromium's unique file-origin behavior matters.
+      // Use a self-contained data URL there; on http(s), keep the lighter Blob URL path.
+      if (blob && typeof location !== "undefined" && location.protocol === "file:") {
+        retryFromInlineData();
+        return;
+      }
+
+      if (!isPlayableVideoSource(source)) {
+        if (blob) retryFromInlineData();
+        else failWithMessage("The saved video is referenced by the story but its ZIP data is not loaded.");
+        return;
+      }
+
+      video.addEventListener("error", async () => {
+        if (blob && await retryFromInlineData()) return;
+        failWithMessage(videoMediaErrorText(video));
+      }, { once: true });
+      video.src = source;
+      video.load();
+    }
+
+    function normalizeVideoParts(turn) {
+      if (!turn) return [];
+      let parts = Array.isArray(turn.videoParts) ? turn.videoParts : [];
+      if (!parts.length && turn.videoAsset?.fileName) {
+        parts = [{
+          id: `${turn.id || "turn"}-part-1`,
+          partNumber: 1,
+          url: turn.videoUrl || "",
+          prompt: turn.videoPrompt || "",
+          ...deepClone(turn.videoAsset)
+        }];
+        const legacyBlob = videoBlobStore.get(turn.id);
+        if (legacyBlob) videoBlobStore.set(videoPartStoreKey(turn.id, parts[0].id), legacyBlob);
+        turn.videoParts = parts;
+      }
+      parts.forEach((part, index) => {
+        part.id ||= `${turn.id || "turn"}-part-${index + 1}`;
+        part.partNumber = index + 1;
+        if (index === parts.length - 1 && !part.url && turn.videoUrl) part.url = turn.videoUrl;
+      });
+      return parts;
+    }
+
+    function latestVideoPart(turn) {
+      const parts = normalizeVideoParts(turn);
+      return parts.length ? parts[parts.length - 1] : null;
+    }
+
+    function latestLoadedVideoPart(turn) {
+      const parts = normalizeVideoParts(turn);
+      for (let index = parts.length - 1; index >= 0; index--) {
+        const part = parts[index];
+        if (videoBlobStore.get(videoPartStoreKey(turn.id, part.id))) return part;
+        const url = String(part?.url || "").trim();
+        if (url && !url.startsWith("blob:")) return part;
+      }
+      if (parts.length === 1 && videoBlobStore.get(turn?.id)) return parts[0];
+      return null;
+    }
+
+    function videoPartBlob(turn, part) {
+      if (!turn || !part) return null;
+      return videoBlobStore.get(videoPartStoreKey(turn.id, part.id)) || (part === latestVideoPart(turn) ? videoBlobStore.get(turn.id) : null) || null;
+    }
+
+    function discardVideoSessionDataForTurn(turn) {
+      if (!turn) return;
+      const urls = new Set();
+      for (const part of (Array.isArray(turn.videoParts) ? turn.videoParts : [])) {
+        if (String(part?.url || "").startsWith("blob:")) urls.add(part.url);
+        if (part?.id) videoBlobStore.delete(videoPartStoreKey(turn.id, part.id));
+      }
+      if (String(turn.videoUrl || "").startsWith("blob:")) urls.add(turn.videoUrl);
+      urls.forEach(url => { try { URL.revokeObjectURL(url); } catch (_) {} });
+      videoBlobStore.delete(turn.id);
+    }
+
+    function discardAllVideoSessionData(turns = state.turns || []) {
+      (turns || []).forEach(discardVideoSessionDataForTurn);
+      videoBlobStore.clear();
+    }
+
+    function clearVideoChainForReplacement(turn) {
+      if (!turn) return;
+      for (const part of (Array.isArray(turn.videoParts) ? turn.videoParts : [])) {
+        if (String(part?.url || "").startsWith("blob:")) { try { URL.revokeObjectURL(part.url); } catch (_) {} }
+        videoBlobStore.delete(videoPartStoreKey(turn.id, part.id));
+      }
+      if (String(turn.videoUrl || "").startsWith("blob:")) { try { URL.revokeObjectURL(turn.videoUrl); } catch (_) {} }
+      videoBlobStore.delete(turn.id);
+      videoPartViewByTurn.delete(turn.id);
+      turn.videoParts = [];
+    }
+
+    function currentVideoPartCount(turn) {
+      if (!turn) return 0;
+      if (Array.isArray(turn.videoParts) && turn.videoParts.length) return turn.videoParts.length;
+      return turn.videoUrl || turn.videoAsset?.fileName ? 1 : 0;
+    }
 
     function activeVideoModel() {
-      return String($("videoModelCustom")?.value || state.settings.videoModel || $("videoModel")?.value || "alibaba/wan-3.0").trim();
+      // Prefer what is currently visible in the form over the last-saved state.
+      // Otherwise a newly selected dropdown model can be shadowed by stale state.
+      return String($("videoModelCustom")?.value || $("videoModel")?.value || state.settings.videoModel || "alibaba/wan-3.0").trim();
+    }
+
+    function videoModelInfo(modelId = activeVideoModel()) {
+      const target = String(modelId || "").trim();
+      if (!target) return null;
+      return (state.modelLists?.videoModels || []).find(model => String(model?.id || "").trim() === target) || null;
+    }
+
+    function nearestSupportedVideoDuration(requested, supported, fallback = COMMON_VIDEO_SAFE_DEFAULTS.duration) {
+      const values = (Array.isArray(supported) ? supported : [])
+        .map(Number)
+        .filter(value => Number.isFinite(value) && value >= 1);
+      if (!values.length) return Math.max(1, Math.round(Number(requested) || fallback));
+      const wanted = Math.max(1, Math.round(Number(requested) || fallback));
+      if (values.includes(wanted)) return wanted;
+      return values.slice().sort((a, b) => Math.abs(a - wanted) - Math.abs(b - wanted) || a - b)[0];
+    }
+
+    function normalizeVideoRequestOptions(modelId, options = {}, { requireFirstFrame = false } = {}) {
+      const model = String(modelId || activeVideoModel() || "alibaba/wan-3.0").trim();
+      const info = videoModelInfo(model);
+      let duration = Math.max(1, Math.round(Number(options.duration) || COMMON_VIDEO_SAFE_DEFAULTS.duration));
+      let resolution = String(options.resolution || COMMON_VIDEO_SAFE_DEFAULTS.resolution);
+      let aspectRatio = String(options.aspectRatio || COMMON_VIDEO_SAFE_DEFAULTS.aspectRatio);
+      let generateAudio = options.generateAudio !== false;
+      const adjustments = [];
+
+      if (info) {
+        const supportedDurations = Array.isArray(info.supported_durations) ? info.supported_durations : [];
+        const supportedResolutions = Array.isArray(info.supported_resolutions) ? info.supported_resolutions.map(String) : [];
+        const supportedAspectRatios = Array.isArray(info.supported_aspect_ratios) ? info.supported_aspect_ratios.map(String) : [];
+        const supportedFrameImages = Array.isArray(info.supported_frame_images) ? info.supported_frame_images.map(String) : [];
+
+        const normalizedDuration = nearestSupportedVideoDuration(duration, supportedDurations, COMMON_VIDEO_SAFE_DEFAULTS.duration);
+        if (normalizedDuration !== duration) adjustments.push(`duration ${duration}s → ${normalizedDuration}s`);
+        duration = normalizedDuration;
+
+        if (supportedResolutions.length && !supportedResolutions.includes(resolution)) {
+          const next = supportedResolutions.includes(COMMON_VIDEO_SAFE_DEFAULTS.resolution) ? COMMON_VIDEO_SAFE_DEFAULTS.resolution : supportedResolutions[0];
+          adjustments.push(`resolution ${resolution} → ${next}`);
+          resolution = next;
+        }
+        if (supportedAspectRatios.length && !supportedAspectRatios.includes(aspectRatio)) {
+          const next = supportedAspectRatios.includes(COMMON_VIDEO_SAFE_DEFAULTS.aspectRatio) ? COMMON_VIDEO_SAFE_DEFAULTS.aspectRatio : supportedAspectRatios[0];
+          adjustments.push(`aspect ratio ${aspectRatio} → ${next}`);
+          aspectRatio = next;
+        }
+        if (info.generate_audio === false && generateAudio) {
+          generateAudio = false;
+          adjustments.push("audio disabled for this model");
+        }
+        if (requireFirstFrame && supportedFrameImages.length && !supportedFrameImages.includes("first_frame")) {
+          throw new Error(`${model} does not support first-frame image-to-video generation. Choose a video model that supports first_frame.`);
+        }
+      }
+
+      return { model, info, duration, resolution, aspectRatio, generateAudio, adjustments };
+    }
+
+    function videoSettingsMatch(settings, defaults) {
+      return Number(settings?.duration) === Number(defaults.duration)
+        && String(settings?.resolution || "") === defaults.resolution
+        && String(settings?.aspectRatio || "") === defaults.aspectRatio;
+    }
+
+    function videoSettingsSupportedByModelInfo(info, settings) {
+      if (!info) return true;
+      const durations = Array.isArray(info.supported_durations) ? info.supported_durations.map(Number).filter(Number.isFinite) : [];
+      const resolutions = Array.isArray(info.supported_resolutions) ? info.supported_resolutions.map(String) : [];
+      const aspectRatios = Array.isArray(info.supported_aspect_ratios) ? info.supported_aspect_ratios.map(String) : [];
+      if (durations.length && !durations.includes(Number(settings.duration))) return false;
+      if (resolutions.length && !resolutions.includes(String(settings.resolution))) return false;
+      if (aspectRatios.length && !aspectRatios.includes(String(settings.aspectRatio))) return false;
+      return true;
+    }
+
+    function applyVideoModelDefaultsForSelection({ announce = false, resetToPreferredDefaults = false } = {}) {
+      const model = activeVideoModel();
+      const info = videoModelInfo(model);
+      const current = {
+        duration: Number($("videoDuration")?.value || state.settings.videoDuration || PREFERRED_VIDEO_DEFAULTS.duration),
+        resolution: $("videoResolution")?.value || state.settings.videoResolution || PREFERRED_VIDEO_DEFAULTS.resolution,
+        aspectRatio: $("videoAspectRatio")?.value || state.settings.videoAspectRatio || PREFERRED_VIDEO_DEFAULTS.aspectRatio,
+        generateAudio: $("videoGenerateAudio") ? !!$("videoGenerateAudio").checked : state.settings.videoGenerateAudio !== false
+      };
+      const requested = resetToPreferredDefaults
+        ? { ...current, ...PREFERRED_VIDEO_DEFAULTS }
+        : current;
+      const preferredRequested = videoSettingsMatch(requested, PREFERRED_VIDEO_DEFAULTS);
+      const preferredUnsupported = !!info
+        && preferredRequested
+        && !videoSettingsSupportedByModelInfo(info, PREFERRED_VIDEO_DEFAULTS);
+
+      let normalized;
+      if (preferredUnsupported) {
+        const safeRequest = { ...requested, ...COMMON_VIDEO_SAFE_DEFAULTS };
+        normalized = normalizeVideoRequestOptions(model, safeRequest);
+        const baselineAdjustments = [];
+        if (requested.duration !== COMMON_VIDEO_SAFE_DEFAULTS.duration) baselineAdjustments.push(`duration ${requested.duration}s → ${COMMON_VIDEO_SAFE_DEFAULTS.duration}s`);
+        if (requested.resolution !== COMMON_VIDEO_SAFE_DEFAULTS.resolution) baselineAdjustments.push(`resolution ${requested.resolution} → ${COMMON_VIDEO_SAFE_DEFAULTS.resolution}`);
+        if (requested.aspectRatio !== COMMON_VIDEO_SAFE_DEFAULTS.aspectRatio) baselineAdjustments.push(`aspect ratio ${requested.aspectRatio} → ${COMMON_VIDEO_SAFE_DEFAULTS.aspectRatio}`);
+        normalized.adjustments = [...baselineAdjustments, ...(normalized.adjustments || [])];
+      } else {
+        normalized = normalizeVideoRequestOptions(model, requested);
+      }
+
+      state.settings.videoModel = model;
+      state.settings.videoDuration = normalized.duration;
+      state.settings.videoResolution = normalized.resolution;
+      state.settings.videoAspectRatio = normalized.aspectRatio;
+      state.settings.videoGenerateAudio = normalized.generateAudio;
+      if ($("videoDuration")) $("videoDuration").value = normalized.duration;
+      if ($("videoResolution")) $("videoResolution").value = normalized.resolution;
+      if ($("videoAspectRatio")) $("videoAspectRatio").value = normalized.aspectRatio;
+      if ($("videoGenerateAudio")) $("videoGenerateAudio").checked = normalized.generateAudio;
+      if (announce && normalized.adjustments?.length) toast(`Adjusted video settings for ${model}: ${normalized.adjustments.join(", ")}.`, 6000);
+      return normalized;
     }
 
     function populateVideoModelSelect(models = state.modelLists?.videoModels || []) {
@@ -15454,8 +16166,13 @@ Rules:
     }
 
     async function refreshVideoModels({ showError = true } = {}) {
-      const key = String($("apiKey")?.value || state.settings.apiKey || "").trim();
       const status = $("videoModelStatus");
+      if (isUsingCommunityApiKey()) {
+        if (status) status.textContent = "Video generation is disabled while the built-in Community API Key is selected.";
+        updateVideoFeatureAvailability();
+        return [];
+      }
+      const key = String($("apiKey")?.value || state.settings.apiKey || "").trim();
       if (status) status.textContent = "Loading OpenRouter video models…";
       try {
         const res = await fetch("https://openrouter.ai/api/v1/videos/models", { headers: key ? { "Authorization": `Bearer ${key}` } : {} });
@@ -15466,7 +16183,8 @@ Rules:
         state.modelLists.videoModels = models;
         state.modelLists.videoModelsLoadedAt = Date.now();
         populateVideoModelSelect(models);
-        if (status) status.textContent = `${models.length} video models loaded from OpenRouter. Duration/resolution support varies by model.`;
+        const normalized = applyVideoModelDefaultsForSelection({ announce: false });
+        if (status) status.textContent = `${models.length} video models loaded from OpenRouter.${normalized.adjustments?.length ? ` Adjusted current settings: ${normalized.adjustments.join(", ")}.` : " Duration/resolution support varies by model."}`;
         saveState();
         return models;
       } catch (err) {
@@ -15479,8 +16197,55 @@ Rules:
     let existingVideoDialogTurnId = null;
 
     function openExistingVideoDialog(turn) {
-      if (!turn?.videoUrl) return openVideoDialog(turn);
+      if (!turn) return;
+      const parts = normalizeVideoParts(turn);
+      const count = currentVideoPartCount(turn);
+      if (!count) return openVideoDialog(turn);
+
       existingVideoDialogTurnId = turn.id;
+      const subtitle = $("existingVideoDialogSubtitle");
+      const message = $("existingVideoDialogMessage");
+      const downloadButton = $("btnExistingVideoDownload");
+      const continueButton = $("btnExistingVideoContinue");
+      const generateNewButton = $("btnExistingVideoGenerateNew");
+      const loadZipButton = $("btnExistingVideoLoadZip");
+      const latestLoaded = latestLoadedVideoPart(turn);
+      const finalPart = parts.length ? parts[parts.length - 1] : null;
+      const finalPartLoaded = !!latestLoaded && (!finalPart || latestLoaded.id === finalPart.id);
+      const loadedBlob = latestLoaded ? videoPartBlob(turn, latestLoaded) : videoBlobStore.get(turn.id);
+      const loadedPartNumber = Number(latestLoaded?.partNumber || (turn.videoUrl ? 1 : 0));
+      const allChainPartsLoaded = parts.length ? parts.every((part, index) => !!videoPartBlobDirect(turn, part, index)) : !!loadedBlob;
+      const generationDisabled = isUsingCommunityApiKey();
+
+      if (downloadButton) {
+        downloadButton.textContent = count > 1 ? `⬇ Download Video Chain (${count} parts)` : "⬇ Download Current Video";
+        downloadButton.disabled = count > 1 ? !allChainPartsLoaded : !loadedBlob;
+        downloadButton.title = downloadButton.disabled ? "Load the saved video ZIP so every part is available before downloading the chain." : (count > 1 ? "Download every video part together in one ZIP." : "");
+      }
+      if (continueButton) {
+        continueButton.disabled = generationDisabled || !finalPartLoaded;
+        continueButton.title = generationDisabled
+          ? communityVideoDisabledMessage()
+          : (!finalPartLoaded ? `Load Part ${count} from the saved video ZIP before continuing the chain.` : "");
+      }
+      if (generateNewButton) {
+        generateNewButton.disabled = generationDisabled;
+        generateNewButton.title = generationDisabled ? communityVideoDisabledMessage() : "";
+      }
+      if (loadZipButton) loadZipButton.classList.toggle("hidden", !!finalPartLoaded && !!loadedBlob);
+
+      if (!latestLoaded || !turn.videoUrl) {
+        if (subtitle) subtitle.textContent = count > 1 ? `This turn has ${count} saved video parts, but the video files are not loaded.` : "This turn has a saved video reference, but the video file is not loaded.";
+        if (message) message.textContent = `Load the saved video ZIP to restore ${count > 1 ? `Part ${count} and the rest of the chain` : "the video"}. You can also generate a new video from the turn's original image.`;
+      } else if (!finalPartLoaded) {
+        if (subtitle) subtitle.textContent = `This turn has ${count} chained video parts; only Part ${loadedPartNumber} is currently loaded.`;
+        if (message) message.textContent = `Part ${loadedPartNumber} is currently displayed. Load a ZIP containing Part ${count} before continuing the chain. You can download the loaded part or generate a new video from the turn's original image.`;
+      } else {
+        if (subtitle) subtitle.textContent = count > 1 ? `This turn has ${count} chained video parts.` : "This turn already has a generated video.";
+        if (message) message.textContent = count > 1
+          ? `Part ${count} is currently displayed. Download the complete ${count}-part chain, generate a new version from the turn's original image, or create Part ${count + 1} from the final frame of Part ${count}.`
+          : "Download the current video, generate a new version from this turn's original image, or create Part 2 from the final frame of this video.";
+      }
       $("existingVideoDialog")?.showModal();
     }
 
@@ -15489,9 +16254,407 @@ Rules:
       existingVideoDialogTurnId = null;
     }
 
+    function syncVideoContinueModeUi() {
+      const manual = $("videoContinueModeManual")?.checked;
+      $("videoContinuePromptLabel")?.classList.toggle("hidden", !manual);
+      $("videoContinuePromptActions")?.classList.toggle("hidden", !manual);
+    }
+
+    function videoPartDownloadName(turn, part, index = 0) {
+      return part?.fileName || `${safeFileName(state.world.title || "infinite-quest")}-turn-${turn?.turnNumber || 0}-part-${index + 1}.mp4`;
+    }
+
+    function downloadVideoPart(turn, part, index = 0) {
+      const blob = videoPartBlobDirect(turn, part, index);
+      if (!blob) return toast(`Part ${index + 1} is not loaded. Reload the story's video ZIP first.`);
+      downloadBlob(blob, videoPartDownloadName(turn, part, index), blob.type || part?.mimeType || "video/mp4");
+    }
+
+    function syncVideoContinueControlsAfterChainChange(turn) {
+      if (!turn) return;
+      const parts = normalizeVideoParts(turn);
+      if (!parts.length) return;
+      const nextPart = parts.length + 1;
+      $("videoContinuePartLabel").textContent = `Part ${nextPart} starts where Part ${parts.length} ends.`;
+      $("videoContinueSubtitle").textContent = `Generate Part ${nextPart} from the final frame of Part ${parts.length}.`;
+      $("btnGenerateVideoContinueConfirm").textContent = `🔗 Generate Part ${nextPart}`;
+      const regenerateButton = $("btnRegenerateLatestVideoContinue");
+      if (regenerateButton) {
+        regenerateButton.textContent = `♻ Regenerate Part ${parts.length}`;
+        let canRegenerate = true;
+        let regenerateReason = "";
+        if (parts.length > 1) {
+          const previousIndex = parts.length - 2;
+          const previousPart = parts[previousIndex];
+          const previousBlob = videoPartBlobDirect(turn, previousPart, previousIndex);
+          const previousSource = videoPartSourceForDisplay(turn, previousPart, previousIndex);
+          canRegenerate = !!previousBlob || isPlayableVideoSource(previousSource);
+          if (!canRegenerate) regenerateReason = `Load Part ${parts.length - 1} from the saved video ZIP before regenerating Part ${parts.length}.`;
+        } else {
+          const asset = imageAssetToDisplay(turn);
+          canRegenerate = !!asset?.url && isSafeDisplayImageUrl(asset.url);
+          if (!canRegenerate) regenerateReason = "The turn's original image is not available, so Part 1 cannot be regenerated.";
+        }
+        regenerateButton.disabled = !canRegenerate || isUsingCommunityApiKey();
+        regenerateButton.title = regenerateButton.disabled ? (isUsingCommunityApiKey() ? communityVideoDisabledMessage() : regenerateReason) : `Replace Part ${parts.length} while preserving Parts 1–${Math.max(1, parts.length - 1)}.`;
+      }
+      const status = $("videoContinueStatus");
+      if (status) status.textContent = `Latest is Part ${parts.length}. Generate Part ${nextPart} to extend the chain, or regenerate Part ${parts.length} to replace only the latest part.`;
+    }
+
+    function deleteLatestVideoPart(turn) {
+      if (!turn) return false;
+      const parts = normalizeVideoParts(turn);
+      if (!parts.length) return false;
+      const latestIndex = parts.length - 1;
+      const latest = parts[latestIndex];
+      if (!confirm(`Delete Part ${parts.length}${parts.length === 1 ? "" : " (the latest part)"}? This cannot be undone unless you reload it from a saved video ZIP.`)) return false;
+
+      const latestUrl = String(latest?.url || "");
+      const turnUrl = String(turn.videoUrl || "");
+      if (latestUrl.startsWith("blob:")) { try { URL.revokeObjectURL(latestUrl); } catch (_) {} }
+      if (turnUrl.startsWith("blob:") && turnUrl !== latestUrl) { try { URL.revokeObjectURL(turnUrl); } catch (_) {} }
+      if (latest?.id) videoBlobStore.delete(videoPartStoreKey(turn.id, latest.id));
+      videoBlobStore.delete(turn.id);
+
+      const remaining = parts.slice(0, -1);
+      if (!remaining.length) {
+        turn.videoParts = [];
+        turn.videoUrl = "";
+        turn.videoAsset = null;
+        turn.videoJobId = "";
+        turn.videoGenerating = false;
+        turn.videoError = "";
+        turn.videoNotAutosaved = false;
+        turn.mediaDisplayMode = "image";
+        videoPartViewByTurn.delete(turn.id);
+        markUnsavedForFullExport();
+        saveState();
+        renderAll();
+        closeVideoContinueDialog();
+        toast("Deleted the only video part. The turn is showing its image again.", 5000);
+        return true;
+      }
+
+      remaining.forEach((part, index) => { part.partNumber = index + 1; });
+      turn.videoParts = remaining;
+      const previousIndex = remaining.length - 1;
+      const previous = remaining[previousIndex];
+      const previousBlob = videoBlobStore.get(videoPartStoreKey(turn.id, previous.id));
+      let previousSource = String(previous.url || "").trim();
+      if (previousBlob instanceof Blob && previousBlob.size > 0) {
+        videoBlobStore.set(turn.id, previousBlob);
+        if (!isPlayableVideoSource(previousSource)) {
+          try {
+            previousSource = URL.createObjectURL(previousBlob);
+            previous.url = previousSource;
+          } catch (_) { previousSource = ""; }
+        }
+      }
+      turn.videoUrl = previousSource;
+      turn.videoAsset = {
+        fileName: previous.fileName,
+        mimeType: previous.mimeType,
+        size: previous.size,
+        model: previous.model,
+        duration: previous.duration,
+        resolution: previous.resolution,
+        aspectRatio: previous.aspectRatio,
+        generateAudio: previous.generateAudio,
+        openRouterJobId: previous.openRouterJobId,
+        cost: previous.cost
+      };
+      turn.videoJobId = previous.openRouterJobId || "";
+      turn.videoGenerating = false;
+      turn.videoError = "";
+      turn.videoNotAutosaved = true;
+      turn.mediaDisplayMode = "video";
+      videoPartViewByTurn.set(turn.id, previousIndex);
+      markUnsavedForFullExport();
+      saveState();
+      renderAll();
+      renderVideoContinuePartsCarousel(turn);
+      syncVideoContinueControlsAfterChainChange(turn);
+      toast(`Deleted Part ${latestIndex + 1}. Part ${remaining.length} is now the latest part.`, 5000);
+      return true;
+    }
+
+    function attachVideoPartPreviewSource(turn, part, index, video) {
+      if (!turn || !part || !video) return;
+      const blob = videoPartBlobDirect(turn, part, index);
+      let source = videoPartSourceForDisplay(turn, part, index);
+      const showUnavailable = () => {
+        if (!video.isConnected) return;
+        const box = document.createElement("div");
+        box.className = "mini";
+        box.textContent = `Part ${index + 1} is referenced but not loaded. Load the saved video ZIP to preview it.`;
+        video.replaceWith(box);
+      };
+      const applySource = value => {
+        if (!video.isConnected) return;
+        video.src = value;
+        video.load();
+      };
+      video.addEventListener("error", showUnavailable, { once: true });
+      if (blob && typeof location !== "undefined" && location.protocol === "file:") {
+        videoBlobAsDataUrl(blob).then(applySource).catch(showUnavailable);
+        return;
+      }
+      if (!isPlayableVideoSource(source) && blob) {
+        try { source = URL.createObjectURL(blob); } catch (_) { source = ""; }
+      }
+      if (!isPlayableVideoSource(source)) return showUnavailable();
+      applySource(source);
+    }
+
+    function renderVideoContinuePartsCarousel(turn) {
+      const carousel = $("videoContinuePartsCarousel");
+      const status = $("videoContinueCarouselStatus");
+      if (!carousel || !turn) return;
+      const parts = normalizeVideoParts(turn);
+      if (status) status.textContent = `${parts.length} part${parts.length === 1 ? "" : "s"}`;
+      carousel.innerHTML = parts.map((part, index) => {
+        const blob = videoPartBlobDirect(turn, part, index);
+        const source = videoPartSourceForDisplay(turn, part, index);
+        const available = !!blob || isPlayableVideoSource(source);
+        const details = [part?.duration ? `${part.duration}s` : "", part?.resolution || ""].filter(Boolean).join(" • ");
+        return `<div class="video-part-card ${index === parts.length - 1 ? "current" : ""}" data-video-part-card="${index}">
+          <div class="video-part-card-header"><strong>Part ${index + 1}${index === parts.length - 1 ? " · Latest" : ""}</strong><span>${escapeHtml(details)}</span></div>
+          <div class="video-part-preview">${available ? `<video controls playsinline preload="metadata" data-video-part-preview="${index}"></video>` : `<div class="mini">Video bytes are not loaded.</div>`}</div>
+          <button type="button" class="small accent" data-video-part-download="${index}" ${blob ? "" : "disabled"}>⬇ Download Part ${index + 1}</button>
+          ${index === parts.length - 1 ? `<button type="button" class="small danger" data-video-part-delete-latest="${index}">🗑 Delete Part ${index + 1}</button>` : ""}
+        </div>`;
+      }).join("");
+      carousel.querySelectorAll("video[data-video-part-preview]").forEach(video => {
+        const index = Number(video.dataset.videoPartPreview);
+        const part = parts[index];
+        if (part) attachVideoPartPreviewSource(turn, part, index, video);
+      });
+      carousel.querySelectorAll("button[data-video-part-download]").forEach(button => {
+        button.addEventListener("click", () => {
+          const index = Number(button.dataset.videoPartDownload);
+          const part = parts[index];
+          if (part) downloadVideoPart(turn, part, index);
+        });
+      });
+      carousel.querySelectorAll("button[data-video-part-delete-latest]").forEach(button => {
+        button.addEventListener("click", () => {
+          const index = Number(button.dataset.videoPartDeleteLatest);
+          if (index !== parts.length - 1) return;
+          deleteLatestVideoPart(turn);
+        });
+      });
+    }
+
+    function openVideoContinueDialog(turn) {
+      if (isUsingCommunityApiKey()) return toast(communityVideoDisabledMessage(), 7000);
+      if (!turn?.videoUrl) return toast("Load or generate the current video before continuing it.");
+      const parts = normalizeVideoParts(turn);
+      const latest = latestLoadedVideoPart(turn);
+      if (!latest) return toast("No loaded video part is available to continue. Reload the story's video ZIP first.");
+      const finalPart = parts[parts.length - 1];
+      if (finalPart && latest.id !== finalPart.id) {
+        return toast(`Only Part ${latest.partNumber} of ${parts.length} is loaded. Reload a ZIP containing Part ${parts.length} before continuing the chain.`, 8000);
+      }
+      let normalized;
+      try {
+        normalized = normalizeVideoRequestOptions(activeVideoModel(), {
+          duration: latest.duration || state.settings.videoDuration || COMMON_VIDEO_SAFE_DEFAULTS.duration,
+          resolution: latest.resolution || state.settings.videoResolution || COMMON_VIDEO_SAFE_DEFAULTS.resolution,
+          aspectRatio: latest.aspectRatio || state.settings.videoAspectRatio || state.settings.imageAspectRatio || COMMON_VIDEO_SAFE_DEFAULTS.aspectRatio,
+          generateAudio: latest.generateAudio ?? (state.settings.videoGenerateAudio !== false)
+        }, { requireFirstFrame: true });
+      } catch (err) {
+        return toast(err?.message || String(err), 9000);
+      }
+      videoContinueDialogTurnId = turn.id;
+      const nextPart = parts.length + 1;
+      $("videoContinuePartLabel").textContent = `Part ${nextPart} starts where Part ${parts.length} ends.`;
+      $("videoContinueSubtitle").textContent = `Generate Part ${nextPart} from the final frame of Part ${parts.length}.`;
+      $("videoContinueModeAuto").checked = true;
+      $("videoContinueModeManual").checked = false;
+      $("videoContinuePromptEditor").value = "";
+      $("videoContinueDuration").value = normalized.duration;
+      $("videoContinueResolution").value = normalized.resolution;
+      $("videoContinueAspectRatio").value = normalized.aspectRatio;
+      $("videoContinueAudio").checked = normalized.generateAudio;
+      $("videoContinueStatus").textContent = `Model: ${normalized.model}. Generate Part ${nextPart} to extend the chain, or regenerate Part ${parts.length} to replace only the latest part.${normalized.adjustments.length ? ` Adjusted unsupported settings: ${normalized.adjustments.join(", ")}.` : ""}`;
+      $("btnGenerateVideoContinueConfirm").textContent = `🔗 Generate Part ${nextPart}`;
+      const regenerateButton = $("btnRegenerateLatestVideoContinue");
+      if (regenerateButton) {
+        regenerateButton.textContent = `♻ Regenerate Part ${parts.length}`;
+        let canRegenerate = true;
+        let regenerateReason = "";
+        if (parts.length > 1) {
+          const previousIndex = parts.length - 2;
+          const previousPart = parts[previousIndex];
+          const previousBlob = videoPartBlobDirect(turn, previousPart, previousIndex);
+          const previousSource = videoPartSourceForDisplay(turn, previousPart, previousIndex);
+          canRegenerate = !!previousBlob || isPlayableVideoSource(previousSource);
+          if (!canRegenerate) regenerateReason = `Load Part ${parts.length - 1} from the saved video ZIP before regenerating Part ${parts.length}.`;
+        } else {
+          const asset = imageAssetToDisplay(turn);
+          canRegenerate = !!asset?.url && isSafeDisplayImageUrl(asset.url);
+          if (!canRegenerate) regenerateReason = "The turn's original image is not available, so Part 1 cannot be regenerated.";
+        }
+        regenerateButton.disabled = !canRegenerate || isUsingCommunityApiKey();
+        regenerateButton.title = regenerateButton.disabled ? (isUsingCommunityApiKey() ? communityVideoDisabledMessage() : regenerateReason) : `Replace Part ${parts.length} while preserving Parts 1–${Math.max(1, parts.length - 1)}.`;
+      }
+      renderVideoContinuePartsCarousel(turn);
+      syncVideoContinueModeUi();
+      $("videoContinueDialog")?.showModal();
+    }
+
+    function closeVideoContinueDialog() {
+      try { if ($("videoContinueDialog")?.open) $("videoContinueDialog").close(); } catch (_) {}
+      videoContinueDialogTurnId = null;
+    }
+
+    function waitForMediaEvent(element, eventName, timeoutMs = 12000) {
+      return new Promise((resolve, reject) => {
+        let timer = null;
+        const cleanup = () => {
+          element.removeEventListener(eventName, onReady);
+          element.removeEventListener("error", onError);
+          if (timer) clearTimeout(timer);
+        };
+        const onReady = () => { cleanup(); resolve(); };
+        const onError = () => { cleanup(); reject(new Error("The source video could not be read to capture its final frame.")); };
+        element.addEventListener(eventName, onReady, { once: true });
+        element.addEventListener("error", onError, { once: true });
+        timer = setTimeout(() => { cleanup(); reject(new Error("Timed out while reading the source video's final frame.")); }, timeoutMs);
+      });
+    }
+
+    async function captureVideoLastFrameDataUrl(videoUrl) {
+      const source = String(videoUrl || "").trim();
+      if (!source) throw new Error("The latest video part is not loaded.");
+      const video = document.createElement("video");
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = "auto";
+      video.src = source;
+      if (video.readyState < 1) await waitForMediaEvent(video, "loadedmetadata");
+      const duration = Number(video.duration);
+      if (!Number.isFinite(duration) || duration <= 0) throw new Error("The latest video does not report a usable duration.");
+      const target = Math.max(0, duration - Math.min(0.08, Math.max(0.02, duration / 200)));
+      const seekReady = waitForMediaEvent(video, "seeked");
+      video.currentTime = target;
+      await seekReady;
+      const width = video.videoWidth || 0;
+      const height = video.videoHeight || 0;
+      if (!width || !height) throw new Error("The latest video frame has no readable dimensions.");
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("This browser could not prepare a frame for video continuation.");
+      ctx.drawImage(video, 0, 0, width, height);
+      return canvas.toDataURL("image/jpeg", 0.92);
+    }
+
+    async function createAiVideoContinuationDescription(turn) {
+      const parts = normalizeVideoParts(turn);
+      const latest = latestLoadedVideoPart(turn);
+      const finalPart = parts[parts.length - 1];
+      if (!latest) throw new Error("No loaded video part is available to continue. Reload the story's video ZIP first.");
+      if (finalPart && latest.id !== finalPart.id) throw new Error(`Only Part ${latest.partNumber} of ${parts.length} is loaded. Reload a ZIP containing Part ${parts.length} before continuing the chain.`);
+      const nextPart = parts.length + 1;
+      const contextText = `Write a concise, vivid video-generation prompt for Part ${nextPart} of a chained video. The new video starts on the exact final frame of Part ${parts.length}, so describe only what happens next. Continue motion naturally without resetting the scene. Preserve character identity, clothing, setting, spatial continuity, lighting, and tone. Include visible action, expressions, environmental motion, camera movement, ambience, and appropriate dialogue/sound. Do not mention prompts, frames, image analysis, or that this is AI-generated.\n\nReturn ONLY one valid JSON object in exactly this shape:\n{\n  "scene_description": "ready-to-use continuation prompt"\n}\n\nDo not include markdown fences, comments, explanation, or any keys other than scene_description.\n\nTurn action: ${turn.action || ""}\n\nTurn narration: ${turn.narration || ""}\n\nOriginal image prompt: ${turn.imagePrompt || ""}\n\nPrevious video prompt: ${latest?.prompt || turn.videoPrompt || ""}`;
+      const raw = await callOpenRouterJson("video continuation scene description", buildOpenRouterInstructionMessages(
+        "You write seamless chained video continuation prompts and must return valid JSON matching the requested schema.",
+        contextText
+      ), {
+        model: state.settings.llmModel || DEFAULT_LLM_MODEL,
+        temperature: Math.min(1, Math.max(0.2, Number(state.settings.temperature ?? 0.7))),
+        max_tokens: 700,
+        json_retries: 1,
+        no_content_retries: 1
+      });
+      const text = normalizeContent(raw?.scene_description).trim();
+      if (!text) throw new Error("The AI returned JSON without a scene_description.");
+      return text;
+    }
+
+    async function createAiVideoRegenerationDescription(turn) {
+      const parts = normalizeVideoParts(turn);
+      if (!parts.length) throw new Error("There is no video part to regenerate.");
+      const targetIndex = parts.length - 1;
+      const target = parts[targetIndex];
+      const partNumber = targetIndex + 1;
+      let continuityText = "";
+      if (targetIndex === 0) {
+        const asset = imageAssetToDisplay(turn);
+        if (!asset?.url || !isSafeDisplayImageUrl(asset.url)) throw new Error("The turn's original image is not available for regenerating Part 1.");
+        continuityText = `This is a replacement for Part 1. It starts from the turn's original still image. Create a fresh alternative animation of that exact scene while preserving character identity, clothing, setting, composition, lighting, and tone.`;
+      } else {
+        const previous = parts[targetIndex - 1];
+        const previousBlob = videoPartBlobDirect(turn, previous, targetIndex - 1);
+        const previousSource = videoPartSourceForDisplay(turn, previous, targetIndex - 1);
+        if (!previousBlob && !isPlayableVideoSource(previousSource)) throw new Error(`Part ${partNumber - 1} is not loaded. Reload the saved video ZIP before regenerating Part ${partNumber}.`);
+        continuityText = `This is a replacement for Part ${partNumber}. It starts on the exact final frame of Part ${partNumber - 1}. Describe what happens next from that frame while preserving continuity. Do not advance to an additional part.`;
+      }
+      const contextText = `Write a concise, vivid video-generation prompt for regenerating Part ${partNumber} of a chained video. ${continuityText} Preserve character identity, clothing, setting, spatial continuity, lighting, and tone. Include visible action, expressions, environmental motion, camera movement, ambience, and appropriate dialogue/sound. Do not mention prompts, frames, regeneration, image analysis, or that this is AI-generated.
+
+Return ONLY one valid JSON object in exactly this shape:
+{
+  "scene_description": "ready-to-use replacement video prompt"
+}
+
+Do not include markdown fences, comments, explanation, or any keys other than scene_description.
+
+Turn action: ${turn.action || ""}
+
+Turn narration: ${turn.narration || ""}
+
+Original image prompt: ${turn.imagePrompt || ""}
+
+Current Part ${partNumber} prompt: ${target?.prompt || (partNumber === 1 ? turn.videoPrompt : "") || ""}${targetIndex > 0 ? `
+
+Previous Part ${partNumber - 1} prompt: ${parts[targetIndex - 1]?.prompt || ""}` : ""}`;
+      const raw = await callOpenRouterJson("video regeneration scene description", buildOpenRouterInstructionMessages(
+        "You write seamless replacement video prompts and must return valid JSON matching the requested schema.",
+        contextText
+      ), {
+        model: state.settings.llmModel || DEFAULT_LLM_MODEL,
+        temperature: Math.min(1, Math.max(0.2, Number(state.settings.temperature ?? 0.7))),
+        max_tokens: 700,
+        json_retries: 1,
+        no_content_retries: 1
+      });
+      const text = normalizeContent(raw?.scene_description).trim();
+      if (!text) throw new Error("The AI returned JSON without a scene_description.");
+      return text;
+    }
+
+    async function fillAiVideoContinuationDescription() {
+      const turn = (state.turns || []).find(t => t.id === videoContinueDialogTurnId);
+      if (!turn) return;
+      if (isUsingCommunityApiKey()) return toast(communityVideoDisabledMessage(), 7000);
+      const key = String($("apiKey")?.value || state.settings.apiKey || "").trim();
+      if (!key) return toast("Add your OpenRouter API key in Model Settings first.");
+      const button = $("btnAiVideoContinueDescription");
+      const spinner = $("aiVideoContinueSpinner");
+      if (button) button.disabled = true;
+      spinner?.classList.remove("hidden");
+      try {
+        $("videoContinueStatus").textContent = "Writing a continuation scene description…";
+        const text = await createAiVideoContinuationDescription(turn);
+        $("videoContinuePromptEditor").value = text;
+        $("videoContinueStatus").textContent = "Continuation description ready. Edit it if you want, then generate the next part.";
+      } catch (err) {
+        console.error(err);
+        toast("AI continuation description failed: " + (err?.message || String(err)), 9000);
+      } finally {
+        if (button) button.disabled = false;
+        spinner?.classList.add("hidden");
+      }
+    }
+
     async function generateAiVideoSceneDescription() {
       const turn = (state.turns || []).find(t => t.id === videoDialogTurnId);
       if (!turn) return;
+      if (isUsingCommunityApiKey()) return toast(communityVideoDisabledMessage(), 7000);
       const key = String($("apiKey")?.value || state.settings.apiKey || "").trim();
       if (!key) return toast("Add your OpenRouter API key in Model Settings first.");
       const button = $("btnAiVideoSceneDescription");
@@ -15527,16 +16690,28 @@ Rules:
 
     function openVideoDialog(turn) {
       if (!turn) return;
+      if (isUsingCommunityApiKey()) return toast(communityVideoDisabledMessage(), 7000);
       const asset = imageAssetToDisplay(turn);
       if (!asset?.url || !isSafeDisplayImageUrl(asset.url)) return toast("Generate an image for this turn before making a video.");
+      let normalized;
+      try {
+        normalized = normalizeVideoRequestOptions(activeVideoModel(), {
+          duration: state.settings.videoDuration || COMMON_VIDEO_SAFE_DEFAULTS.duration,
+          resolution: state.settings.videoResolution || COMMON_VIDEO_SAFE_DEFAULTS.resolution,
+          aspectRatio: state.settings.videoAspectRatio || state.settings.imageAspectRatio || COMMON_VIDEO_SAFE_DEFAULTS.aspectRatio,
+          generateAudio: state.settings.videoGenerateAudio !== false
+        }, { requireFirstFrame: true });
+      } catch (err) {
+        return toast(err?.message || String(err), 9000);
+      }
       videoDialogTurnId = turn.id;
       const prompt = [turn.imagePrompt || "", "Animate this exact scene naturally. Preserve the character identity, clothing, setting, and composition. Add coherent motion and cinematic camera movement."].filter(Boolean).join("\n\n");
       $("videoPromptEditor").value = turn.videoPrompt || prompt;
-      $("videoDialogDuration").value = state.settings.videoDuration || 5;
-      $("videoDialogResolution").value = state.settings.videoResolution || "480p";
-      $("videoDialogAspectRatio").value = state.settings.videoAspectRatio || state.settings.imageAspectRatio || "3:2";
-      $("videoDialogAudio").checked = state.settings.videoGenerateAudio !== false;
-      $("videoDialogStatus").textContent = `Model: ${activeVideoModel()}. The turn image will be used as the first frame.`;
+      $("videoDialogDuration").value = normalized.duration;
+      $("videoDialogResolution").value = normalized.resolution;
+      $("videoDialogAspectRatio").value = normalized.aspectRatio;
+      $("videoDialogAudio").checked = normalized.generateAudio;
+      $("videoDialogStatus").textContent = `Model: ${normalized.model}. The turn image will be used as the first frame.${normalized.adjustments.length ? ` Adjusted unsupported settings: ${normalized.adjustments.join(", ")}.` : ""}`;
       $("videoGenerationDialog").showModal();
     }
 
@@ -15544,16 +16719,23 @@ Rules:
     const videoSleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
     async function generateVideoForTurn(turn) {
+      assertPersonalKeyForVideo();
       const key = String($("apiKey")?.value || state.settings.apiKey || "").trim();
       if (!key) throw new Error("Add your OpenRouter API key in Model Settings first.");
       const asset = imageAssetToDisplay(turn);
       if (!asset?.url || !isSafeDisplayImageUrl(asset.url)) throw new Error("This turn does not have a usable generated image.");
       const model = activeVideoModel();
       const prompt = String($("videoPromptEditor")?.value || turn.imagePrompt || "Animate this scene naturally.").trim();
-      const duration = Math.max(1, Math.round(Number($("videoDialogDuration")?.value || state.settings.videoDuration || 5)));
-      const resolution = $("videoDialogResolution")?.value || state.settings.videoResolution || "480p";
-      const aspect_ratio = $("videoDialogAspectRatio")?.value || state.settings.videoAspectRatio || "3:2";
-      const generate_audio = !!$("videoDialogAudio")?.checked;
+      const normalized = normalizeVideoRequestOptions(model, {
+        duration: $("videoDialogDuration")?.value || state.settings.videoDuration || COMMON_VIDEO_SAFE_DEFAULTS.duration,
+        resolution: $("videoDialogResolution")?.value || state.settings.videoResolution || COMMON_VIDEO_SAFE_DEFAULTS.resolution,
+        aspectRatio: $("videoDialogAspectRatio")?.value || state.settings.videoAspectRatio || COMMON_VIDEO_SAFE_DEFAULTS.aspectRatio,
+        generateAudio: !!$("videoDialogAudio")?.checked
+      }, { requireFirstFrame: true });
+      const duration = normalized.duration;
+      const resolution = normalized.resolution;
+      const aspect_ratio = normalized.aspectRatio;
+      const generate_audio = normalized.generateAudio;
       const payload = { model, prompt, duration, resolution, aspect_ratio, generate_audio, frame_images: [{ type: "image_url", image_url: { url: asset.url }, frame_type: "first_frame" }] };
       turn.videoGenerating = true; turn.videoError = ""; turn.videoPrompt = prompt; turn.videoJobId = "";
       renderAll(); saveState();
@@ -15577,14 +16759,16 @@ Rules:
       const videoRes = await fetch(new URL(contentUrl, "https://openrouter.ai").href, { headers: { "Authorization": `Bearer ${key}` } });
       if (!videoRes.ok) throw new Error(`Video download failed (${videoRes.status}): ${(await videoRes.text()).slice(0,500)}`);
       const blob = await videoRes.blob();
-      const oldUrl = turn.videoUrl;
-      if (oldUrl?.startsWith("blob:")) URL.revokeObjectURL(oldUrl);
+      clearVideoChainForReplacement(turn);
       const url = URL.createObjectURL(blob);
       const fileName = `turn-${String(turn.turnNumber || 0).padStart(4,"0")}-${String(turn.id || Date.now()).replace(/[^a-zA-Z0-9_-]/g,"_")}.mp4`;
+      const part = { id: `${turn.id || "turn"}-part-1`, partNumber: 1, url, prompt, fileName, mimeType: blob.type || "video/mp4", size: blob.size, model, duration, resolution, aspectRatio: aspect_ratio, generateAudio: generate_audio, openRouterJobId: job.id || "", cost: job.usage?.cost ?? null };
       videoBlobStore.set(turn.id, blob);
+      videoBlobStore.set(videoPartStoreKey(turn.id, part.id), blob);
+      turn.videoParts = [part];
       turn.videoUrl = url;
       turn.mediaDisplayMode = "video";
-      turn.videoAsset = { fileName, mimeType: blob.type || "video/mp4", size: blob.size, model, duration, resolution, aspectRatio: aspect_ratio, generateAudio: generate_audio, openRouterJobId: job.id || "", cost: job.usage?.cost ?? null };
+      turn.videoAsset = { fileName, mimeType: part.mimeType, size: part.size, model, duration, resolution, aspectRatio: aspect_ratio, generateAudio: generate_audio, openRouterJobId: part.openRouterJobId, cost: part.cost };
       turn.videoNotAutosaved = true;
       turn.videoGenerating = false; turn.videoError = "";
       markUnsavedForFullExport(); saveState(); renderAll();
@@ -15594,6 +16778,12 @@ Rules:
     async function confirmGenerateVideo() {
       const turn = (state.turns || []).find(t => t.id === videoDialogTurnId);
       if (!turn) return closeVideoDialog();
+      const existingPartCount = currentVideoPartCount(turn);
+      if (existingPartCount > 0) {
+        const existingDescription = existingPartCount === 1 ? "the current video" : `the current ${existingPartCount}-part video chain`;
+        const confirmed = confirm(`Generate a new video for this turn? This will replace ${existingDescription} with a new Part 1. The existing video${existingPartCount === 1 ? "" : " chain"} will be deleted when the new video finishes generating. This cannot be undone unless you reload it from a saved video ZIP.`);
+        if (!confirmed) return;
+      }
       const btn = $("btnGenerateVideoConfirm");
       const cancelBtn = $("btnCancelVideo");
       try {
@@ -15617,10 +16807,282 @@ Rules:
       }
     }
 
-    function downloadTurnVideo(turn) {
-      const blob = videoBlobStore.get(turn?.id);
+    async function generateVideoContinuationForTurn(turn, prompt) {
+      assertPersonalKeyForVideo();
+      const key = String($("apiKey")?.value || state.settings.apiKey || "").trim();
+      if (!key) throw new Error("Add your OpenRouter API key in Model Settings first.");
+      const parts = normalizeVideoParts(turn);
+      const latest = latestLoadedVideoPart(turn);
+      const finalPart = parts[parts.length - 1];
+      if (!latest) throw new Error("The latest video part is not loaded. Reload the story's video ZIP before continuing it.");
+      if (finalPart && latest.id !== finalPart.id) throw new Error(`Only Part ${latest.partNumber} of ${parts.length} is loaded. Reload a ZIP containing Part ${parts.length} before continuing the chain.`);
+      const sourceIndex = parts.indexOf(latest);
+      const sourceUrl = await videoPartSourceForGeneration(turn, latest, sourceIndex);
+      if (!sourceUrl) throw new Error("The latest video part is not loaded. Reload the story's video ZIP before continuing it.");
+      const model = activeVideoModel();
+      const normalized = normalizeVideoRequestOptions(model, {
+        duration: $("videoContinueDuration")?.value || state.settings.videoDuration || latest?.duration || COMMON_VIDEO_SAFE_DEFAULTS.duration,
+        resolution: $("videoContinueResolution")?.value || state.settings.videoResolution || latest?.resolution || COMMON_VIDEO_SAFE_DEFAULTS.resolution,
+        aspectRatio: $("videoContinueAspectRatio")?.value || state.settings.videoAspectRatio || latest?.aspectRatio || COMMON_VIDEO_SAFE_DEFAULTS.aspectRatio,
+        generateAudio: !!$("videoContinueAudio")?.checked
+      }, { requireFirstFrame: true });
+      const duration = normalized.duration;
+      const resolution = normalized.resolution;
+      const aspect_ratio = normalized.aspectRatio;
+      const generate_audio = normalized.generateAudio;
+      turn.videoGenerating = true; turn.videoError = ""; turn.videoJobId = "";
+      renderAll(); saveState();
+      const firstFrameDataUrl = await captureVideoLastFrameDataUrl(sourceUrl);
+      const payload = { model, prompt, duration, resolution, aspect_ratio, generate_audio, frame_images: [{ type: "image_url", image_url: { url: firstFrameDataUrl }, frame_type: "first_frame" }] };
+      const headers = { "Authorization": `Bearer ${key}`, "Content-Type": "application/json", "HTTP-Referer": location.href.startsWith("http") ? location.origin : "http://localhost", "X-OpenRouter-Title": "Infinite Quest CYOA Engine" };
+      const submit = await fetch("https://openrouter.ai/api/v1/videos", { method: "POST", headers, body: JSON.stringify(payload) });
+      if (!submit.ok) throw new Error(`OpenRouter video request failed (${submit.status}): ${(await submit.text()).slice(0,900)}`);
+      let job = await submit.json();
+      turn.videoJobId = job.id || ""; saveState();
+      const deadline = Date.now() + 60 * 60 * 1000;
+      while (job.status !== "completed") {
+        if (["failed","cancelled","expired"].includes(job.status)) throw new Error(job.error || `Video generation ${job.status}.`);
+        if (Date.now() > deadline) throw new Error("Video generation timed out after one hour.");
+        await videoSleep(30000);
+        const pollUrl = job.polling_url ? new URL(job.polling_url, "https://openrouter.ai").href : `https://openrouter.ai/api/v1/videos/${encodeURIComponent(job.id)}`;
+        const poll = await fetch(pollUrl, { headers: { "Authorization": `Bearer ${key}` } });
+        if (!poll.ok) throw new Error(`Video status check failed (${poll.status}): ${(await poll.text()).slice(0,500)}`);
+        job = await poll.json();
+      }
+      const contentUrl = job.unsigned_urls?.[0] || `https://openrouter.ai/api/v1/videos/${encodeURIComponent(job.id)}/content?index=0`;
+      const videoRes = await fetch(new URL(contentUrl, "https://openrouter.ai").href, { headers: { "Authorization": `Bearer ${key}` } });
+      if (!videoRes.ok) throw new Error(`Video download failed (${videoRes.status}): ${(await videoRes.text()).slice(0,500)}`);
+      const blob = await videoRes.blob();
+      const url = URL.createObjectURL(blob);
+      const partNumber = parts.length + 1;
+      const safeTurnId = String(turn.id || Date.now()).replace(/[^a-zA-Z0-9_-]/g,"_");
+      const fileName = `turn-${String(turn.turnNumber || 0).padStart(4,"0")}-${safeTurnId}-part-${partNumber}.mp4`;
+      const part = { id: `${turn.id || "turn"}-part-${partNumber}`, partNumber, url, prompt, fileName, mimeType: blob.type || "video/mp4", size: blob.size, model, duration, resolution, aspectRatio: aspect_ratio, generateAudio: generate_audio, openRouterJobId: job.id || "", cost: job.usage?.cost ?? null };
+      videoBlobStore.set(videoPartStoreKey(turn.id, part.id), blob);
+      videoBlobStore.set(turn.id, blob);
+      turn.videoParts = [...parts, part];
+      turn.videoUrl = url;
+      turn.mediaDisplayMode = "video";
+      turn.videoAsset = { fileName, mimeType: part.mimeType, size: part.size, model, duration, resolution, aspectRatio: aspect_ratio, generateAudio: generate_audio, openRouterJobId: part.openRouterJobId, cost: part.cost };
+      turn.videoNotAutosaved = true;
+      turn.videoGenerating = false; turn.videoError = "";
+      markUnsavedForFullExport(); saveState(); renderAll();
+      return part;
+    }
+
+    async function confirmGenerateVideoContinuation() {
+      const turn = (state.turns || []).find(t => t.id === videoContinueDialogTurnId);
+      if (!turn) return closeVideoContinueDialog();
+      const btn = $("btnGenerateVideoContinueConfirm");
+      const cancelBtn = $("btnCancelVideoContinue");
+      try {
+        btn.disabled = true;
+        if (cancelBtn) cancelBtn.disabled = true;
+
+        // Close the Continue Video dialog immediately on click so the main media
+        // display can show its generation state while any AI prompt work runs.
+        if ($("videoContinueDialog")?.open) $("videoContinueDialog").close();
+        videoContinueDialogTurnId = null;
+        turn.videoGenerating = true;
+        turn.videoError = "";
+        renderAll();
+        saveState();
+
+        let prompt = String($("videoContinuePromptEditor")?.value || "").trim();
+        if ($("videoContinueModeAuto")?.checked) {
+          $("videoContinueStatus").textContent = "Letting the AI decide what happens next…";
+          prompt = await createAiVideoContinuationDescription(turn);
+        } else if (!prompt) {
+          throw new Error("Describe what happens next, or choose “Let the AI decide what happens next.”");
+        }
+        const nextPart = currentVideoPartCount(turn) + 1;
+        await generateVideoContinuationForTurn(turn, prompt);
+        toast(`Video Part ${nextPart} generated from the previous part's final frame.`, 7000);
+      } catch (err) {
+        turn.videoGenerating = false;
+        turn.videoError = err?.message || String(err);
+        saveState();
+        renderAll();
+        toast("Video continuation failed: " + turn.videoError, 9000);
+      } finally {
+        btn.disabled = false;
+        if (cancelBtn) cancelBtn.disabled = false;
+      }
+    }
+
+    async function regenerateLatestVideoPartForTurn(turn, prompt) {
+      assertPersonalKeyForVideo();
+      const key = String($("apiKey")?.value || state.settings.apiKey || "").trim();
+      if (!key) throw new Error("Add your OpenRouter API key in Model Settings first.");
+      const parts = normalizeVideoParts(turn);
+      if (!parts.length) throw new Error("There is no video part to regenerate.");
+      const targetIndex = parts.length - 1;
+      const currentPart = parts[targetIndex];
+      const partNumber = targetIndex + 1;
+      const model = activeVideoModel();
+      const normalized = normalizeVideoRequestOptions(model, {
+        duration: $("videoContinueDuration")?.value || currentPart?.duration || state.settings.videoDuration || COMMON_VIDEO_SAFE_DEFAULTS.duration,
+        resolution: $("videoContinueResolution")?.value || currentPart?.resolution || state.settings.videoResolution || COMMON_VIDEO_SAFE_DEFAULTS.resolution,
+        aspectRatio: $("videoContinueAspectRatio")?.value || currentPart?.aspectRatio || state.settings.videoAspectRatio || COMMON_VIDEO_SAFE_DEFAULTS.aspectRatio,
+        generateAudio: !!$("videoContinueAudio")?.checked
+      }, { requireFirstFrame: true });
+      const duration = normalized.duration;
+      const resolution = normalized.resolution;
+      const aspect_ratio = normalized.aspectRatio;
+      const generate_audio = normalized.generateAudio;
+
+      let firstFrameDataUrl = "";
+      if (targetIndex === 0) {
+        const asset = imageAssetToDisplay(turn);
+        if (!asset?.url || !isSafeDisplayImageUrl(asset.url)) throw new Error("The turn's original image is not available for regenerating Part 1.");
+        firstFrameDataUrl = asset.url;
+      } else {
+        const previousPart = parts[targetIndex - 1];
+        const previousSource = await videoPartSourceForGeneration(turn, previousPart, targetIndex - 1);
+        firstFrameDataUrl = await captureVideoLastFrameDataUrl(previousSource);
+      }
+
+      turn.videoGenerating = true;
+      turn.videoError = "";
+      turn.videoJobId = "";
+      renderAll();
+      saveState();
+
+      const payload = { model, prompt, duration, resolution, aspect_ratio, generate_audio, frame_images: [{ type: "image_url", image_url: { url: firstFrameDataUrl }, frame_type: "first_frame" }] };
+      const headers = { "Authorization": `Bearer ${key}`, "Content-Type": "application/json", "HTTP-Referer": location.href.startsWith("http") ? location.origin : "http://localhost", "X-OpenRouter-Title": "Infinite Quest CYOA Engine" };
+      const submit = await fetch("https://openrouter.ai/api/v1/videos", { method: "POST", headers, body: JSON.stringify(payload) });
+      if (!submit.ok) throw new Error(`OpenRouter video request failed (${submit.status}): ${(await submit.text()).slice(0,900)}`);
+      let job = await submit.json();
+      turn.videoJobId = job.id || "";
+      saveState();
+      const deadline = Date.now() + 60 * 60 * 1000;
+      while (job.status !== "completed") {
+        if (["failed","cancelled","expired"].includes(job.status)) throw new Error(job.error || `Video generation ${job.status}.`);
+        if (Date.now() > deadline) throw new Error("Video generation timed out after one hour.");
+        await videoSleep(30000);
+        const pollUrl = job.polling_url ? new URL(job.polling_url, "https://openrouter.ai").href : `https://openrouter.ai/api/v1/videos/${encodeURIComponent(job.id)}`;
+        const poll = await fetch(pollUrl, { headers: { "Authorization": `Bearer ${key}` } });
+        if (!poll.ok) throw new Error(`Video status check failed (${poll.status}): ${(await poll.text()).slice(0,500)}`);
+        job = await poll.json();
+      }
+      const contentUrl = job.unsigned_urls?.[0] || `https://openrouter.ai/api/v1/videos/${encodeURIComponent(job.id)}/content?index=0`;
+      const videoRes = await fetch(new URL(contentUrl, "https://openrouter.ai").href, { headers: { "Authorization": `Bearer ${key}` } });
+      if (!videoRes.ok) throw new Error(`Video download failed (${videoRes.status}): ${(await videoRes.text()).slice(0,500)}`);
+      const blob = await videoRes.blob();
+
+      if (String(currentPart?.url || "").startsWith("blob:")) {
+        try { URL.revokeObjectURL(currentPart.url); } catch (_) {}
+      }
+      if (currentPart?.id) videoBlobStore.delete(videoPartStoreKey(turn.id, currentPart.id));
+      if (String(turn.videoUrl || "").startsWith("blob:")) {
+        try { URL.revokeObjectURL(turn.videoUrl); } catch (_) {}
+      }
+
+      const url = URL.createObjectURL(blob);
+      const safeTurnId = String(turn.id || Date.now()).replace(/[^a-zA-Z0-9_-]/g, "_");
+      const fileName = currentPart?.fileName || (partNumber === 1
+        ? `turn-${String(turn.turnNumber || 0).padStart(4,"0")}-${safeTurnId}.mp4`
+        : `turn-${String(turn.turnNumber || 0).padStart(4,"0")}-${safeTurnId}-part-${partNumber}.mp4`);
+      const replacement = {
+        ...(currentPart || {}),
+        id: currentPart?.id || `${turn.id || "turn"}-part-${partNumber}`,
+        partNumber,
+        url,
+        prompt,
+        fileName,
+        mimeType: blob.type || currentPart?.mimeType || "video/mp4",
+        size: blob.size,
+        model,
+        duration,
+        resolution,
+        aspectRatio: aspect_ratio,
+        generateAudio: generate_audio,
+        openRouterJobId: job.id || "",
+        cost: job.usage?.cost ?? null
+      };
+      const nextParts = parts.slice();
+      nextParts[targetIndex] = replacement;
+      videoBlobStore.set(videoPartStoreKey(turn.id, replacement.id), blob);
+      videoBlobStore.set(turn.id, blob);
+      turn.videoParts = nextParts;
+      turn.videoUrl = url;
+      if (partNumber === 1) turn.videoPrompt = prompt;
+      turn.mediaDisplayMode = "video";
+      turn.videoAsset = { fileName, mimeType: replacement.mimeType, size: replacement.size, model, duration, resolution, aspectRatio: aspect_ratio, generateAudio: generate_audio, openRouterJobId: replacement.openRouterJobId, cost: replacement.cost };
+      turn.videoNotAutosaved = true;
+      turn.videoGenerating = false;
+      turn.videoError = "";
+      videoPartViewByTurn.set(turn.id, targetIndex);
+      markUnsavedForFullExport();
+      saveState();
+      renderAll();
+      return replacement;
+    }
+
+    async function confirmRegenerateLatestVideoContinuation() {
+      const turn = (state.turns || []).find(t => t.id === videoContinueDialogTurnId);
+      if (!turn) return closeVideoContinueDialog();
+      const regenerateBtn = $("btnRegenerateLatestVideoContinue");
+      const nextBtn = $("btnGenerateVideoContinueConfirm");
+      const cancelBtn = $("btnCancelVideoContinue");
+      try {
+        if (regenerateBtn) regenerateBtn.disabled = true;
+        if (nextBtn) nextBtn.disabled = true;
+        if (cancelBtn) cancelBtn.disabled = true;
+
+        // Close immediately, before AI description/capture/submission work, and
+        // move the visible loading state back onto the turn's media display.
+        if ($("videoContinueDialog")?.open) $("videoContinueDialog").close();
+        videoContinueDialogTurnId = null;
+        turn.videoGenerating = true;
+        turn.videoError = "";
+        renderAll();
+        saveState();
+
+        let prompt = String($("videoContinuePromptEditor")?.value || "").trim();
+        if ($("videoContinueModeAuto")?.checked) {
+          $("videoContinueStatus").textContent = "Letting the AI describe a replacement for the latest video part…";
+          prompt = await createAiVideoRegenerationDescription(turn);
+        } else if (!prompt) {
+          throw new Error("Describe what should happen in the replacement video, or choose “Let the AI decide what happens next.”");
+        }
+        const partNumber = currentVideoPartCount(turn);
+        await regenerateLatestVideoPartForTurn(turn, prompt);
+        toast(`Video Part ${partNumber} regenerated. Earlier chain parts were preserved.`, 7000);
+      } catch (err) {
+        turn.videoGenerating = false;
+        turn.videoError = err?.message || String(err);
+        saveState();
+        renderAll();
+        toast("Video regeneration failed: " + turn.videoError, 9000);
+      } finally {
+        if (regenerateBtn) regenerateBtn.disabled = false;
+        if (nextBtn) nextBtn.disabled = false;
+        if (cancelBtn) cancelBtn.disabled = false;
+      }
+    }
+
+    async function downloadTurnVideo(turn) {
+      if (!turn) return;
+      const parts = normalizeVideoParts(turn);
+      if (parts.length > 1) {
+        const entries = [];
+        for (let index = 0; index < parts.length; index++) {
+          const part = parts[index];
+          const blob = videoPartBlobDirect(turn, part, index);
+          if (!blob) return toast(`Part ${index + 1} is not loaded. Reload the story's video ZIP before downloading the whole chain.`, 8000);
+          entries.push({ name: videoPartDownloadName(turn, part, index), blob });
+        }
+        const zipBlob = await buildStoredZip(entries);
+        const base = safeFileName(state.world.title || "infinite-quest");
+        downloadBlob(zipBlob, `${base}-turn-${turn.turnNumber}-video-chain.zip`, "application/zip");
+        toast(`Downloaded all ${parts.length} video parts in one ZIP.`, 5000);
+        return;
+      }
+      const latest = latestLoadedVideoPart(turn) || latestVideoPart(turn);
+      const blob = latest ? videoPartBlob(turn, latest) : videoBlobStore.get(turn?.id);
       if (!blob) return toast("This video's bytes are not loaded. Reload the story's video ZIP first.");
-      downloadBlob(blob, turn.videoAsset?.fileName || `turn-${turn.turnNumber}.mp4`, blob.type || "video/mp4");
+      downloadBlob(blob, latest?.fileName || turn.videoAsset?.fileName || `turn-${turn.turnNumber}.mp4`, blob.type || "video/mp4");
     }
 
     function crc32(bytes) {
@@ -15644,39 +17106,112 @@ Rules:
       return new Blob([...parts,...central,end],{type:"application/zip"});
     }
     function readU16(v,o){ return v.getUint16(o,true); } function readU32(v,o){ return v.getUint32(o,true); }
+    // ZIP restore intentionally follows the older working loader semantics: match saved filenames
+    // against raw saved metadata first, without synthesizing a videoParts chain during import.
     async function importVideoZip(file) {
       const buf=await file.arrayBuffer(), view=new DataView(buf), bytes=new Uint8Array(buf), dec=new TextDecoder(); let off=0, loaded=0;
-      const byName=new Map((state.turns||[]).filter(t=>t.videoAsset?.fileName).map(t=>[t.videoAsset.fileName,t]));
+      const byName = new Map();
+      for (const turn of (state.turns || [])) {
+        const parts = Array.isArray(turn.videoParts) && turn.videoParts.length ? turn.videoParts : [];
+        if (parts.length) parts.forEach(part => { if (part?.fileName) byName.set(part.fileName, { turn, part }); });
+        else if (turn.videoAsset?.fileName) byName.set(turn.videoAsset.fileName, { turn, part: null });
+      }
       while (off+30<=bytes.length && readU32(view,off)===0x04034b50) {
         const method=readU16(view,off+8), comp=readU32(view,off+18), nameLen=readU16(view,off+26), extraLen=readU16(view,off+28);
         const name=dec.decode(bytes.slice(off+30,off+30+nameLen)), start=off+30+nameLen+extraLen;
         if (method!==0) throw new Error("This ZIP uses compression that this portable loader does not support. Please use the video ZIP exported by Infinite Quest.");
-        const turn=byName.get(name);
-        if (turn) { const blob=new Blob([bytes.slice(start,start+comp)],{type:turn.videoAsset.mimeType||"video/mp4"}); videoBlobStore.set(turn.id,blob); if(turn.videoUrl?.startsWith("blob:"))URL.revokeObjectURL(turn.videoUrl); turn.videoUrl=URL.createObjectURL(blob); turn.videoNotAutosaved=true; turn.videoError=""; loaded++; }
+        const target=byName.get(name);
+        if (target) {
+          const mimeType = target.part?.mimeType || target.turn.videoAsset?.mimeType || "video/mp4";
+          const blob=new Blob([bytes.slice(start,start+comp)],{type:mimeType});
+          if (target.part) {
+            const key = videoPartStoreKey(target.turn.id, target.part.id);
+            videoBlobStore.set(key, blob);
+            if (String(target.part.url || "").startsWith("blob:")) URL.revokeObjectURL(target.part.url);
+            target.part.url = URL.createObjectURL(blob);
+          } else {
+            videoBlobStore.set(target.turn.id,blob);
+            if(String(target.turn.videoUrl || "").startsWith("blob:"))URL.revokeObjectURL(target.turn.videoUrl);
+            target.turn.videoUrl=URL.createObjectURL(blob);
+          }
+          target.turn.videoNotAutosaved=true;
+          target.turn.videoError="";
+          target.turn.mediaDisplayMode="video";
+          loaded++;
+        }
         off=start+comp;
       }
-      saveState(); renderAll(); toast(`Loaded ${loaded} story video${loaded===1?"":"s"} from the ZIP.`,6000);
+      for (const turn of (state.turns || [])) {
+        const parts = Array.isArray(turn.videoParts) ? turn.videoParts : [];
+        if (parts.length) {
+          const loadedParts = parts.filter(part => part.url && videoBlobStore.get(videoPartStoreKey(turn.id, part.id)));
+          if (loadedParts.length) {
+            const latest = loadedParts[loadedParts.length - 1];
+            videoBlobStore.set(turn.id, videoBlobStore.get(videoPartStoreKey(turn.id, latest.id)));
+            turn.videoUrl = latest.url;
+            turn.videoAsset = { fileName: latest.fileName, mimeType: latest.mimeType, size: latest.size, model: latest.model, duration: latest.duration, resolution: latest.resolution, aspectRatio: latest.aspectRatio, generateAudio: latest.generateAudio, openRouterJobId: latest.openRouterJobId, cost: latest.cost };
+            turn.mediaDisplayMode = "video";
+            videoPartViewByTurn.set(turn.id, Math.max(0, parts.indexOf(latest)));
+          }
+        }
+      }
+      if (!loaded) {
+        throw new Error("No video files in this ZIP matched the filenames saved in the loaded story. Make sure the .story file and video ZIP came from the same save.");
+      }
+      // Render from the live in-memory Blob first; autosave intentionally strips Blob URLs.
+      renderAll();
+      saveState();
+      toast(`Loaded ${loaded} story video part${loaded===1?"":"s"} from the ZIP.`,6000);
     }
 
-    function storyHasVideoRefs(obj=state){ return (obj.turns||[]).some(t=>t.videoAsset?.fileName); }
+    function storyHasVideoRefs(obj=state){ return (obj.turns||[]).some(t=>t.videoAsset?.fileName || (Array.isArray(t.videoParts) && t.videoParts.some(part => part?.fileName))); }
 
     function bindEvents() {
       $("btnRefreshVideoModels")?.addEventListener("click", refreshVideoModels);
+      $("videoModel")?.addEventListener("change", () => {
+        if ($("videoModelCustom")) $("videoModelCustom").value = "";
+        state.settings.videoModel = $("videoModel")?.value || state.settings.videoModel || "alibaba/wan-3.0";
+        applyVideoModelDefaultsForSelection({ announce: true, resetToPreferredDefaults: true });
+        saveState();
+      });
+      $("videoModelCustom")?.addEventListener("change", () => {
+        const custom = String($("videoModelCustom")?.value || "").trim();
+        if (!custom) return;
+        state.settings.videoModel = custom;
+        applyVideoModelDefaultsForSelection({ announce: true, resetToPreferredDefaults: true });
+        saveState();
+      });
       $("btnCloseVideoDialog")?.addEventListener("click", closeVideoDialog);
       $("btnCancelVideo")?.addEventListener("click", closeVideoDialog);
       $("btnGenerateVideoConfirm")?.addEventListener("click", confirmGenerateVideo);
       $("btnAiVideoSceneDescription")?.addEventListener("click", generateAiVideoSceneDescription);
       $("btnCloseExistingVideoDialog")?.addEventListener("click", closeExistingVideoDialog);
-      $("btnExistingVideoDownload")?.addEventListener("click", () => {
+      $("btnExistingVideoDownload")?.addEventListener("click", async () => {
         const turn = (state.turns || []).find(t => t.id === existingVideoDialogTurnId);
-        if (turn) downloadTurnVideo(turn);
+        if (turn) await downloadTurnVideo(turn);
         closeExistingVideoDialog();
+      });
+      $("btnExistingVideoLoadZip")?.addEventListener("click", () => {
+        closeExistingVideoDialog();
+        $("videoZipImportFile")?.click();
       });
       $("btnExistingVideoGenerateNew")?.addEventListener("click", () => {
         const turn = (state.turns || []).find(t => t.id === existingVideoDialogTurnId);
         closeExistingVideoDialog();
         if (turn) openVideoDialog(turn);
       });
+      $("btnExistingVideoContinue")?.addEventListener("click", () => {
+        const turn = (state.turns || []).find(t => t.id === existingVideoDialogTurnId);
+        closeExistingVideoDialog();
+        if (turn) openVideoContinueDialog(turn);
+      });
+      $("btnCloseVideoContinueDialog")?.addEventListener("click", closeVideoContinueDialog);
+      $("btnCancelVideoContinue")?.addEventListener("click", closeVideoContinueDialog);
+      $("btnGenerateVideoContinueConfirm")?.addEventListener("click", confirmGenerateVideoContinuation);
+      $("btnRegenerateLatestVideoContinue")?.addEventListener("click", confirmRegenerateLatestVideoContinuation);
+      $("btnAiVideoContinueDescription")?.addEventListener("click", fillAiVideoContinuationDescription);
+      $("videoContinueModeAuto")?.addEventListener("change", syncVideoContinueModeUi);
+      $("videoContinueModeManual")?.addEventListener("change", syncVideoContinueModeUi);
       $("btnCloseVideoZipLoadDialog")?.addEventListener("click", () => $("videoZipLoadDialog")?.close());
       $("btnSkipVideoZipLoad")?.addEventListener("click", () => $("videoZipLoadDialog")?.close());
       $("btnUploadVideoZip")?.addEventListener("click", () => $("videoZipImportFile")?.click());
@@ -15693,7 +17228,12 @@ Rules:
       });
       $("storyArea")?.addEventListener("click", e => {
         const button=e.target.closest("button"); if(!button)return; const turn=viewedTurn();
-        if(button.id==="btnGenerateVideo") (turn?.videoUrl || turn?.videoAsset?.fileName) ? openExistingVideoDialog(turn) : openVideoDialog(turn);
+        if(button.id==="btnGenerateVideo") {
+          const hasSavedVideoReference = currentVideoPartCount(turn) > 0;
+          if (hasSavedVideoReference) return openExistingVideoDialog(turn);
+          if (isUsingCommunityApiKey()) return toast(communityVideoDisabledMessage(), 7000);
+          openVideoDialog(turn);
+        }
       });
       addClick("btnResponseCapOfferYes", acceptModelResponseTokenCapOffer);
       addClick("btnResponseCapOfferNo", declineModelResponseTokenCapOffer);
@@ -15703,7 +17243,7 @@ Rules:
       });
       $("worldTitle")?.addEventListener("input", resetResponseCapOfferSuppression);
 
-      const autosaveInputs = ["apiKey", "aiHordeApiKey", "llmModel", "llmModelCustom", "addFallbackModels", "fallbackLlmModel1", "fallbackLlmModel2", "imageModel", "imageModelCustom", "imageAspectRatio", "imageSize", "temperature", "worldTitle", "genre", "tone", "backgroundStory", "character", "premise", "firstAction", "rules", "suppressTriggers", "enableResponseEditing", "enableStorytellerMode", "addContinueNarrationButton", "betterMemoryManagement", "disableTextTruncation", "useModelResponseTokenCap", "llmAssistedJsonRepair", "turnSaverMode", "aiHordeQualityPreset", "aiHordeCandidates", "aiHordeSampler", "aiHordeSteps", "aiHordeCfgScale", "aiHordeKarras", "aiHordeHiresFix", "aiHordeModel", "aiHordeModelPreference", "aiHordeCustomModel", "aiHordeResolution", "aiHordeAspectRatio", "aiHordeCustomWidth", "aiHordeCustomHeight", "aiHordePostProcessing", "aiHordeNegativePrompt", "aiHordeEnhancePrompt", "aiHordeTrustedWorkers", "aiHordeSlowWorkers", "aiHordeValidatedBackends", "aiHordeShared", "aiHordeAllowNsfw", "aiHordeWorkerListMode", "aiHordeWorkerIds"];
+      const autosaveInputs = ["apiKey", "aiHordeApiKey", "llmModel", "llmModelCustom", "addFallbackModels", "fallbackLlmModel1", "fallbackLlmModel2", "imageModel", "imageModelCustom", "imageAspectRatio", "imageSize", "videoModel", "videoModelCustom", "videoDuration", "videoResolution", "videoAspectRatio", "videoGenerateAudio", "temperature", "worldTitle", "genre", "tone", "backgroundStory", "character", "premise", "firstAction", "rules", "suppressTriggers", "enableResponseEditing", "enableStorytellerMode", "addContinueNarrationButton", "betterMemoryManagement", "disableTextTruncation", "useModelResponseTokenCap", "llmAssistedJsonRepair", "turnSaverMode", "aiHordeQualityPreset", "aiHordeCandidates", "aiHordeSampler", "aiHordeSteps", "aiHordeCfgScale", "aiHordeKarras", "aiHordeHiresFix", "aiHordeModel", "aiHordeModelPreference", "aiHordeCustomModel", "aiHordeResolution", "aiHordeAspectRatio", "aiHordeCustomWidth", "aiHordeCustomHeight", "aiHordePostProcessing", "aiHordeNegativePrompt", "aiHordeEnhancePrompt", "aiHordeTrustedWorkers", "aiHordeSlowWorkers", "aiHordeValidatedBackends", "aiHordeShared", "aiHordeAllowNsfw", "aiHordeWorkerListMode", "aiHordeWorkerIds"];
       autosaveInputs.forEach(id => {
         const el = $(id);
         if (!el) return;
@@ -15713,8 +17253,8 @@ Rules:
       $("modelSettingsDialog")?.addEventListener("change", event => {
         if (event.target?.matches?.("input, select, textarea")) resetLengthExpandedStoryOutputBudget();
       });
-      $("apiKey")?.addEventListener("input", scheduleSpecialApiKeyPresetCheck);
-      $("apiKey")?.addEventListener("change", () => { maybeApplySpecialApiKeyPreset(); });
+      $("apiKey")?.addEventListener("input", () => { scheduleSpecialApiKeyPresetCheck(); updateVideoFeatureAvailability(); renderAll(); });
+      $("apiKey")?.addEventListener("change", () => { maybeApplySpecialApiKeyPreset(); updateVideoFeatureAvailability(); renderAll(); });
       $("aiHordeQualityPreset")?.addEventListener("change", event => {
         const value = event.target.value;
         if (value === "custom") syncAiHordeFormToSettings();
@@ -16085,7 +17625,6 @@ Rules:
   </script>
 
   <!-- Cloudflare Web Analytics -->
-  <script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "b6a46388c9784e0281690c0c4f076b5c"}'></script>
   <!-- End Cloudflare Web Analytics -->
 </body>
 </html>

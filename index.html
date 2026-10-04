@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Infinite Quest - OpenRouter CYOA Engine v2.72</title>
+  <title>Infinite Quest - OpenRouter CYOA Engine v2.73</title>
   <style>
     :root {
       --bg: #07131d;
@@ -955,6 +955,8 @@
       z-index: 4;
     }
 
+    .image-swap-actions.below-video-chain { top: 56px; }
+
     .image-swap-actions button {
       min-height: 30px;
       padding: 5px 9px;
@@ -978,7 +980,7 @@
     .video-chain-nav {
       position: absolute;
       left: 12px;
-      bottom: 12px;
+      top: 12px;
       z-index: 5;
       display: inline-flex;
       align-items: center;
@@ -1597,7 +1599,7 @@
     @media (max-width: 640px) {
       .video-chain-mode-grid { grid-template-columns: 1fr; }
       .video-parts-carousel { grid-auto-columns: minmax(210px, 82vw); }
-      .video-chain-nav { left: 8px; bottom: 8px; max-width: calc(100% - 16px); }
+      .video-chain-nav { left: 8px; top: 8px; max-width: calc(100% - 16px); }
       .video-status-badge { max-width: 62vw; overflow: hidden; text-overflow: ellipsis; }
     }
 
@@ -8103,7 +8105,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
             </div>`;
       const combinedAssets = isAiHordeSvgImageMode() ? combinedImageAssetsForTurn(turn) : { horde: null, svg: null };
       const swapActionsHtml = isAiHordeSvgImageMode() && combinedAssets.horde && combinedAssets.svg
-        ? `<div class="image-swap-actions"><button id="btnSwapCombinedImage" type="button" title="Swap between the latest AI Horde image and latest SVG placeholder">⇄ Show ${displayAsset?.kind === "horde" ? "SVG" : "AI Horde"}</button></div>`
+        ? `<div class="image-swap-actions${videoPartCount > 1 ? " below-video-chain" : ""}"><button id="btnSwapCombinedImage" type="button" title="Swap between the latest AI Horde image and latest SVG placeholder">⇄ Show ${displayAsset?.kind === "horde" ? "SVG" : "AI Horde"}</button></div>`
         : "";
       const captionHtml = isAiHordeSvgImageMode()
         ? `<figcaption class="image-caption" aria-live="polite">${combinedImageCaption(displayAsset, turn)}</figcaption>`

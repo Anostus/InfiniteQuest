@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Infinite Quest - OpenRouter CYOA Engine v2.73</title>
+  <title>Infinite Quest - OpenRouter CYOA Engine v2.74</title>
   <style>
     :root {
       --bg: #07131d;
@@ -1622,7 +1622,7 @@
           <button id="btnOpenWorldSetup" type="button" role="menuitem">World Set Up</button>
           <button id="btnExportJson" type="button" role="menuitem">Save Full Story</button>
           <label class="buttonish menu-file" role="menuitem">
-            <input id="importFile" type="file" class="hidden" />
+            <input id="importFile" type="file" accept=".story,.zip,application/json,application/zip" class="hidden" />
             <span>Load Story</span>
           </label>
           <button id="btnExportMarkdown" type="button" role="menuitem">Export to Markdown</button>
@@ -1774,7 +1774,7 @@
         <button id="btnCloseVideoZipLoadDialog" class="small ghost" type="button" aria-label="Close video ZIP prompt">✕</button>
       </div>
       <div class="world-gen-box">
-        <p>Select the separate video ZIP you downloaded with the .story file?</p>
+        <p>This is a legacy .story file with video references. Select its matching video ZIP, or continue without videos.</p>
       </div>
       <div class="row wrap dialog-actions">
         <button id="btnSkipVideoZipLoad" type="button">Continue Without Videos</button>
@@ -4732,7 +4732,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
 
     function isLargeImageUrl(url = "") {
       const text = String(url || "");
-      return text.startsWith("data:image/") || text.length > MAX_AUTOSAVE_IMAGE_URL_CHARS;
+      return text.startsWith("data:image/") || text.startsWith("blob:") || text.length > MAX_AUTOSAVE_IMAGE_URL_CHARS;
     }
 
     function pruneTurnForStorage(turn) {
@@ -4796,7 +4796,8 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       clean.imageProvider = truncateText(clean.imageProvider || "", 32);
       clean.combinedImageMode = !!clean.combinedImageMode;
       clean.combinedImagePreference = ["auto", "horde", "svg"].includes(String(clean.combinedImagePreference || "").toLowerCase()) ? String(clean.combinedImagePreference).toLowerCase() : "auto";
-      clean.aiHordeImageUrl = truncateText(clean.aiHordeImageUrl || "", MAX_AUTOSAVE_IMAGE_URL_CHARS);
+      if (isLargeImageUrl(clean.aiHordeImageUrl)) clean.aiHordeImageUrl = "";
+      else clean.aiHordeImageUrl = truncateText(clean.aiHordeImageUrl || "", MAX_AUTOSAVE_IMAGE_URL_CHARS);
       clean.aiHordeImageGeneratedAt = Math.max(0, Number(clean.aiHordeImageGeneratedAt) || 0);
       clean.aiHordeImageError = truncateText(clean.aiHordeImageError || "", 1200);
       clean.svgPlaceholderGeneratedAt = Math.max(0, Number(clean.svgPlaceholderGeneratedAt) || 0);
@@ -4887,6 +4888,51 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       };
     }
 
+    const INDEXED_DB_STORY_STATE_KEY = "active_story_state";
+    const INDEXED_DB_STORY_STATE_VERSION = 1;
+
+    function buildIndexedDbStoryState(sourceState = state) {
+      const compact = compactStateForStorage(sourceState || {});
+      return {
+        key: INDEXED_DB_STORY_STATE_KEY,
+        schemaVersion: INDEXED_DB_STORY_STATE_VERSION,
+        savedAt: Date.now(),
+        scratchpad: compact.scratchpad || "",
+        fullHistory: compact.fullHistory ?? null,
+        fullHistoryCompressedThroughTurn: Math.max(0, Number(compact.fullHistoryCompressedThroughTurn) || 0),
+        turns: Array.isArray(compact.turns) ? compact.turns : []
+      };
+    }
+
+    function compactStateForLocalStorage(sourceState = state) {
+      const compact = compactStateForStorage(sourceState || {});
+      // Large story/document data lives in IndexedDB. Keep the in-memory state shape
+      // unchanged so exports/imports and the rest of the app remain compatible.
+      delete compact.turns;
+      delete compact.fullHistory;
+      delete compact.fullHistoryCompressedThroughTurn;
+      delete compact.scratchpad;
+      compact.indexedDbStoryStateVersion = INDEXED_DB_STORY_STATE_VERSION;
+      return compact;
+    }
+
+    function legacyLocalStateHasIndexedDbFields(loaded) {
+      if (!loaded || typeof loaded !== "object") return false;
+      return Object.prototype.hasOwnProperty.call(loaded, "turns")
+        || Object.prototype.hasOwnProperty.call(loaded, "fullHistory")
+        || Object.prototype.hasOwnProperty.call(loaded, "fullHistoryCompressedThroughTurn")
+        || Object.prototype.hasOwnProperty.call(loaded, "scratchpad");
+    }
+
+    function applyIndexedDbStoryState(targetState, stored) {
+      if (!targetState || !stored || typeof stored !== "object") return targetState;
+      targetState.turns = Array.isArray(stored.turns) ? stored.turns : [];
+      targetState.fullHistory = stored.fullHistory ?? null;
+      targetState.fullHistoryCompressedThroughTurn = Math.max(0, Number(stored.fullHistoryCompressedThroughTurn) || 0);
+      targetState.scratchpad = String(stored.scratchpad || "");
+      return targetState;
+    }
+
     function sentenceLooksComplete(sentence = "") {
       return /[.!?]["'”’\)\]]*$/.test(String(sentence).trim());
     }
@@ -4936,20 +4982,44 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         .join("");
     }
 
-    function loadState() {
+    async function loadState() {
+      let loaded = null;
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) {
-          const loaded = JSON.parse(raw);
-          state = cleanupDeprecatedState(mergeDefaults(deepClone(DEFAULT_STATE), loaded));
-          if (!loaded?.settings?.llmModel || (!state.turns.length && state.settings.llmModel === LEGACY_DEFAULT_LLM_MODEL)) state.settings.llmModel = DEFAULT_LLM_MODEL;
-          normalizeDefaultTriggerState();
-          normalizePerTurnSnapshots();
-        }
+        if (raw) loaded = JSON.parse(raw);
       } catch (err) {
         console.warn(err);
         toast("Could not load saved browser state; using defaults.");
       }
+
+      state = cleanupDeprecatedState(mergeDefaults(deepClone(DEFAULT_STATE), loaded || {}));
+
+      // New persistence layout: the large story fields live in IndexedDB. If no
+      // IndexedDB record exists yet, an older app's localStorage payload is treated
+      // as the migration source and is moved over automatically.
+      let indexedStory = null;
+      try {
+        indexedStory = await MediaDB.getStoryState();
+      } catch (err) {
+        console.warn("Could not load IndexedDB story state:", err);
+      }
+
+      if (indexedStory) {
+        applyIndexedDbStoryState(state, indexedStory);
+      } else if (legacyLocalStateHasIndexedDbFields(loaded)) {
+        try {
+          const migrated = await MediaDB.saveStoryState(buildIndexedDbStoryState(state));
+          if (!migrated) throw new Error("IndexedDB rejected the migrated story state.");
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(compactStateForLocalStorage(state)));
+          console.info("Migrated legacy story data from localStorage to IndexedDB.");
+        } catch (err) {
+          // Do not destroy the legacy payload when migration fails. The current
+          // session can continue using it and a later load can retry migration.
+          console.warn("Legacy localStorage migration to IndexedDB failed:", err);
+        }
+      }
+
+      if (!loaded?.settings?.llmModel || (!state.turns.length && state.settings.llmModel === LEGACY_DEFAULT_LLM_MODEL)) state.settings.llmModel = DEFAULT_LLM_MODEL;
       normalizeDefaultTriggerState();
       normalizePerTurnSnapshots();
       normalizeNameCorrectionState();
@@ -4964,7 +5034,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         if (savedVideoUrl.startsWith("blob:") || (turn.videoAsset?.fileName && !savedVideoUrl)) {
           turn.videoUrl = "";
           turn.videoNotAutosaved = true;
-          turn.videoError = "The generated video is no longer loaded because browser video data does not survive a page refresh. The turn image is shown instead. To restore the video, load the story's saved video ZIP, or generate a new video.";
+          turn.videoError = "The generated video could not be restored from browser media storage. The turn image is shown instead. You can load the story's saved video ZIP or generate a new video.";
           if (turn.mediaDisplayMode === "video") turn.mediaDisplayMode = "image";
         }
       }
@@ -7614,46 +7684,66 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     }
 
     function getPersistableState() {
-      return compactStateForStorage(state);
+      return compactStateForLocalStorage(state);
+    }
+
+    let storyStatePersistChain = Promise.resolve();
+    let storyStateSaveGeneration = 0;
+
+    function queueStoryStatePersistence(sourceState = state) {
+      const payload = buildIndexedDbStoryState(sourceState);
+      const generation = ++storyStateSaveGeneration;
+      const status = $("autosaveStatus");
+      const task = storyStatePersistChain.catch(() => {}).then(async () => {
+        const ok = await MediaDB.saveStoryState(payload);
+        if (!ok) throw new Error("IndexedDB story-state save failed.");
+        if (generation === storyStateSaveGeneration && status) status.textContent = "Autosaved";
+        return true;
+      }).catch(err => {
+        console.error("IndexedDB story autosave failed:", err);
+        // Safety fallback for browsers/storage failures: preserve the complete legacy
+        // payload in localStorage rather than losing story data. Successful saves use
+        // the new split layout and do not keep these heavy fields in localStorage.
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(compactStateForStorage(sourceState)));
+        } catch (fallbackErr) {
+          console.error("Legacy localStorage fallback also failed:", fallbackErr);
+        }
+        if (generation === storyStateSaveGeneration && status) status.textContent = "Autosave error";
+        if (!state._storageWarningShown) {
+          state._storageWarningShown = true;
+          toast("Browser autosave could not save story data to IndexedDB. A legacy localStorage fallback was attempted; Save Full Story or Export to Markdown now for a backup.", 9000);
+        }
+        return false;
+      });
+      storyStatePersistChain = task;
+      return task;
+    }
+
+    async function flushStoryStatePersistence() {
+      try { return await storyStatePersistChain; } catch (_) { return false; }
     }
 
     function saveState() {
       state.lastSavedAt = nowIso();
       const status = $("autosaveStatus");
       try {
+        queueAllTurnImagePersistence(state.turns || []);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(getPersistableState()));
-        if (status) status.textContent = "Autosaved";
+        if (status) status.textContent = "Autosaving…";
+        void queueStoryStatePersistence(state);
         return true;
       } catch (err) {
-        console.warn("Autosave failed; trying emergency compact save.", err);
-        try {
-          const emergency = compactStateForStorage(state);
-          emergency.turns = (emergency.turns || []).map(turn => ({
-            ...turn,
-            narration: truncateText(turn.narration || "", 6000),
-            scratchpadSnapshot: truncateText(turn.scratchpadSnapshot || "", 6000),
-            trackersSnapshot: (turn.trackersSnapshot || []).map(t => ({ ...t, value: truncateText(t.value || "", 1200) })),
-            worldStateSnapshot: {
-              scratchpad: truncateText(turn.worldStateSnapshot?.scratchpad || turn.scratchpadSnapshot || "", 6000),
-              trackers: (turn.worldStateSnapshot?.trackers || turn.trackersSnapshot || []).map(t => ({ ...t, value: truncateText(t.value || "", 1200) }))
-            }
-          }));
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(emergency));
-          if (status) status.textContent = "Autosaved compact";
-          if (!state._storageWarningShown) {
-            state._storageWarningShown = true;
-            toast("Browser autosave was full, so the app saved a compact text-only version. Use Save Full Story or Export to Markdown for a complete backup.", 8000);
-          }
-          return true;
-        } catch (secondErr) {
-          console.error("Autosave failed completely.", secondErr);
-          if (status) status.textContent = "Autosave full";
-          if (!state._storageWarningShown) {
-            state._storageWarningShown = true;
-            toast("Browser autosave is full. Save Full Story or Export to Markdown now, then Clear Local State to reset the browser cache.", 9000);
-          }
-          return false;
+        console.error("localStorage settings autosave failed.", err);
+        if (status) status.textContent = "Autosave error";
+        if (!state._storageWarningShown) {
+          state._storageWarningShown = true;
+          toast("Browser autosave could not save local settings. Save Full Story or Export to Markdown now for a backup.", 9000);
         }
+        // Still attempt to persist the large story state to IndexedDB even if the
+        // small localStorage settings write failed.
+        void queueStoryStatePersistence(state);
+        return false;
       }
     }
 
@@ -12086,6 +12176,7 @@ SVG requirements:
         if (!deferAiHordeCancellation) {
           cancelPendingAiHordeJobsForTurns(removedTurns);
           removedTurns.forEach(discardVideoSessionDataForTurn);
+          void deleteIndexedDbMediaForTurns(removedTurns);
         }
         if (Number(state.fullHistoryCompressedThroughTurn || 0) > state.turns.length) {
           state.fullHistory = null;
@@ -12125,6 +12216,7 @@ SVG requirements:
         }
         cancelPendingAiHordeJobsForTurns(branchResult.pendingAiHordeCancellationTurns);
         branchResult.pendingAiHordeCancellationTurns.forEach(discardVideoSessionDataForTurn);
+        void deleteIndexedDbMediaForTurns(branchResult.pendingAiHordeCancellationTurns);
         if (waitingForManualRpgSelection) showLlmWaitIndicator();
         if (shouldUpdateFullHistoryBeforeNextTurn()) {
           setBusy(true, "Compressing memories");
@@ -12323,6 +12415,7 @@ ${missingList}`,
       const skipExistingTurnsConfirm = !!options?.skipExistingTurnsConfirm;
       if (!skipExistingTurnsConfirm && state.turns.length && !confirm("Start a new adventure and replace the current turn history?")) return;
       closeDialog("worldSetupDialog");
+      await MediaDB.clearAll();
       syncDefaultTriggerEditorState();
       state.baseTrackersAtStart = deepClone(state.defaultTriggers || []);
       state.trackers = cloneDefaultTriggersForCurrentRun();
@@ -12399,6 +12492,7 @@ ${missingList}`,
       const removed = state.turns.pop();
       cancelPendingAiHordeJobsForTurns([removed]);
       discardVideoSessionDataForTurn(removed);
+      void MediaDB.deleteTurnMedia(removed?.id);
       state.viewIndex = state.turns.length - 1;
       restoreStateAfterTurnIndex(state.viewIndex);
       markUnsavedForFullExport();
@@ -12456,6 +12550,7 @@ ${missingList}`,
       state.turns.pop();
       cancelPendingAiHordeJobsForTurns([removed]);
       discardVideoSessionDataForTurn(removed);
+      void MediaDB.deleteTurnMedia(removed?.id);
       state.viewIndex = state.turns.length - 1;
       restoreStateAfterTurnIndex(state.viewIndex);
       markUnsavedForFullExport();
@@ -15467,24 +15562,29 @@ Rules:
         return t;
       });
       const base = safeFileName(state.world.title || "adventure");
-      downloadBlob(JSON.stringify(clone, null, 2), base + ".story", "application/json");
+      const storyFileName = base + ".story";
+      const storyBlob = new Blob([JSON.stringify(clone, null, 2)], { type: "application/json" });
       const videoEntries = [];
       for (const turn of state.turns || []) {
         const parts = Array.isArray(turn.videoParts) && turn.videoParts.length ? turn.videoParts : [];
         if (parts.length) {
-          for (const part of parts) {
-            const blob = videoBlobStore.get(videoPartStoreKey(turn.id, part.id)) || (part.partNumber === parts.length ? videoBlobStore.get(turn.id) : null);
-            if (blob && part?.fileName) videoEntries.push({ name: part.fileName, blob });
+          for (let index = 0; index < parts.length; index++) {
+            const part = parts[index];
+            let blob = videoBlobStore.get(videoPartStoreKey(turn.id, part.id)) || (index === parts.length - 1 ? videoBlobStore.get(turn.id) : null);
+            if (!(blob instanceof Blob) && part?.id) blob = await MediaDB.getBlob(videoIndexedDbKey(turn.id, part.id));
+            if (blob instanceof Blob && blob.size > 0 && part?.fileName) videoEntries.push({ name: part.fileName, blob });
           }
         } else {
           const blob = videoBlobStore.get(turn.id);
-          if (blob && turn.videoAsset?.fileName) videoEntries.push({ name: turn.videoAsset.fileName, blob });
+          if (blob instanceof Blob && blob.size > 0 && turn.videoAsset?.fileName) videoEntries.push({ name: turn.videoAsset.fileName, blob });
         }
       }
       if (videoEntries.length) {
-        const zipBlob = await buildStoredZip(videoEntries);
-        downloadBlob(zipBlob, base + "-videos.zip", "application/zip");
-        toast(`Saved story and ${videoEntries.length} video${videoEntries.length === 1 ? "" : "s"} in a separate ZIP.`, 6000);
+        const zipBlob = await buildStoredZip([{ name: storyFileName, blob: storyBlob }, ...videoEntries]);
+        downloadBlob(zipBlob, base + ".story.zip", "application/zip");
+        toast(`Saved one ZIP containing the .story file and ${videoEntries.length} video${videoEntries.length === 1 ? "" : "s"}.`, 6000);
+      } else {
+        downloadBlob(storyBlob, storyFileName, "application/json");
       }
       markFullExportSaved();
     }
@@ -15663,54 +15763,97 @@ Rules:
       return warning;
     }
 
-    function loadStory(file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          const imported = parseJsonTextForImport(reader.result);
-          if (looksLikeInfiniteWorldsJson(imported)) {
-            const result = loadInfiniteWorldsJsonWithCharacterChoice(imported, {
-              toastMessage: "Loaded Infinite Worlds JSON into the world setup fields without using an LLM."
-            });
-            if (result === true) toast("Loaded Infinite Worlds JSON into the world setup fields without using an LLM.", 7500);
-            return;
-          }
-          const currentOpenRouterKey = $("apiKey")?.value.trim() || state.settings?.apiKey || "";
-          const currentAiHordeKey = $("aiHordeApiKey")?.value.trim() || state.settings?.aiHordeApiKey || "";
-          discardAllVideoSessionData(state.turns || []);
-          state = cleanupDeprecatedState(mergeDefaults(deepClone(DEFAULT_STATE), imported));
-          normalizeNameCorrectionState();
-          normalizeDefaultTriggerState();
-          normalizeEventTriggerState(state);
-          normalizePerTurnSnapshots();
-          state.settings.apiKey = currentOpenRouterKey;
-          state.settings.aiHordeApiKey = currentAiHordeKey;
-          state.unsavedFullExport = false;
-          dirtySinceFullExport = false;
-          syncStateToForm();
-          saveState();
-          renderAll();
-          toast("Loaded story.");
-          if (storyHasVideoRefs(state)) {
-            setTimeout(() => {
-              const dialog = $("videoZipLoadDialog");
-              if (dialog && !dialog.open) dialog.showModal();
-            }, 50);
-          }
-        } catch (err) {
-          toast("Load failed: " + (err.message || String(err)));
-        }
-      };
-      reader.readAsText(file);
+    async function applyImportedStory(imported, { promptForLegacyVideoZip = true } = {}) {
+      if (looksLikeInfiniteWorldsJson(imported)) {
+        const result = loadInfiniteWorldsJsonWithCharacterChoice(imported, {
+          toastMessage: "Loaded Infinite Worlds JSON into the world setup fields without using an LLM."
+        });
+        if (result === true) toast("Loaded Infinite Worlds JSON into the world setup fields without using an LLM.", 7500);
+        return false;
+      }
+      const currentOpenRouterKey = $("apiKey")?.value.trim() || state.settings?.apiKey || "";
+      const currentAiHordeKey = $("aiHordeApiKey")?.value.trim() || state.settings?.aiHordeApiKey || "";
+      await flushStoryStatePersistence();
+      await MediaDB.clearAll();
+      discardAllVideoSessionData(state.turns || []);
+      state = cleanupDeprecatedState(mergeDefaults(deepClone(DEFAULT_STATE), imported));
+      normalizeNameCorrectionState();
+      normalizeDefaultTriggerState();
+      normalizeEventTriggerState(state);
+      normalizePerTurnSnapshots();
+      state.settings.apiKey = currentOpenRouterKey;
+      state.settings.aiHordeApiKey = currentAiHordeKey;
+      state.unsavedFullExport = false;
+      dirtySinceFullExport = false;
+      syncStateToForm();
+      saveState();
+      await flushStoryStatePersistence();
+      renderAll();
+      if (promptForLegacyVideoZip && storyHasVideoRefs(state)) {
+        setTimeout(() => {
+          const dialog = $("videoZipLoadDialog");
+          if (dialog && !dialog.open) dialog.showModal();
+        }, 50);
+      }
+      return true;
     }
 
-    function clearAll() {
+    async function readStoryJsonFromCombinedZip(file) {
+      const buf = await file.arrayBuffer();
+      const view = new DataView(buf);
+      const bytes = new Uint8Array(buf);
+      const dec = new TextDecoder();
+      let off = 0;
+      let storyText = "";
+      let storyName = "";
+      while (off + 30 <= bytes.length && readU32(view, off) === 0x04034b50) {
+        const method = readU16(view, off + 8);
+        const comp = readU32(view, off + 18);
+        const nameLen = readU16(view, off + 26);
+        const extraLen = readU16(view, off + 28);
+        const name = dec.decode(bytes.slice(off + 30, off + 30 + nameLen));
+        const start = off + 30 + nameLen + extraLen;
+        if (method !== 0) throw new Error("This ZIP uses compression that this portable loader does not support. Please load a ZIP saved by Infinite Quest.");
+        if (/\.story$/i.test(name)) {
+          if (storyText) throw new Error("This ZIP contains more than one .story file. Keep only the story you want to load.");
+          storyText = dec.decode(bytes.slice(start, start + comp));
+          storyName = name;
+        }
+        off = start + comp;
+      }
+      if (!storyText) throw new Error("No .story file was found inside this ZIP.");
+      return { imported: parseJsonTextForImport(storyText), storyName };
+    }
+
+    async function loadStory(file) {
+      try {
+        const isZip = /\.zip$/i.test(file?.name || "") || /application\/zip/i.test(file?.type || "");
+        if (isZip) {
+          const { imported } = await readStoryJsonFromCombinedZip(file);
+          const loaded = await applyImportedStory(imported, { promptForLegacyVideoZip: false });
+          if (!loaded) return;
+          if (storyHasVideoRefs(state)) await importVideoZip(file);
+          toast("Loaded story and videos from the combined ZIP. They are now restored to browser storage.", 6500);
+          return;
+        }
+        const text = await file.text();
+        const imported = parseJsonTextForImport(text);
+        const loaded = await applyImportedStory(imported, { promptForLegacyVideoZip: true });
+        if (loaded) toast("Loaded story. Media for the previous story was cleared from browser storage.");
+      } catch (err) {
+        toast("Load failed: " + (err.message || String(err)));
+      }
+    }
+
+    async function clearAll() {
       if (!confirm("Clear all local story state and reset to defaults?")) return;
       const pendingHordeIds = (state.turns || []).map(turn => turn?.imageRequest?.provider === "aihorde" ? turn.imageRequest.id : "").filter(Boolean);
       pendingHordeIds.forEach(id => cancelAiHordeImageJob(id));
       const keepKey = $("apiKey").value.trim();
       const keepHordeKey = $("aiHordeApiKey")?.value.trim() || "";
       discardAllVideoSessionData(state.turns || []);
+      await flushStoryStatePersistence();
+      await MediaDB.clearAll();
       state = deepClone(DEFAULT_STATE);
       state.settings.apiKey = keepKey;
       state.settings.aiHordeApiKey = keepHordeKey;
@@ -15735,6 +15878,323 @@ Rules:
       });
     }
 
+
+    // =========================================================================
+    // ---- IndexedDB storage for persistent images & videos across refreshes ----
+    // =========================================================================
+    const MediaDB = {
+      dbName: "InfiniteQuestMediaDB",
+      dbVersion: 2,
+      storeName: "media_blobs",
+      storyStoreName: "story_state",
+      _db: null,
+
+      async open() {
+        if (this._db) return this._db;
+        return new Promise((resolve, reject) => {
+          const req = indexedDB.open(this.dbName, this.dbVersion);
+          req.onupgradeneeded = event => {
+            const db = event.target.result;
+            if (!db.objectStoreNames.contains(this.storeName)) {
+              db.createObjectStore(this.storeName, { keyPath: "key" });
+            }
+            if (!db.objectStoreNames.contains(this.storyStoreName)) {
+              db.createObjectStore(this.storyStoreName, { keyPath: "key" });
+            }
+          };
+          req.onsuccess = event => {
+            this._db = event.target.result;
+            this._db.onversionchange = () => { try { this._db.close(); } catch (_) {} this._db = null; };
+            resolve(this._db);
+          };
+          req.onerror = event => reject(event.target.error || new Error("Could not open IndexedDB."));
+        });
+      },
+
+      async saveBlob(key, blob, metadata = {}) {
+        if (!key || !(blob instanceof Blob) || !blob.size) return false;
+        try {
+          const db = await this.open();
+          return await new Promise((resolve, reject) => {
+            const tx = db.transaction(this.storeName, "readwrite");
+            tx.objectStore(this.storeName).put({
+              key: String(key),
+              blob,
+              mimeType: blob.type || "application/octet-stream",
+              savedAt: Date.now(),
+              ...metadata
+            });
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = event => reject(event.target.error || tx.error);
+            tx.onabort = event => reject(event.target.error || tx.error);
+          });
+        } catch (err) {
+          console.warn("MediaDB save failed:", err);
+          return false;
+        }
+      },
+
+      async getBlob(key) {
+        if (!key) return null;
+        try {
+          const db = await this.open();
+          return await new Promise((resolve, reject) => {
+            const tx = db.transaction(this.storeName, "readonly");
+            const req = tx.objectStore(this.storeName).get(String(key));
+            req.onsuccess = () => resolve(req.result?.blob instanceof Blob ? req.result.blob : null);
+            req.onerror = event => reject(event.target.error || req.error);
+          });
+        } catch (err) {
+          console.warn("MediaDB get failed:", err);
+          return null;
+        }
+      },
+
+      async saveStoryState(record) {
+        if (!record || typeof record !== "object") return false;
+        try {
+          const db = await this.open();
+          return await new Promise((resolve, reject) => {
+            const tx = db.transaction(this.storyStoreName, "readwrite");
+            tx.objectStore(this.storyStoreName).put({ ...record, key: String(record.key || INDEXED_DB_STORY_STATE_KEY) });
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = event => reject(event.target.error || tx.error);
+            tx.onabort = event => reject(event.target.error || tx.error);
+          });
+        } catch (err) {
+          console.warn("Story state IndexedDB save failed:", err);
+          return false;
+        }
+      },
+
+      async getStoryState(key = INDEXED_DB_STORY_STATE_KEY) {
+        try {
+          const db = await this.open();
+          return await new Promise((resolve, reject) => {
+            const tx = db.transaction(this.storyStoreName, "readonly");
+            const req = tx.objectStore(this.storyStoreName).get(String(key));
+            req.onsuccess = () => resolve(req.result || null);
+            req.onerror = event => reject(event.target.error || req.error);
+          });
+        } catch (err) {
+          console.warn("Story state IndexedDB load failed:", err);
+          return null;
+        }
+      },
+
+      async deleteStoryState(key = INDEXED_DB_STORY_STATE_KEY) {
+        try {
+          const db = await this.open();
+          return await new Promise((resolve, reject) => {
+            const tx = db.transaction(this.storyStoreName, "readwrite");
+            tx.objectStore(this.storyStoreName).delete(String(key));
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = event => reject(event.target.error || tx.error);
+            tx.onabort = event => reject(event.target.error || tx.error);
+          });
+        } catch (err) {
+          console.warn("Story state IndexedDB delete failed:", err);
+          return false;
+        }
+      },
+
+      async deleteKey(key) {
+        if (!key) return false;
+        try {
+          const db = await this.open();
+          return await new Promise((resolve, reject) => {
+            const tx = db.transaction(this.storeName, "readwrite");
+            tx.objectStore(this.storeName).delete(String(key));
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = event => reject(event.target.error || tx.error);
+            tx.onabort = event => reject(event.target.error || tx.error);
+          });
+        } catch (err) {
+          console.warn("MediaDB delete failed:", err);
+          return false;
+        }
+      },
+
+      async deleteTurnMedia(turnId) {
+        if (!turnId) return false;
+        const prefix = `turn::${String(turnId)}::`;
+        try {
+          const db = await this.open();
+          return await new Promise((resolve, reject) => {
+            const tx = db.transaction(this.storeName, "readwrite");
+            const store = tx.objectStore(this.storeName);
+            const req = store.openCursor();
+            req.onsuccess = event => {
+              const cursor = event.target.result;
+              if (!cursor) return;
+              if (String(cursor.key).startsWith(prefix)) cursor.delete();
+              cursor.continue();
+            };
+            req.onerror = event => reject(event.target.error || req.error);
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = event => reject(event.target.error || tx.error);
+            tx.onabort = event => reject(event.target.error || tx.error);
+          });
+        } catch (err) {
+          console.warn("MediaDB turn cleanup failed:", err);
+          return false;
+        }
+      },
+
+      async clearAll() {
+        try {
+          const db = await this.open();
+          return await new Promise((resolve, reject) => {
+            const stores = [this.storeName, this.storyStoreName].filter(name => db.objectStoreNames.contains(name));
+            const tx = db.transaction(stores, "readwrite");
+            stores.forEach(name => tx.objectStore(name).clear());
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = event => reject(event.target.error || tx.error);
+            tx.onabort = event => reject(event.target.error || tx.error);
+          });
+        } catch (err) {
+          console.warn("MediaDB clear failed:", err);
+          return false;
+        }
+      },
+
+      async requestPersistence() {
+        try {
+          if (navigator.storage?.persist) return await navigator.storage.persist();
+        } catch (err) {
+          console.warn("Persistent storage request failed:", err);
+        }
+        return false;
+      },
+
+      async getStorageEstimate() {
+        try {
+          if (!navigator.storage?.estimate) return null;
+          const estimate = await navigator.storage.estimate();
+          return { usage: estimate.usage || 0, quota: estimate.quota || 0 };
+        } catch (_) {
+          return null;
+        }
+      }
+    };
+
+    function turnImageStorageKey(turnId) { return `turn::${String(turnId || "turn")}::image`; }
+    function turnAiHordeImageStorageKey(turnId) { return `turn::${String(turnId || "turn")}::aihorde_image`; }
+    function turnSvgStorageKey(turnId) { return `turn::${String(turnId || "turn")}::svg_placeholder`; }
+    function videoIndexedDbKey(turnId, partId) { return `turn::${String(turnId || "turn")}::part::${String(partId || "part")}`; }
+
+    const mediaPersistChains = new Map();
+    const mediaPersistLastQueuedSource = new Map();
+    async function mediaSourceToBlob(source) {
+      if (source instanceof Blob) return source;
+      const url = String(source || "").trim();
+      if (!url) return null;
+      const response = await fetch(url);
+      if (!response.ok && !url.startsWith("data:") && !url.startsWith("blob:")) {
+        throw new Error(`Media fetch failed (${response.status}).`);
+      }
+      return await response.blob();
+    }
+
+    function queuePersistMediaSource(key, source, metadata = {}) {
+      if (!key || !source) return;
+      const sourceSignature = source instanceof Blob ? source : String(source);
+      if (mediaPersistLastQueuedSource.get(key) === sourceSignature) return;
+      mediaPersistLastQueuedSource.set(key, sourceSignature);
+      const previous = mediaPersistChains.get(key) || Promise.resolve();
+      const task = previous.catch(() => {}).then(async () => {
+        try {
+          const blob = await mediaSourceToBlob(source);
+          if (blob?.size) await MediaDB.saveBlob(key, blob, metadata);
+        } catch (err) {
+          console.warn(`Could not persist media ${key}:`, err);
+          if (mediaPersistLastQueuedSource.get(key) === sourceSignature) mediaPersistLastQueuedSource.delete(key);
+        }
+      }).finally(() => {
+        if (mediaPersistChains.get(key) === task) mediaPersistChains.delete(key);
+      });
+      mediaPersistChains.set(key, task);
+    }
+
+    function queueTurnImagePersistence(turn) {
+      if (!turn?.id) return;
+      if (turn.imageUrl) {
+        turn.imageStorageKey = turnImageStorageKey(turn.id);
+        queuePersistMediaSource(turn.imageStorageKey, turn.imageUrl, { turnId: turn.id, type: "image" });
+      }
+      if (turn.aiHordeImageUrl) {
+        turn.aiHordeImageStorageKey = turnAiHordeImageStorageKey(turn.id);
+        queuePersistMediaSource(turn.aiHordeImageStorageKey, turn.aiHordeImageUrl, { turnId: turn.id, type: "aihorde_image" });
+      }
+      if (turn.svgPlaceholderUrl) {
+        turn.svgPlaceholderStorageKey = turnSvgStorageKey(turn.id);
+        queuePersistMediaSource(turn.svgPlaceholderStorageKey, turn.svgPlaceholderUrl, { turnId: turn.id, type: "svg_placeholder" });
+      }
+    }
+
+    function queueAllTurnImagePersistence(turns = state.turns || []) {
+      (turns || []).forEach(queueTurnImagePersistence);
+    }
+
+    async function deleteIndexedDbMediaForTurns(turns = []) {
+      await Promise.all((Array.isArray(turns) ? turns : [turns]).filter(Boolean).map(turn => MediaDB.deleteTurnMedia(turn.id)));
+    }
+
+    async function deleteIndexedDbVideoPartsForTurn(turn) {
+      if (!turn?.id) return;
+      const parts = Array.isArray(turn.videoParts) ? turn.videoParts : [];
+      await Promise.all(parts.filter(part => part?.id).map(part => MediaDB.deleteKey(videoIndexedDbKey(turn.id, part.id))));
+    }
+
+    function revokeTurnImageBlobUrls(turn) {
+      if (!turn) return;
+      [turn.imageUrl, turn.aiHordeImageUrl, turn.svgPlaceholderUrl].forEach(url => {
+        if (String(url || "").startsWith("blob:")) { try { URL.revokeObjectURL(url); } catch (_) {} }
+      });
+    }
+
+    async function restoreMediaFromIndexedDB() {
+      for (const turn of (state.turns || [])) {
+        if (!turn?.id) continue;
+
+        const imageEntries = [
+          ["imageUrl", turn.imageStorageKey || turnImageStorageKey(turn.id), "imageStorageKey"],
+          ["aiHordeImageUrl", turn.aiHordeImageStorageKey || turnAiHordeImageStorageKey(turn.id), "aiHordeImageStorageKey"],
+          ["svgPlaceholderUrl", turn.svgPlaceholderStorageKey || turnSvgStorageKey(turn.id), "svgPlaceholderStorageKey"]
+        ];
+        for (const [prop, key, keyProp] of imageEntries) {
+          const blob = await MediaDB.getBlob(key);
+          if (!blob) continue;
+          if (String(turn[prop] || "").startsWith("blob:")) { try { URL.revokeObjectURL(turn[prop]); } catch (_) {} }
+          turn[prop] = URL.createObjectURL(blob);
+          turn[keyProp] = key;
+          if (prop === "imageUrl") turn.imageNotAutosaved = false;
+        }
+
+        const parts = Array.isArray(turn.videoParts) ? turn.videoParts : [];
+        for (const part of parts) {
+          if (!part?.id) continue;
+          const key = videoIndexedDbKey(turn.id, part.id);
+          const blob = await MediaDB.getBlob(key);
+          if (!blob) continue;
+          videoBlobStore.set(videoPartStoreKey(turn.id, part.id), blob);
+          if (String(part.url || "").startsWith("blob:")) { try { URL.revokeObjectURL(part.url); } catch (_) {} }
+          part.url = URL.createObjectURL(blob);
+        }
+        const latest = parts.length ? parts[parts.length - 1] : null;
+        const latestBlob = latest ? videoBlobStore.get(videoPartStoreKey(turn.id, latest.id)) : null;
+        if (latest && latestBlob) {
+          videoBlobStore.set(turn.id, latestBlob);
+          turn.videoUrl = latest.url;
+          turn.videoNotAutosaved = false;
+          turn.videoError = "";
+          if (turn.mediaDisplayMode === "video" || !turn.imageUrl) turn.mediaDisplayMode = "video";
+          videoPartViewByTurn.set(turn.id, parts.length - 1);
+        }
+      }
+      syncStateToForm();
+      renderAll();
+    }
 
     // ---- OpenRouter video generation + portable video ZIP support ----
     const videoBlobStore = new Map();
@@ -16316,7 +16776,10 @@ Rules:
       const turnUrl = String(turn.videoUrl || "");
       if (latestUrl.startsWith("blob:")) { try { URL.revokeObjectURL(latestUrl); } catch (_) {} }
       if (turnUrl.startsWith("blob:") && turnUrl !== latestUrl) { try { URL.revokeObjectURL(turnUrl); } catch (_) {} }
-      if (latest?.id) videoBlobStore.delete(videoPartStoreKey(turn.id, latest.id));
+      if (latest?.id) {
+        videoBlobStore.delete(videoPartStoreKey(turn.id, latest.id));
+        void MediaDB.deleteKey(videoIndexedDbKey(turn.id, latest.id));
+      }
       videoBlobStore.delete(turn.id);
 
       const remaining = parts.slice(0, -1);
@@ -16761,12 +17224,14 @@ Previous Part ${partNumber - 1} prompt: ${parts[targetIndex - 1]?.prompt || ""}`
       const videoRes = await fetch(new URL(contentUrl, "https://openrouter.ai").href, { headers: { "Authorization": `Bearer ${key}` } });
       if (!videoRes.ok) throw new Error(`Video download failed (${videoRes.status}): ${(await videoRes.text()).slice(0,500)}`);
       const blob = await videoRes.blob();
+      await deleteIndexedDbVideoPartsForTurn(turn);
       clearVideoChainForReplacement(turn);
       const url = URL.createObjectURL(blob);
       const fileName = `turn-${String(turn.turnNumber || 0).padStart(4,"0")}-${String(turn.id || Date.now()).replace(/[^a-zA-Z0-9_-]/g,"_")}.mp4`;
       const part = { id: `${turn.id || "turn"}-part-1`, partNumber: 1, url, prompt, fileName, mimeType: blob.type || "video/mp4", size: blob.size, model, duration, resolution, aspectRatio: aspect_ratio, generateAudio: generate_audio, openRouterJobId: job.id || "", cost: job.usage?.cost ?? null };
       videoBlobStore.set(turn.id, blob);
       videoBlobStore.set(videoPartStoreKey(turn.id, part.id), blob);
+      await MediaDB.saveBlob(videoIndexedDbKey(turn.id, part.id), blob, { turnId: turn.id, partId: part.id, partNumber: 1, type: "video" });
       turn.videoParts = [part];
       turn.videoUrl = url;
       turn.mediaDisplayMode = "video";
@@ -16862,6 +17327,7 @@ Previous Part ${partNumber - 1} prompt: ${parts[targetIndex - 1]?.prompt || ""}`
       const part = { id: `${turn.id || "turn"}-part-${partNumber}`, partNumber, url, prompt, fileName, mimeType: blob.type || "video/mp4", size: blob.size, model, duration, resolution, aspectRatio: aspect_ratio, generateAudio: generate_audio, openRouterJobId: job.id || "", cost: job.usage?.cost ?? null };
       videoBlobStore.set(videoPartStoreKey(turn.id, part.id), blob);
       videoBlobStore.set(turn.id, blob);
+      await MediaDB.saveBlob(videoIndexedDbKey(turn.id, part.id), blob, { turnId: turn.id, partId: part.id, partNumber, type: "video" });
       turn.videoParts = [...parts, part];
       turn.videoUrl = url;
       turn.mediaDisplayMode = "video";
@@ -17006,6 +17472,7 @@ Previous Part ${partNumber - 1} prompt: ${parts[targetIndex - 1]?.prompt || ""}`
       nextParts[targetIndex] = replacement;
       videoBlobStore.set(videoPartStoreKey(turn.id, replacement.id), blob);
       videoBlobStore.set(turn.id, blob);
+      await MediaDB.saveBlob(videoIndexedDbKey(turn.id, replacement.id), blob, { turnId: turn.id, partId: replacement.id, partNumber, type: "video" });
       turn.videoParts = nextParts;
       turn.videoUrl = url;
       if (partNumber === 1) turn.videoPrompt = prompt;
@@ -17129,6 +17596,7 @@ Previous Part ${partNumber - 1} prompt: ${parts[targetIndex - 1]?.prompt || ""}`
           if (target.part) {
             const key = videoPartStoreKey(target.turn.id, target.part.id);
             videoBlobStore.set(key, blob);
+            await MediaDB.saveBlob(videoIndexedDbKey(target.turn.id, target.part.id), blob, { turnId: target.turn.id, partId: target.part.id, partNumber: target.part.partNumber, type: "video" });
             if (String(target.part.url || "").startsWith("blob:")) URL.revokeObjectURL(target.part.url);
             target.part.url = URL.createObjectURL(blob);
           } else {
@@ -17612,7 +18080,9 @@ Previous Part ${partNumber - 1} prompt: ${parts[targetIndex - 1]?.prompt || ""}`
 
     async function bootApp() {
       bindEvents();
-      loadState();
+      await loadState();
+      await MediaDB.requestPersistence();
+      await restoreMediaFromIndexedDB();
       resumePendingAiHordeJobs();
       await maybeApplySpecialApiKeyPreset();
       await maybeImportWorldFromLocationHash();

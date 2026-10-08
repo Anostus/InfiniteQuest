@@ -14468,7 +14468,10 @@ ${missingList}`,
       state.eventTriggers = payload.eventTriggers || [];
       state.pendingEventTriggers = [];
       state.baseTrackersAtStart = deepClone(state.defaultTriggers);
-      if (!state.turns.length) state.trackers = cloneDefaultTriggersForCurrentRun();
+      // Replace current trackers before normalization can migrate trackers from the previous world.
+      // An empty imported list is intentional and must stay empty.
+      state.trackers = deepClone(state.defaultTriggers);
+      state.trackers = cloneDefaultTriggersForCurrentRun();
 
       if (
         options.protectInfiniteWorldsImportFromTruncation &&
@@ -18097,6 +18100,7 @@ Previous Part ${partNumber - 1} prompt: ${parts[targetIndex - 1]?.prompt || ""}`
   </script>
 
   <!-- Cloudflare Web Analytics -->
+  <script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "b6a46388c9784e0281690c0c4f076b5c"}'></script>
   <!-- End Cloudflare Web Analytics -->
 </body>
 </html>

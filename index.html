@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Infinite Quest - OpenRouter CYOA Engine v2.74</title>
+  <title>Infinite Quest - OpenRouter CYOA Engine v2.75</title>
   <style>
     :root {
       --bg: #07131d;
@@ -2738,6 +2738,7 @@
 
   <script>
     const STORAGE_KEY = "infiniteQuestOpenRouterState.v1";
+    const COMMUNITY_PLAYER_ID_STORAGE_KEY = "infiniteQuestCommunityPlayerId.v1";
     const DEFAULT_IMAGE_MODEL = "black-forest-labs/flux.2-klein-4b";
     const AI_HORDE_IMAGE_MODEL = "AI Horde";
     const AI_HORDE_IMAGE_MODEL_ALIASES = [AI_HORDE_IMAGE_MODEL, "ai horde", "aihorde", "aihorde.net"];
@@ -4053,6 +4054,103 @@ ${storageNote}`;
 
     function isCommunityApiKey(value = "") {
       return String(value || "").trim() === communityApiKey();
+    }
+
+    // An anonymous, locally persistent ID for requests made with the built-in
+    // Community API Key. Do not make one for players using their own API key.
+    // This is deliberately separate from saved game state and imported stories.
+    const COMMUNITY_PLAYER_ADJECTIVES = Object.freeze([
+      "Amber", "Arctic", "Azure", "Bright", "Cedar", "Cloudy", "Cobalt", "Copper",
+      "Crimson", "Daring", "Dawn", "Dusky", "Echo", "Ember", "Fallen", "Frosty",
+      "Gentle", "Glowing", "Golden", "Hidden", "Indigo", "Iron", "Ivory", "Jade",
+      "Lucky", "Lunar", "Maple", "Midnight", "Misty", "Mossy", "Mystic", "Noble",
+      "Northern", "Opal", "Pearl", "Quiet", "Radiant", "River", "Ruby", "Sable",
+      "Sapphire", "Scarlet", "Shadow", "Silent", "Silver", "Smoky", "Snowy", "Solar",
+      "Starlit", "Stone", "Stormy", "Sunny", "Swift", "Twilight", "Umber", "Velvet",
+      "Violet", "Wandering", "Whispering", "Wild", "Willow", "Windy", "Winter", "Wondrous"
+    ]);
+    const COMMUNITY_PLAYER_ANIMALS = Object.freeze([
+      "Badger", "Bear", "Beaver", "Bison", "Bobcat", "Caracal", "Coyote", "Crane",
+      "Deer", "Dolphin", "Dove", "Dragon", "Eagle", "Elk", "Falcon", "Ferret",
+      "Finch", "Firefly", "Fox", "Gazelle", "Gecko", "Hare", "Hawk", "Hedgehog",
+      "Heron", "Jackal", "Jaguar", "Kestrel", "Kingfisher", "Koala", "Leopard", "Lynx",
+      "Marten", "Monarch", "Moose", "Moth", "Mouse", "Ocelot", "Oriole", "Otter",
+      "Owl", "Panda", "Panther", "Phoenix", "Puma", "Rabbit", "Raccoon", "Raven",
+      "Robin", "Salamander", "Seal", "Sparrow", "Stag", "Stoat", "Swan", "Tern",
+      "Tiger", "Turtle", "Viper", "Weasel", "Whale", "Wolf", "Wren", "Yak"
+    ]);
+    let cachedCommunityPlayerId = "";
+
+    function randomCommunityPlayerInt(maxExclusive) {
+      if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+        const numbers = new Uint32Array(1);
+        const cutoff = Math.floor(4294967296 / maxExclusive) * maxExclusive;
+        do { crypto.getRandomValues(numbers); } while (numbers[0] >= cutoff);
+        return numbers[0] % maxExclusive;
+      }
+      return Math.floor(Math.random() * maxExclusive);
+    }
+
+    function communityPlayerOsCode() {
+      const agent = String(navigator.userAgent || "");
+      const platform = String(navigator.userAgentData?.platform || navigator.platform || "");
+      const device = `${agent} ${platform}`;
+      if (/Android/i.test(device)) return "And";
+      if (/iPhone|iPad|iPod/i.test(agent) || (/Mac/i.test(platform) && navigator.maxTouchPoints > 1)) return "iOS";
+      if (/Windows|Win32|Win64/i.test(device)) return "Win";
+      if (/CrOS|Chrome OS/i.test(device)) return "Chr";
+      if (/Macintosh|Mac OS|MacIntel/i.test(device)) return "Mac";
+      if (/Linux/i.test(device)) return "Lin";
+      return "Unk";
+    }
+
+    function communityPlayerBrowserCode() {
+      const agent = String(navigator.userAgent || "");
+      if (/Edg\/|EdgA\/|EdgiOS\//i.test(agent)) return "Edg";
+      if (/OPR\/|Opera|OPiOS\//i.test(agent)) return "Ope";
+      if (/SamsungBrowser\//i.test(agent)) return "Sam";
+      if (/Vivaldi\//i.test(agent)) return "Viv";
+      if (/FxiOS\/|Firefox\//i.test(agent)) return "Fir";
+      if (/CriOS\/|Chrome\/|Chromium\//i.test(agent)) return "Chr";
+      if (/Safari\//i.test(agent)) return "Saf";
+      return "Unk";
+    }
+
+    function communityPlayerTimezoneCode() {
+      let timezone = "";
+      try { timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (_) {}
+      return String(timezone || "Unknown").split("/").map(part => {
+        return part.replace(/[^A-Za-z]/g, "").slice(0, 3) || "Unk";
+      }).join("/");
+    }
+
+    function createCommunityPlayerId() {
+      const adjective = COMMUNITY_PLAYER_ADJECTIVES[randomCommunityPlayerInt(COMMUNITY_PLAYER_ADJECTIVES.length)];
+      const animal = COMMUNITY_PLAYER_ANIMALS[randomCommunityPlayerInt(COMMUNITY_PLAYER_ANIMALS.length)];
+      const language = String(navigator.language || navigator.languages?.[0] || "und")
+        .replace(/[^A-Za-z0-9-]/g, "") || "und";
+      const fourDigits = String(randomCommunityPlayerInt(10000)).padStart(4, "0");
+      return `${adjective}-${animal}-${communityPlayerOsCode()}-${communityPlayerBrowserCode()}-${communityPlayerTimezoneCode()}-${language}-${fourDigits}`;
+    }
+
+    function getCommunityPlayerId() {
+      if (cachedCommunityPlayerId) return cachedCommunityPlayerId;
+      try {
+        const saved = localStorage.getItem(COMMUNITY_PLAYER_ID_STORAGE_KEY);
+        if (saved && saved.length <= 256 &&
+          /^[A-Za-z]+-[A-Za-z]+-[A-Za-z]{3}-[A-Za-z]{3}-[A-Za-z]{3}(?:\/[A-Za-z]{3})*-[A-Za-z0-9-]+-\d{4}$/.test(saved)) {
+          cachedCommunityPlayerId = saved;
+          return saved;
+        }
+      } catch (_) { /* Some file:// or privacy contexts block localStorage. */ }
+      const id = createCommunityPlayerId();
+      cachedCommunityPlayerId = id;
+      try { localStorage.setItem(COMMUNITY_PLAYER_ID_STORAGE_KEY, id); } catch (_) {}
+      return id;
+    }
+
+    function addCommunityPlayerToOpenRouterPayload(payload, key) {
+      if (isCommunityApiKey(key)) payload.user = getCommunityPlayerId();
     }
 
     function isUsingCommunityApiKey() {
@@ -9384,6 +9482,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       if (!disableJsonResponseFormat) {
         payload.response_format = { type: "json_object" };
       }
+      addCommunityPlayerToOpenRouterPayload(payload, key);
       const fetchOptions = {
         method: "POST",
         headers: {
@@ -11104,6 +11203,7 @@ SVG requirements:
       else payload.model = modelRequest.model;
       const reasoningEffort = openRouterReasoningEffortForRequest(modelRequest, { max_tokens: payload.max_tokens });
       if (reasoningEffort) payload.reasoning = { effort: reasoningEffort };
+      addCommunityPlayerToOpenRouterPayload(payload, key);
 
       const res = await withLlmResponseWait(() => fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -12031,6 +12131,7 @@ SVG requirements:
           image_size: state.settings.imageSize || "1K"
         }
       };
+      addCommunityPlayerToOpenRouterPayload(payload, key);
       const res = await withLlmResponseWait(() => fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {

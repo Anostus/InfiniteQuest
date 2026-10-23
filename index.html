@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Infinite Quest - OpenRouter CYOA Engine v2.75</title>
+  <title>Infinite Quest - OpenRouter CYOA Engine v2.76</title>
   <style>
     :root {
       --bg: #07131d;
@@ -497,6 +497,14 @@
       width: 100%;
       align-self: start;
     }
+    .image-wrap.manual-copy-image-wrap {
+      min-height: 0;
+      height: auto;
+      aspect-ratio: auto;
+      overflow: visible;
+      display: block;
+      position: relative;
+    }
     .image-wrap.pollinations-square {
       aspect-ratio: 1 / 1;
       min-height: 0;
@@ -509,6 +517,22 @@
       min-height: 0;
     }
     .image-placeholder { padding: 24px; color: var(--dim); text-align: center; }
+
+    .manual-image-prompt-content {
+      width: min(100%, 620px);
+      padding: 16px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .manual-image-prompt-content p { margin: 0; color: var(--muted); line-height: 1.45; }
+    .manual-image-prompt-content a { color: var(--gold2); }
+    .manual-image-prompt-content textarea {
+      width: 100%;
+      min-height: 190px;
+      resize: vertical;
+      background: rgba(0,0,0,.3);
+    }
 
     .choices {
       display: grid;
@@ -944,6 +968,13 @@
       display: flex;
       gap: 8px;
       z-index: 3;
+    }
+
+    .image-actions.manual-copy-actions {
+      position: static;
+      justify-content: flex-start;
+      flex-wrap: wrap;
+      padding: 0 16px 14px;
     }
 
     .image-swap-actions {
@@ -1846,7 +1877,7 @@
           <p class="mini">This is a purely client-side app. Calls go directly from your browser to OpenRouter; no key is sent anywhere else by this file.</p>
 
           <label class="checkline"><input id="filterFreeOptions" type="checkbox" /> Filter for free options</label>
-          <p class="mini">When enabled, the story model list shows Curated Free Mix, <code>openrouter/free</code>, and models ending in <code>:free</code>; the image model list shows Pollinations.ai, AI Horde+SVG Placeholder, AI Horde, and SVG mode. Pollinations.ai is the default free image generator.</p>
+          <p class="mini">When enabled, the story model list shows Curated Free Mix, <code>openrouter/free</code>, and models ending in <code>:free</code>; free image options include Pollinations.ai, Manual Copy-Paste Mode, AI Horde+SVG Placeholder, AI Horde, and SVG mode. Pollinations.ai is the default free image generator.</p>
           <label class="checkline"><input id="addFallbackModels" type="checkbox" /> Add fallback models if this one fails due to rate limiting</label>
           <p class="mini">When enabled, OpenRouter receives the selected Story LLM first, followed by Fallback 1 and Fallback 2 as backup text models.</p>
           <div class="two-col">
@@ -2190,7 +2221,7 @@
               <p class="mini">Optional controls for turn input, prompt context, and LLM request usage.</p>
               <label class="checkline"><input id="enableStorytellerMode" type="checkbox" /> Enable storyteller mode (grays out the player action box and adds a storyteller box where the player can dictate what happens each turn)</label>
               <label class="checkline"><input id="disableTextTruncation" type="checkbox" /> Disable text truncation (by default, text sent to the LLM, such as past turns, is truncated. This saves tokens, but details can sometimes be lost. Disabling truncation provides fuller context to the LLM at the cost of increased token usage)</label>
-              <label class="checkline"><input id="useModelResponseTokenCap" type="checkbox" /> Use the model's maximum response token cap (skips the normal 2,600 → 4,000 → 6,000 story-response ramp and immediately requests the maximum completion tokens reported by OpenRouter; when fallbacks are enabled, the smallest reported cap in the active route is used; if no cap is reported, 6,000 tokens is used)</label>
+              <label class="checkline"><input id="useModelResponseTokenCap" type="checkbox" /> Use the model's maximum response token cap (always used for Nemotron and openrouter/free story routes; for other models, skips the normal 2,600 → 4,000 → 6,000 ramp. With fallbacks, the smallest reported route cap is used; if no cap is reported, 6,000 tokens is used)</label>
               <label id="llmAssistedJsonRepairLabel" class="checkline"><input id="llmAssistedJsonRepair" type="checkbox" /> LLM-assisted JSON Repair (if structured output remains malformed, send the broken JSON back to the LLM with compact request context and ask it to repair/complete it once; also try this recovery before rejecting a story that still hits its response-token limit; disabled by Turn Saver Mode)</label>
               <label class="checkline"><input id="turnSaverMode" type="checkbox" /> Turn Saver Mode (disables most advanced features and ensures that only one prompt is sent per turn to reduce usage)</label>
               <label class="checkline"><input id="addContinueNarrationButton" type="checkbox" /> Add Continue Narration Button (adds a Continue Narration button that advances the story naturally without requiring a player action, using storyteller-style continuation for that turn)</label>
@@ -2224,6 +2255,7 @@
                 <textarea id="defaultTriggerValue" placeholder="Neutral; curious about the player."></textarea>
               </label>
               <button id="btnAddDefaultTrigger" class="accent" type="button">＋ Add default tracker</button>
+              <button id="btnRemoveAllDefaultTrackers" class="danger" type="button">Remove all default trackers</button>
               <div id="defaultTriggerList" class="stack"></div>
             </div>
           <summary id="btnToggleEventTriggers" class="setup-toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="eventTriggersPanel">
@@ -2251,6 +2283,7 @@
               </label>
               <label id="eventTriggerAppendLabel" class="checkline event-trigger-append-row disabled"><input id="eventTriggerAppendAfter" type="checkbox" disabled /> Add short additional text after the current main story response when this after-response trigger activates</label>
               <button id="btnAddEventTrigger" class="accent" type="button">＋ Add event trigger</button>
+              <button id="btnRemoveAllEventTriggers" class="danger" type="button">Remove all event triggers</button>
               <div id="eventTriggerList" class="stack"></div>
             </div>
           <summary id="btnToggleRpgStats" class="setup-toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="rpgStatsPanel">
@@ -2740,6 +2773,8 @@
     const STORAGE_KEY = "infiniteQuestOpenRouterState.v1";
     const COMMUNITY_PLAYER_ID_STORAGE_KEY = "infiniteQuestCommunityPlayerId.v1";
     const DEFAULT_IMAGE_MODEL = "black-forest-labs/flux.2-klein-4b";
+    const MANUAL_COPY_PASTE_IMAGE_MODEL = "Manual Copy-Paste Mode";
+    const MANUAL_COPY_PASTE_IMAGE_MODEL_ALIASES = [MANUAL_COPY_PASTE_IMAGE_MODEL, "manual-copy-paste", "manual copy paste"];
     const AI_HORDE_IMAGE_MODEL = "AI Horde";
     const AI_HORDE_IMAGE_MODEL_ALIASES = [AI_HORDE_IMAGE_MODEL, "ai horde", "aihorde", "aihorde.net"];
     const POLLINATIONS_IMAGE_MODEL = "Pollinations.ai";
@@ -2748,6 +2783,7 @@
     const SVG_IMAGE_MODEL_ALIASES = [SVG_IMAGE_MODEL, "svg", "svg image", "svg mode", "llm svg"];
     const AI_HORDE_SVG_IMAGE_MODEL = "AI Horde+SVG Placeholder";
     const AI_HORDE_SVG_IMAGE_MODEL_ALIASES = [AI_HORDE_SVG_IMAGE_MODEL, "ai horde + svg placeholder", "ai horde svg placeholder", "aihorde+svg", "horde+svg", "dual free image mode"];
+    const FREE_IMAGE_MODEL_OPTIONS = [POLLINATIONS_IMAGE_MODEL, MANUAL_COPY_PASTE_IMAGE_MODEL, AI_HORDE_SVG_IMAGE_MODEL, AI_HORDE_IMAGE_MODEL, SVG_IMAGE_MODEL];
     const AI_HORDE_ANONYMOUS_API_KEY = "0000000000";
     const AI_HORDE_CLIENT_AGENT = "Infinite Quest CYOA Engine:browser";
     const AI_HORDE_POLL_INTERVAL_MS = 4500;
@@ -2807,7 +2843,7 @@
     const SPECIAL_OPENROUTER_KEY_LENGTH = 73;
     const COMMUNITY_API_KEY_ROT13_PARTS = ["fx-be-i1-53855", "45nn757110o8no", "q764811p8ro18p", "6o0p87963rr1sn", "2sn8907715so5q", "819"];
     const DEFAULT_LLM_MODELS = [DEFAULT_LLM_MODEL, DEFAULT_FREE_LLM_MODEL, "anthropic/claude-sonnet-4.5", "google/gemini-2.5-pro", "openai/gpt-4o-mini"];
-    const DEFAULT_IMAGE_MODELS = [POLLINATIONS_IMAGE_MODEL, AI_HORDE_SVG_IMAGE_MODEL, AI_HORDE_IMAGE_MODEL, SVG_IMAGE_MODEL, DEFAULT_IMAGE_MODEL, "black-forest-labs/flux-1.1-pro", "google/gemini-2.5-flash-image"];
+    const DEFAULT_IMAGE_MODELS = [...FREE_IMAGE_MODEL_OPTIONS, DEFAULT_IMAGE_MODEL, "black-forest-labs/flux-1.1-pro", "google/gemini-2.5-flash-image"];
     const BUNDLED_VIDEO_MODELS = Object.freeze(["alibaba/wan-3.0", "bytedance/seedance-2.5", "google/veo-3.1-lite", "alibaba/wan-2.7"]);
     const PREFERRED_VIDEO_DEFAULTS = Object.freeze({ duration: 5, resolution: "480p", aspectRatio: "3:2" });
     const COMMON_VIDEO_SAFE_DEFAULTS = Object.freeze({ duration: 4, resolution: "720p", aspectRatio: "16:9" });
@@ -3243,7 +3279,7 @@
         memoryInstructions: "",
         suppressTriggers: false
       },
-      modelLists: { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS, llmContextLengths: {}, llmMaxCompletionTokens: {}, aiHordeModels: [], aiHordeModelsLoadedAt: 0 },
+      modelLists: { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS, llmContextLengths: {}, llmMaxCompletionTokens: {}, llmTokenPricing: {}, aiHordeModels: [], aiHordeModelsLoadedAt: 0 },
       rpgStats: deepClone(DEFAULT_RPG_STATS),
       defaultTriggers: [],
       eventTriggers: [],
@@ -4660,7 +4696,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     }
 
     function shouldAutoGenerateTurnImages() {
-      return !isTurnSaverMode() && state.settings?.generateImages !== false;
+      return !isManualCopyPasteImageModel() && !isTurnSaverMode() && state.settings?.generateImages !== false;
     }
 
     function enforceTurnSaverModeSettings() {
@@ -4963,6 +4999,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
           images: [...(source.modelLists?.images || DEFAULT_IMAGE_MODELS)],
           llmContextLengths: normalizeModelContextLengths(source.modelLists?.llmContextLengths),
           llmMaxCompletionTokens: normalizeModelCompletionTokenCaps(source.modelLists?.llmMaxCompletionTokens),
+          llmTokenPricing: normalizeModelTokenPricing(source.modelLists?.llmTokenPricing),
           llmsLoadedAt: source.modelLists?.llmsLoadedAt || 0,
           aiHordeModels: (source.modelLists?.aiHordeModels || []).slice(0, 800).map(model => ({
             name: truncateText(model?.name || "", 240),
@@ -5162,9 +5199,10 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         target.world = { title: "", genre: "", tone: "", backgroundStory: "", character: "", premise: "", firstAction: "", rules: "", memoryInstructions: "", suppressTriggers: false };
       }
       delete target.collapsedPanels;
-      target.modelLists ||= { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS, llmContextLengths: {}, llmMaxCompletionTokens: {}, aiHordeModels: [], aiHordeModelsLoadedAt: 0 };
+      target.modelLists ||= { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS, llmContextLengths: {}, llmMaxCompletionTokens: {}, llmTokenPricing: {}, aiHordeModels: [], aiHordeModelsLoadedAt: 0 };
       target.modelLists.llmContextLengths = normalizeModelContextLengths(target.modelLists.llmContextLengths);
       target.modelLists.llmMaxCompletionTokens = normalizeModelCompletionTokenCaps(target.modelLists.llmMaxCompletionTokens);
+      target.modelLists.llmTokenPricing = normalizeModelTokenPricing(target.modelLists.llmTokenPricing);
       if (target.settings && typeof target.settings === "object") {
         delete target.settings.freeModelsOnly;
         delete target.settings.freeModelsWithPollinations;
@@ -5212,6 +5250,19 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         const id = String(modelId || "").trim().toLowerCase();
         const limit = Math.floor(Number(rawLimit));
         if (id && Number.isFinite(limit) && limit > 0) normalized[id] = limit;
+      });
+      return normalized;
+    }
+
+    function normalizeModelTokenPricing(value = {}) {
+      const normalized = {};
+      if (!value || typeof value !== "object" || Array.isArray(value)) return normalized;
+      Object.entries(value).forEach(([modelId, rawPricing]) => {
+        const id = String(modelId || "").trim().toLowerCase();
+        const prompt = Number(rawPricing?.prompt);
+        const completion = Number(rawPricing?.completion);
+        if (id && Number.isFinite(prompt) && prompt >= 0 && Number.isFinite(completion) && completion >= 0
+            && (prompt > 0 || completion > 0)) normalized[id] = { prompt, completion };
       });
       return normalized;
     }
@@ -5907,8 +5958,20 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       return caps;
     }
 
+    function extractOpenRouterModelTokenPricing(models = []) {
+      const pricing = {};
+      (models || []).forEach(model => {
+        const id = String(model?.id || "").trim().toLowerCase();
+        const prompt = Number(model?.pricing?.prompt);
+        const completion = Number(model?.pricing?.completion);
+        if (id && Number.isFinite(prompt) && prompt >= 0 && Number.isFinite(completion) && completion >= 0
+            && (prompt > 0 || completion > 0)) pricing[id] = { prompt, completion };
+      });
+      return pricing;
+    }
+
     function cacheOpenRouterModelCatalog(models = []) {
-      state.modelLists ||= { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS, llmContextLengths: {}, llmMaxCompletionTokens: {}, aiHordeModels: [], aiHordeModelsLoadedAt: 0 };
+      state.modelLists ||= { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS, llmContextLengths: {}, llmMaxCompletionTokens: {}, llmTokenPricing: {}, aiHordeModels: [], aiHordeModelsLoadedAt: 0 };
       state.modelLists.llmContextLengths = {
         ...normalizeModelContextLengths(state.modelLists.llmContextLengths),
         ...extractOpenRouterModelContextLengths(models)
@@ -5916,6 +5979,10 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       state.modelLists.llmMaxCompletionTokens = {
         ...normalizeModelCompletionTokenCaps(state.modelLists.llmMaxCompletionTokens),
         ...extractOpenRouterModelCompletionTokenCaps(models)
+      };
+      state.modelLists.llmTokenPricing = {
+        ...normalizeModelTokenPricing(state.modelLists.llmTokenPricing),
+        ...extractOpenRouterModelTokenPricing(models)
       };
     }
 
@@ -6013,7 +6080,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
 
     function openRouterReasoningEffortForRequest(modelRequest = {}, options = {}) {
       if (!modelRequestUsesLowReasoning(modelRequest)) return "";
-      // Main story requests keep their existing low-reasoning behavior unchanged.
+      // Main story requests keep their existing v2.75 low-reasoning behavior unchanged.
       if (options.story_request) return "low";
 
       // Helpers originally in the >2000 through 2600 band are intentionally raised
@@ -6055,7 +6122,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     }
 
     function storyOutputBudgetCeiling(modelRequest = {}) {
-      if (state.settings?.useModelResponseTokenCap) {
+      if (state.settings?.useModelResponseTokenCap || modelRequestIncludesNemotron(modelRequest)) {
         const reportedCap = modelRequestMaxCompletionTokenCap(modelRequest);
         return reportedCap > 0 ? reportedCap : MAX_STORY_OUTPUT_TOKENS;
       }
@@ -6063,11 +6130,10 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     }
 
     function effectiveStoryOutputTokenBudget(requestedTokens = DEFAULT_STORY_OUTPUT_TOKENS, modelRequest = {}) {
-      if (state.settings?.useModelResponseTokenCap) {
+      if (state.settings?.useModelResponseTokenCap || modelRequestIncludesNemotron(modelRequest)) {
         return storyOutputBudgetCeiling(modelRequest);
       }
       let budget = Math.max(1, Number(requestedTokens) || DEFAULT_STORY_OUTPUT_TOKENS);
-      if (modelRequestIncludesNemotron(modelRequest)) budget = Math.max(budget, EXPANDED_STORY_OUTPUT_TOKENS);
       const persistedBudget = persistedLengthExpandedStoryOutputBudget();
       if (persistedBudget) budget = Math.max(budget, persistedBudget);
       return budget;
@@ -6160,6 +6226,11 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       return match[1].split(".").map(part => Number(part)).filter(Number.isFinite);
     }
 
+    function nemotronVersionParts(modelId = "") {
+      const match = String(modelId || "").toLowerCase().match(/nemotron[-_ ](\d+(?:\.\d+)*)/);
+      return match ? match[1].split(".").map(part => Number(part)).filter(Number.isFinite) : [];
+    }
+
     function compareVersionPartsDesc(aParts = [], bParts = []) {
       const len = Math.max(aParts.length, bParts.length);
       for (let i = 0; i < len; i += 1) {
@@ -6182,6 +6253,61 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       return totalDiff || String(a).localeCompare(String(b));
     }
 
+    function paidCounterpartTokenPricing(modelId = "") {
+      const id = String(modelId || "").trim().toLowerCase().replace(/:free$/, "");
+      const pricing = state.modelLists?.llmTokenPricing?.[id];
+      if (!pricing) return null;
+      const prompt = Number(pricing.prompt);
+      const completion = Number(pricing.completion);
+      return prompt > 0 || completion > 0 ? { prompt, completion } : null;
+    }
+
+    function parameterizedFreePriceBenchmarks(freeIds = []) {
+      return freeIds
+        .filter(id => largestActiveParameterB(id) > 0 && largestNonActiveParameterB(id) > 0)
+        .map(id => paidCounterpartTokenPricing(id))
+        .filter(Boolean);
+    }
+
+    function priceMatchScore(modelId = "", benchmarks = []) {
+      const price = paidCounterpartTokenPricing(modelId);
+      if (!price || !benchmarks.length) return null;
+      const completion = price.completion > 0 ? price.completion : price.prompt;
+      const prompt = price.prompt > 0 ? price.prompt : price.completion;
+      const scores = benchmarks.map(reference => {
+        const referenceCompletion = reference.completion > 0 ? reference.completion : reference.prompt;
+        const referencePrompt = reference.prompt > 0 ? reference.prompt : reference.completion;
+        const completionDistance = Math.abs(Math.log(completion / referenceCompletion));
+        const promptDistance = Math.abs(Math.log(prompt / referencePrompt));
+        return {
+          above: completion > referenceCompletion || prompt > referencePrompt,
+          distance: completionDistance + promptDistance,
+          completionDistance
+        };
+      }).sort((a, b) => Number(a.above) - Number(b.above)
+        || a.distance - b.distance || a.completionDistance - b.completionDistance);
+      return scores[0];
+    }
+
+    function compareNemotronCandidates(a, b, benchmarks = []) {
+      const versionDiff = compareVersionPartsDesc(nemotronVersionParts(a), nemotronVersionParts(b));
+      if (versionDiff) return versionDiff;
+      const aActive = largestActiveParameterB(a);
+      const bActive = largestActiveParameterB(b);
+      if (aActive > 0 && bActive > 0) return compareModelsByActiveThenTotalBDesc(a, b);
+      const aPrice = priceMatchScore(a, benchmarks);
+      const bPrice = priceMatchScore(b, benchmarks);
+      if (aPrice && bPrice) {
+        return Number(aPrice.above) - Number(bPrice.above)
+          || aPrice.distance - bPrice.distance
+          || aPrice.completionDistance - bPrice.completionDistance
+          || String(a).localeCompare(String(b));
+      }
+      if (aPrice) return -1;
+      if (bPrice) return 1;
+      return compareModelsByActiveThenTotalBDesc(a, b);
+    }
+
     function buildCuratedFreeMixModelOrder(modelIds = []) {
       const freeIds = uniqueModelIds(modelIds)
         .filter(id => isFreeModelId(id) && !isCuratedFreeMixModelId(id) && String(id).trim().toLowerCase().endsWith(":free"));
@@ -6197,9 +6323,33 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         .filter(id => predicate(String(id).toLowerCase()) && largestParameterB(id) > 0)
         .sort(compareModelsByLargestBDesc)[0];
 
-      add(activeAndTotalMatchingModel(id => id.includes("gemma")));
-      add(activeAndTotalMatchingModel(id => id.includes("nemotron"), activeB => activeB < 20));
+      const gemma = activeAndTotalMatchingModel(id => id.includes("gemma"));
+      const nemotronIds = freeIds.filter(id => id.toLowerCase().includes("nemotron"))
+        .filter(id => !/content[-_]safety/.test(id.toLowerCase()));
+      const namedNemotrons = nemotronIds.filter(id => largestActiveParameterB(id) > 0
+        && largestActiveParameterB(id) < 20 && largestNonActiveParameterB(id) > 0);
+      const namedNemotronBenchmarks = parameterizedFreePriceBenchmarks(namedNemotrons);
+      const gemmaBenchmarks = parameterizedFreePriceBenchmarks(freeIds.filter(id => id.toLowerCase().includes("gemma")));
+      const nemotronPriceBenchmarks = namedNemotronBenchmarks.length ? namedNemotronBenchmarks : gemmaBenchmarks;
+      const priceMatchedNemotrons = nemotronIds.filter(id => {
+        if (largestActiveParameterB(id) !== 0) return false;
+        const score = priceMatchScore(id, nemotronPriceBenchmarks);
+        return !!score && !score.above;
+      });
+      const nemotronModels = [...namedNemotrons, ...priceMatchedNemotrons];
+      const rankedNemotrons = nemotronModels.slice().sort((a, b) => compareNemotronCandidates(a, b, nemotronPriceBenchmarks));
+      const primaryNemotron = rankedNemotrons[0] || "";
+
+      add(gemma);
+      add(primaryNemotron);
       add(largestMatchingModel(id => /gpt[-_]?oss/.test(id)));
+      // GPT-OSS may no longer have a free listing. If a family slot is still
+      // empty, use the next distinct Nemotron that satisfies the same eligibility.
+      while (order.length < 3) {
+        const nextNemotron = rankedNemotrons.find(id => id !== primaryNemotron && !order.includes(id));
+        if (!nextNemotron) break;
+        add(nextNemotron);
+      }
 
       return order;
     }
@@ -6229,6 +6379,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
           llms,
           llmContextLengths: normalizeModelContextLengths(state.modelLists?.llmContextLengths),
           llmMaxCompletionTokens: normalizeModelCompletionTokenCaps(state.modelLists?.llmMaxCompletionTokens),
+          llmTokenPricing: normalizeModelTokenPricing(state.modelLists?.llmTokenPricing),
           llmsLoadedAt: Date.now()
         };
         populateModelSelects();
@@ -6722,6 +6873,11 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       saveState();
     }
 
+    function isManualCopyPasteImageModel(modelId = state.settings?.imageModel) {
+      const id = String(modelId || "").trim().toLowerCase();
+      return MANUAL_COPY_PASTE_IMAGE_MODEL_ALIASES.some(alias => id === alias.toLowerCase());
+    }
+
     function isPollinationsImageModel(modelId = "") {
       const id = String(modelId || "").trim().toLowerCase();
       return POLLINATIONS_IMAGE_MODEL_ALIASES.some(alias => id === alias.toLowerCase());
@@ -6747,7 +6903,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     }
 
     function isFreeImageModel(modelId = "") {
-      return isPollinationsImageModel(modelId) || isAiHordeSvgImageModel(modelId) || isAiHordeImageModel(modelId) || isSvgImageModel(modelId);
+      return isManualCopyPasteImageModel(modelId) || isPollinationsImageModel(modelId) || isAiHordeSvgImageModel(modelId) || isAiHordeImageModel(modelId) || isSvgImageModel(modelId);
     }
 
     function preferredFreeImageModel() {
@@ -6768,6 +6924,9 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       if (isAiHordeSvgImageModel(id)) return AI_HORDE_SVG_IMAGE_MODEL;
       if (isAiHordeImageModel(id)) return AI_HORDE_IMAGE_MODEL;
       if (isPollinationsImageModel(id)) return POLLINATIONS_IMAGE_MODEL;
+      // Retired local-model IDs in older saves fall back to the supported free provider.
+      if (/^(?:nanodiffuser\b|utkucoban\/nanodiffuser\b)/i.test(id)) return POLLINATIONS_IMAGE_MODEL;
+      if (isManualCopyPasteImageModel(id)) return MANUAL_COPY_PASTE_IMAGE_MODEL;
       if (isSvgImageModel(id)) return SVG_IMAGE_MODEL;
       return id;
     }
@@ -6936,7 +7095,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
           state.settings.llmModel = selectedLlm;
         }
 
-        images = [POLLINATIONS_IMAGE_MODEL, AI_HORDE_SVG_IMAGE_MODEL, AI_HORDE_IMAGE_MODEL, SVG_IMAGE_MODEL];
+        images = [...FREE_IMAGE_MODEL_OPTIONS];
         if (!isFreeImageModel(selectedImage)) selectedImage = preferredFreeImageModel();
         state.settings.imageModel = selectedImage;
         rememberFreeImageModel(selectedImage);
@@ -6967,7 +7126,10 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       if (isStoryModelSelect && state.settings?.addFallbackModels && isCuratedFreeMixModelId(value)) {
         value = firstAllowedLlmModel(items, { preferFree: !!state.settings.filterFreeOptions });
       }
-      let allItems = uniqueModelIds(items, value ? [value] : []);
+      let allItems = uniqueModelIds(items, [
+        ...(id === "imageModel" ? FREE_IMAGE_MODEL_OPTIONS : []),
+        ...(value ? [value] : [])
+      ]);
       if (isStoryModelSelect && state.settings?.addFallbackModels) {
         allItems = allItems.filter(item => !isCuratedFreeMixModelId(item));
       }
@@ -7068,10 +7230,15 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
           : aiHordeMode
             ? "AI Horde uses this aspect ratio with its dedicated generation-resolution setting."
             : pollinationsMode
-              ? "Pollinations.ai images use a fixed 1:1 square."
+              ? "The selected image model uses a fixed native size."
               : svgMode
                 ? "SVG mode uses this aspect ratio and the selected image-size long edge."
                 : "";
+      }
+      const imageSize = $("imageSize");
+      if (imageSize) {
+        imageSize.disabled = false;
+        imageSize.title = "";
       }
       updateAiHordeSettingsVisibility();
       const fallbackEnabled = !!state.settings.addFallbackModels;
@@ -7094,7 +7261,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       const customImage = $("imageModelCustom");
       if (customImage) {
         customImage.disabled = filterFreeOptions;
-        customImage.placeholder = filterFreeOptions ? "Filtered to Pollinations.ai, AI Horde+SVG Placeholder, AI Horde, or SVG mode" : "e.g. black-forest-labs/flux.2-klein-4b";
+        customImage.placeholder = filterFreeOptions ? "Choose from the free image models above" : "e.g. black-forest-labs/flux.2-klein-4b";
       }
       updateVideoFeatureAvailability();
     }
@@ -8159,18 +8326,39 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       saveState();
     }
 
+    function manualImagePromptPanelHtml(promptText = "") {
+      return `<div class="manual-image-prompt-content">
+        <p>Copy this prompt to your favorite image generator. We recommend <a href="https://perchance.org/ai-text-to-image-generator" target="_blank" rel="noopener noreferrer">Perchance</a>.</p>
+        <textarea readonly aria-label="Image prompt to copy">${escapeHtml(promptText || "No image prompt is available for this turn yet.")}</textarea>
+      </div>`;
+    }
+
+    async function copyManualImagePrompt(turnId) {
+      const turn = state.turns.find(item => item.id === turnId) || viewedTurn();
+      const promptText = String(turn?.imagePrompt || "").trim();
+      if (!promptText) return toast("No image prompt is available to copy yet.");
+      try {
+        const copied = await copyTextToClipboardOrPrompt(promptText, "Copy this image prompt:");
+        if (copied) toast("Image prompt copied.");
+      } catch (error) {
+        toast(`Could not copy the image prompt: ${error.message || String(error)}`);
+      }
+    }
+
     function renderStory() {
       const area = $("storyArea");
       if (transientUi.generatingTurn) {
         const pending = transientUi.pendingAction || (isStorytellerMode() ? "Directing the next turn..." : "Resolving your action...");
         const pendingInputLabel = isStorytellerMode() ? "Storyteller instructions" : "Player action";
         const priorTurn = state.turns[state.turns.length - 1] || null;
-        const displayAsset = (isPollinationsImageMode() || isAiHordeImageMode() || isAiHordeSvgImageMode()) ? imageAssetToDisplay(priorTurn) : null;
+        const displayAsset = (isPollinationsImageMode() || isManualCopyPasteImageModel() || isAiHordeImageMode() || isAiHordeSvgImageMode()) ? imageAssetToDisplay(priorTurn) : null;
         const imageWrapClass = isPollinationsImageMode() ? "image-wrap pollinations-square" : "image-wrap aspect-ratio-locked";
         const imageWrapStyle = imageAssetAspectStyle(displayAsset, displayAsset?.turn || priorTurn);
         const imageHtml = displayAsset?.url
           ? `<img src="${escapeHtml(displayAsset.url)}" alt="Scene illustration from turn ${escapeHtml(displayAsset.turn.turnNumber)}" data-turn-image="true">`
-          : `<div class="image-loading"><div class="spinner"></div><div>No completed scene image yet.</div></div>`;
+          : isManualCopyPasteImageModel()
+            ? manualImagePromptPanelHtml(priorTurn?.imagePrompt || "")
+            : `<div class="image-loading"><div class="spinner"></div><div>No completed scene image yet.</div></div>`;
         const captionHtml = isAiHordeSvgImageMode()
           ? `<figcaption class="image-caption" aria-live="polite">${combinedImageCaption(displayAsset, priorTurn)}</figcaption>`
           : isAiHordeImageMode()
@@ -8222,11 +8410,15 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         return;
       }
       const turn = state.turns[state.viewIndex];
+      const manualCopyPasteMode = isManualCopyPasteImageModel();
       const turnInputLabel = turnUsesStorytellerMode(turn) ? "Storyteller instructions" : "Player action";
       const displayAsset = imageAssetToDisplay(turn);
-      const imageWrapClass = isPollinationsImageMode() ? "image-wrap pollinations-square" : "image-wrap aspect-ratio-locked";
-      const imageWrapStyle = imageAssetAspectStyle(displayAsset, turn);
       const displayImageUrl = displayAsset?.url || "";
+      const manualPromptPanelShown = manualCopyPasteMode && !isSafeDisplayImageUrl(displayImageUrl);
+      const imageWrapClass = manualPromptPanelShown
+        ? "image-wrap manual-copy-image-wrap"
+        : isPollinationsImageMode() ? "image-wrap pollinations-square" : "image-wrap aspect-ratio-locked";
+      const imageWrapStyle = manualPromptPanelShown ? "" : imageAssetAspectStyle(displayAsset, turn);
       const combinedGenerating = !!(turn.imageGenerating || turn.svgPlaceholderGenerating);
       const combinedStatus = turn.svgPlaceholderGenerating && turn.imageGenerating
         ? "Generating the SVG placeholder and AI Horde image together..."
@@ -8243,7 +8435,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       const displayVideoSource = displayVideoPart ? videoPartSourceForDisplay(turn, displayVideoPart, displayVideoPartIndex) : String(turn.videoUrl || "").trim();
       const playableVideoUrl = isPlayableVideoSource(displayVideoSource);
       const selectedVideoHasReference = !!(displayVideoPart?.fileName || (!savedVideoPartsForDisplay.length && turn.videoAsset?.fileName));
-      const shouldDisplayVideo = turn.mediaDisplayMode !== "image" && (!!displayVideoBlob || playableVideoUrl || selectedVideoHasReference);
+      const shouldDisplayVideo = !manualCopyPasteMode && turn.mediaDisplayMode !== "image" && (!!displayVideoBlob || playableVideoUrl || selectedVideoHasReference);
       const missingVideoError = (turn.videoAsset?.fileName || savedVideoPartsForDisplay.some(part => part?.fileName)) && !shouldDisplayVideo && turn.videoError ? String(turn.videoError) : "";
       // Do not put a possibly empty/relative video URL into HTML markup. On file:// pages an
       // empty src resolves to this HTML document itself and Chrome reports a unique-origin error.
@@ -8252,6 +8444,8 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         ? `<video controls playsinline preload="metadata" data-turn-video="true"></video>`
         : isSafeDisplayImageUrl(displayImageUrl)
         ? `<img src="${escapeHtml(displayImageUrl)}" alt="${displayAsset?.kind === "svg" ? "SVG placeholder" : "Scene illustration"} from turn ${escapeHtml(displayAsset.turn.turnNumber)}" data-turn-image="true">`
+        : manualCopyPasteMode
+        ? manualImagePromptPanelHtml(turn.imagePrompt || "")
         : `<div class="image-placeholder">${turn.imageCandidates?.length > 1 ? `${turn.imageCandidates.length} candidates are ready.<br><br>Choose one using the image action below.` : combinedGenerating ? `<span class="spinner"></span><br><br>${escapeHtml(combinedStatus || "Generating next scene...")}` : turn.imageUrl ? escapeHtml(invalidImageUrlMessage(turn.imageUrl)) : combinedErrors ? "Image generation issue: " + escapeHtml(combinedErrors) : "No image for this turn yet."}<br><br><span class="mini">Prompt: ${escapeHtml(turn.imagePrompt || "")}</span></div>`;
       const rollHtml = renderRollCard(turn.roll);
       const modelResponseHtml = renderModelResponseCard(turn);
@@ -8282,15 +8476,18 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         : communityVideoDisabled
           ? "Video generation is unavailable with the built-in Community API Key. Add your own OpenRouter API key in Model Settings."
           : "Generate a video from this turn's image";
-      const imageActionsHtml = `
-            ${videoGeneratingOverlayHtml}
-            ${videoChainBadgeHtml}
-            ${missingVideoError ? `<div class="image-error" role="status" style="margin:8px 0 0;">Video unavailable: ${escapeHtml(missingVideoError)}</div>` : ""}
-            <div class="image-actions">
+      const imageControlButtonsHtml = `
+            <div class="image-actions${manualPromptPanelShown ? " manual-copy-actions" : ""}">
               ${turn.imageCandidates?.length > 1 ? `<button id="btnChooseImageCandidate" type="button" class="small primary">🖼️ Choose candidates</button>` : ""}
               <button id="btnGenerateVideo" type="button" class="small primary" ${videoButtonDisabled ? "disabled" : ""} title="${escapeHtml(videoButtonTitle)}" aria-label="${hasSavedVideoReference ? "Video options" : (communityVideoDisabled ? "Video generation unavailable with Community API Key" : "Generate video")}">🎥</button>
-              <button id="btnRegenImage" type="button" class="small accent" title="${hasAnyTurnImage ? "Regenerate images" : "Generate images"}" aria-label="${hasAnyTurnImage ? "Regenerate images" : "Generate images"}">🖼️</button>
+              <button id="btnRegenImage" type="button" class="small accent" title="${manualCopyPasteMode ? "Edit image prompt" : hasAnyTurnImage ? "Regenerate images" : "Generate images"}" aria-label="${manualCopyPasteMode ? "Edit image prompt" : hasAnyTurnImage ? "Regenerate images" : "Generate images"}">🖼️</button>
+              ${manualPromptPanelShown ? `<button id="btnCopyManualImagePrompt" type="button" class="small primary" ${turn.imagePrompt ? "" : "disabled"}>Copy prompt</button>` : ""}
             </div>`;
+      const imageOverlayAndStatusHtml = `
+            ${videoGeneratingOverlayHtml}
+            ${videoChainBadgeHtml}
+            ${missingVideoError ? `<div class="image-error" role="status" style="margin:8px 0 0;">Video unavailable: ${escapeHtml(missingVideoError)}</div>` : ""}`;
+      const imageActionsHtml = `${imageOverlayAndStatusHtml}${imageControlButtonsHtml}`;
       const combinedAssets = isAiHordeSvgImageMode() ? combinedImageAssetsForTurn(turn) : { horde: null, svg: null };
       const swapActionsHtml = isAiHordeSvgImageMode() && combinedAssets.horde && combinedAssets.svg
         ? `<div class="image-swap-actions${videoPartCount > 1 ? " below-video-chain" : ""}"><button id="btnSwapCombinedImage" type="button" title="Swap between the latest AI Horde image and latest SVG placeholder">⇄ Show ${displayAsset?.kind === "horde" ? "SVG" : "AI Horde"}</button></div>`
@@ -8314,7 +8511,8 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         <div class="scene">
           <article class="narration">${renderMarkdown(turn.narration)}</article>
           <figure class="image-column">
-            <div class="${imageWrapClass}"${imageWrapStyle}>${imageHtml}${swapActionsHtml}${imageActionsHtml}</div>
+            <div class="${imageWrapClass}"${imageWrapStyle}>${imageHtml}${swapActionsHtml}${manualPromptPanelShown ? imageOverlayAndStatusHtml : imageActionsHtml}</div>
+            ${manualPromptPanelShown ? imageControlButtonsHtml : ""}
             ${captionHtml}
           </figure>
         </div>
@@ -8332,6 +8530,8 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       }
       const btnRegenImage = $("btnRegenImage");
       if (btnRegenImage) btnRegenImage.onclick = () => openImagePromptDialog(turn.id);
+      const btnCopyManualImagePrompt = $("btnCopyManualImagePrompt");
+      if (btnCopyManualImagePrompt) btnCopyManualImagePrompt.onclick = () => copyManualImagePrompt(turn.id);
       const btnChooseImageCandidate = $("btnChooseImageCandidate");
       if (btnChooseImageCandidate) btnChooseImageCandidate.onclick = () => openAiHordeCandidateDialog(turn.id);
       const btnSwapCombinedImage = $("btnSwapCombinedImage");
@@ -8426,6 +8626,8 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         return;
       }
       editor.value = turn.imagePrompt || "";
+      const confirmButton = $("btnRegenerateImageConfirm");
+      if (confirmButton) confirmButton.textContent = isManualCopyPasteImageModel() ? "Save prompt" : "🖼️ Regenerate image";
       dialog.showModal();
       setTimeout(() => editor.focus(), 40);
     }
@@ -8474,6 +8676,15 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       const finalPrompt = String(promptText || "").trim();
       if (!turn) return toast("Could not find that turn.");
       if (!finalPrompt) return toast("Image prompt cannot be empty.");
+      if (isManualCopyPasteImageModel()) {
+        turn.imagePrompt = finalPrompt;
+        closeImagePromptDialog();
+        markUnsavedForFullExport();
+        saveState();
+        renderAll();
+        toast("Saved the image prompt. Copy it into your image generator when ready.");
+        return;
+      }
       const combinedMode = isAiHordeSvgImageMode();
       const previousImageUrl = turnAiHordeImageUrl(turn) || turn.imageUrl || "";
       const previousHordeJobId = String(turn.imageRequest?.provider === "aihorde" ? (turn.imageRequest.id || "") : "").trim();
@@ -8541,7 +8752,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     }
 
     async function generateImageForTurnInBackground(turn, promptText = turn?.imagePrompt) {
-      if (state.settings.generateImages === false) return;
+      if (state.settings.generateImages === false || isManualCopyPasteImageModel()) return;
       if (!turn || !promptText) return;
       const combinedMode = isAiHordeSvgImageMode();
       showLlmWaitIndicator();
@@ -8655,6 +8866,27 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       saveState();
       renderDefaultTriggers();
       renderTrackers();
+    }
+
+    function removeAllDefaultTrackers() {
+      syncDefaultTriggerEditorState();
+      normalizeDefaultTriggerState();
+      const defaultIds = new Set((state.defaultTriggers || []).map(tracker => String(tracker.id || "")).filter(Boolean));
+      if (!defaultIds.size) return toast("There are no default trackers to remove.");
+      if (!confirm("Remove all default trackers? This deletes the default tracker definitions and the actual matching trackers from the current adventure and its saved turn states, not just their contents. Continue?")) return;
+
+      state.defaultTriggers = [];
+      state.baseTrackersAtStart = normalizeTrackers(state.baseTrackersAtStart || []).filter(tracker => !defaultIds.has(String(tracker.id || "")));
+      state.trackers = normalizeTrackers(state.trackers || []).filter(tracker => !defaultIds.has(String(tracker.id || "")));
+      (state.turns || []).forEach(turn => {
+        const remaining = getTurnTrackers(turn).filter(tracker => !defaultIds.has(String(tracker.id || "")));
+        setTurnStateSnapshot(turn, getTurnScratchpad(turn), remaining);
+      });
+      if (state.turns.length) state.trackers = getTurnTrackers(state.turns[state.turns.length - 1]);
+      markUnsavedForFullExport();
+      saveState();
+      renderAll();
+      toast("All default trackers and their matching current trackers were removed.");
     }
 
     function syncDefaultTriggerEditorState() {
@@ -8814,6 +9046,19 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       setAddEventTriggerAppendEnabled();
       saveState();
       renderEventTriggers();
+    }
+
+    function removeAllEventTriggers() {
+      syncEventTriggerEditorState();
+      normalizeEventTriggerState(state);
+      if (!state.eventTriggers.length && !state.pendingEventTriggers?.length) return toast("There are no event triggers to remove.");
+      if (!confirm("Remove all event triggers? This deletes the trigger definitions themselves and discards any queued trigger events. Continue?")) return;
+      state.eventTriggers = [];
+      state.pendingEventTriggers = [];
+      markUnsavedForFullExport();
+      saveState();
+      renderAll();
+      toast("All event triggers and queued trigger events were removed.");
     }
 
     function syncEventTriggerEditorState() {
@@ -9147,6 +9392,8 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
 
     function shouldOfferModelResponseTokenCapForError(err) {
       if (!err?.isModelStoryLengthError || state.settings?.useModelResponseTokenCap) return false;
+      const activeStoryModels = [state.settings?.llmModel || "", ...configuredFallbackLlmModels(state.settings?.llmModel || "")];
+      if (activeStoryModels.some(isNemotronModelId)) return false;
       const limit = Math.max(0, Number(err.openRouterRequestedMaxTokens) || 0);
       if (limit !== MAX_STORY_OUTPUT_TOKENS) return false;
       const title = currentStoryTitleForResponseCapOffer();
@@ -9514,12 +9761,13 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       const responseMaxTokens = Math.max(1, Number(payload.max_tokens) || 1);
       if (finishReason === "length" && options.persist_length_output_budget) {
         const storyMaximum = storyOutputBudgetCeiling(modelRequest);
-        if (!state.settings?.useModelResponseTokenCap && responseMaxTokens < storyMaximum) {
+        const usingModelReportedCap = state.settings?.useModelResponseTokenCap || modelRequestIncludesNemotron(modelRequest);
+        if (!usingModelReportedCap && responseMaxTokens < storyMaximum) {
           const nextBudget = nextStoryOutputBudgetAfterLength(responseMaxTokens, storyMaximum);
           console.warn(`[Infinite Quest] ${label} hit the ${responseMaxTokens}-token output limit; future story turns will use a ${nextBudget}-token output budget until Model Settings change.`);
           enableLengthExpandedStoryOutputBudget(nextBudget);
         } else {
-          const source = state.settings?.useModelResponseTokenCap && modelRequestMaxCompletionTokenCap(modelRequest) > 0
+          const source = usingModelReportedCap && modelRequestMaxCompletionTokenCap(modelRequest) > 0
             ? "model-reported maximum"
             : "maximum story output";
           console.warn(`[Infinite Quest] ${label} hit the ${source} limit of ${storyMaximum.toLocaleString()} tokens.`);
@@ -9572,7 +9820,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         if (effectiveBudget !== requestedBudget) {
           const persistedBudget = persistedLengthExpandedStoryOutputBudget();
           const reportedCap = modelRequestMaxCompletionTokenCap(modelRequest);
-          const reason = state.settings?.useModelResponseTokenCap
+          const reason = (state.settings?.useModelResponseTokenCap || modelRequestIncludesNemotron(modelRequest))
             ? (reportedCap > 0 ? "Use Model Response Token Cap is enabled" : "Use Model Response Token Cap is enabled and no route-wide cap metadata is available, so the legacy 6,000-token ceiling is used immediately")
             : (persistedBudget >= effectiveBudget
               ? "a previous story response hit finish_reason=length"
@@ -12692,6 +12940,7 @@ ${missingList}`,
           images: uniqueModelIds(imageIds, DEFAULT_IMAGE_MODELS),
           llmContextLengths: normalizeModelContextLengths(state.modelLists?.llmContextLengths),
           llmMaxCompletionTokens: normalizeModelCompletionTokenCaps(state.modelLists?.llmMaxCompletionTokens),
+          llmTokenPricing: normalizeModelTokenPricing(state.modelLists?.llmTokenPricing),
           llmsLoadedAt: Date.now(),
           aiHordeModels: state.modelLists?.aiHordeModels || [],
           aiHordeModelsLoadedAt: state.modelLists?.aiHordeModelsLoadedAt || 0
@@ -15404,7 +15653,7 @@ Rules:
     }
 
     async function generateImageForImportedTurn(turn) {
-      if (state.settings.generateImages === false || !turn?.imagePrompt) return;
+      if (state.settings.generateImages === false || isManualCopyPasteImageModel() || !turn?.imagePrompt) return;
       const combinedMode = isAiHordeSvgImageMode();
       turn.combinedImageMode = combinedMode;
       turn.combinedImagePreference = "auto";
@@ -18124,6 +18373,7 @@ Previous Part ${partNumber - 1} prompt: ${parts[targetIndex - 1]?.prompt || ""}`
       $("eventTriggerTimingBefore")?.addEventListener("change", setAddEventTriggerAppendEnabled);
       $("eventTriggerTimingAfter")?.addEventListener("change", setAddEventTriggerAppendEnabled);
       $("btnAddEventTrigger")?.addEventListener("click", addEventTrigger);
+      $("btnRemoveAllEventTriggers")?.addEventListener("click", removeAllEventTriggers);
       $("btnAddStat").addEventListener("click", addRpgStat);
       $("btnResetStats").addEventListener("click", resetRpgStats);
       $("btnManualRpgRollConfirm")?.addEventListener("click", confirmManualRpgRollSelection);
@@ -18133,6 +18383,7 @@ Previous Part ${partNumber - 1} prompt: ${parts[targetIndex - 1]?.prompt || ""}`
         settleManualRpgRollDialog(null);
       });
       $("btnAddDefaultTrigger").addEventListener("click", addDefaultTrigger);
+      $("btnRemoveAllDefaultTrackers")?.addEventListener("click", removeAllDefaultTrackers);
       $("btnExportJson").addEventListener("click", () => { closeMenu(); exportJson().catch(err => showMessagePopup("Save failed", err?.message || String(err))); });
       $("btnExportMarkdown").addEventListener("click", () => { closeMenu(); exportMarkdown(); });
       $("btnExportHtml").addEventListener("click", () => { closeMenu(); exportHtml().catch(err => showMessagePopup("HTML export failed", err?.message || String(err || "Something went wrong."))); });

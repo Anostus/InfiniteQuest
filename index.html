@@ -1883,6 +1883,7 @@
           <div class="two-col">
             <label>Story LLM model
               <select id="llmModel"></select>
+              <p id="curatedFreeStatsStatus" class="mini" aria-live="polite"></p>
             </label>
             <label>Temperature
               <input id="temperature" type="number" min="0" max="2" step="0.05" />
@@ -6145,13 +6146,13 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     }
 
     function freeLlmModelIds(items = []) {
-      const freeItems = uniqueModelIds(items, [DEFAULT_FREE_LLM_MODEL, "openrouter/free"]).filter(isFreeModelId);
+      const freeItems = uniqueModelIds(items, [DEFAULT_FREE_LLM_MODEL, "openrouter/free"]).filter(isFreeModelId).filter(passesFreeAvailabilityFilter);
       const ids = uniqueModelIds([DEFAULT_FREE_LLM_MODEL, "openrouter/free", ...freeItems]);
       return state.settings?.addFallbackModels ? ids.filter(id => !isCuratedFreeMixModelId(id)) : ids;
     }
 
     function fallbackAllowedLlmIds(items = []) {
-      const ids = uniqueModelIds(items);
+      const ids = uniqueModelIds(items).filter(passesFreeAvailabilityFilter);
       return state.settings?.addFallbackModels ? ids.filter(id => !isCuratedFreeMixModelId(id)) : ids;
     }
 
@@ -6308,49 +6309,143 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       return compareModelsByActiveThenTotalBDesc(a, b);
     }
 
-    function buildCuratedFreeMixModelOrder(modelIds = []) {
-      const freeIds = uniqueModelIds(modelIds)
-        .filter(id => isFreeModelId(id) && !isCuratedFreeMixModelId(id) && String(id).trim().toLowerCase().endsWith(":free"));
+    // Endpoint statistics use percentages (0..100), not fractional uptime.
+    // Unknown metrics stay unknown: throughput is NOT a request count.
+    const freeEndpointCache = new Map();
+    const freeEndpointPending = new Map();
+    const FREE_ENDPOINT_CACHE_MS = 5 * 60 * 1000;
 
+    function endpointMetric(record, keys) {
+      for (const key of keys) {
+        const raw = record?.[key];
+        if (raw === null || raw === undefined || raw === "" || typeof raw === "boolean") continue;
+        const value = Number(raw);
+        if (Number.isFinite(value) && value >= 0) return value;
+      }
+      return null;
+    }
+
+    function summarizeFreeEndpoints(payload) {
+      const data = payload?.data;
+      if (!Array.isArray(data?.endpoints)) throw new Error("Invalid model endpoint response.");
+      const endpoints = data.endpoints;
+      const uptimeKeys = ["uptime_last_1d", "uptime_last_24h", "availability_last_24h"];
+      const uptimes = endpoints.map(e => endpointMetric(e, uptimeKeys));
+      const counts = endpoints.map(e => endpointMetric(
+        e?.perf_last_30m_by_workload?.text_generation, ["request_count"]));
+      const modelUptime = endpointMetric(data, uptimeKeys);
+      return {
+        // A model remains usable if at least one provider clears the threshold.
+        // Do not infer failure when some providers have unreported uptime.
+        availability24h: modelUptime ?? (endpoints.length === 0 ? 0
+          : uptimes.some(n => n !== null && n >= 10) ? Math.max(...uptimes.filter(n => n !== null))
+          : uptimes.every(n => n !== null) ? Math.max(...uptimes) : null),
+        requests30m: endpoints.length && counts.every(n => n !== null)
+          ? counts.reduce((sum, n) => sum + n, 0) : null,
+        loadedAt: Date.now()
+      };
+    }
+
+    function freeModelEndpointStats(id) {
+      const record = freeEndpointCache.get(String(id).trim().toLowerCase());
+      return record && Date.now() - record.loadedAt < FREE_ENDPOINT_CACHE_MS ? record : null;
+    }
+
+    function passesFreeAvailabilityFilter(id) {
+      if (!isFreeModelId(id) || isCuratedFreeMixModelId(id) || String(id).toLowerCase() === "openrouter/free") return true; // Synthetic router, not a provider-backed model.
+      const availability = freeModelEndpointStats(id)?.availability24h;
+      return availability == null || availability >= 10;
+    }
+
+    async function refreshFreeModelEndpoints(modelIds = [], apiKey = "", { force = false } = {}) {
+      const ids = uniqueModelIds(modelIds).filter(id => isFreeModelId(id) && !isCuratedFreeMixModelId(id));
+      const headers = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
+      let cursor = 0;
+      const worker = async () => {
+        while (cursor < ids.length) {
+          const id = ids[cursor++].trim().toLowerCase();
+          if (!force && freeModelEndpointStats(id)) continue;
+          if (freeEndpointPending.has(id)) { await freeEndpointPending.get(id); continue; }
+          const pending = (async () => {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 12000);
+            try {
+              const path = id.split("/").map(encodeURIComponent).join("/");
+              const response = await fetch(`https://openrouter.ai/api/v1/models/${path}/endpoints`, { headers, signal: controller.signal });
+              if (!response.ok) throw new Error(`Endpoint list failed (${response.status}).`);
+              freeEndpointCache.set(id, summarizeFreeEndpoints(await response.json()));
+            } catch (error) {
+              console.warn(`Free model endpoint statistics unavailable for ${id}.`, error);
+            } finally { clearTimeout(timer); }
+          })();
+          freeEndpointPending.set(id, pending);
+          try { await pending; } finally { freeEndpointPending.delete(id); }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(6, ids.length) }, worker));
+    }
+
+    function paidModelCost(id) {
+      const price = paidCounterpartTokenPricing(id);
+      return price ? price.prompt + price.completion : null;
+    }
+
+    function withinCuratedPriceBand(id, references) {
+      const price = paidCounterpartTokenPricing(id);
+      if (!price || !references.length) return false;
+      // Preserve the original prompt/completion distance metric, selecting the
+      // nearest reference before applying strict 50% and 130% bounds to both.
+      const values = p => [p.prompt > 0 ? p.prompt : p.completion,
+        p.completion > 0 ? p.completion : p.prompt];
+      const candidate = values(price);
+      const nearest = references.map(values).sort((a, b) =>
+        a.reduce((n, v, i) => n + Math.abs(Math.log(candidate[i] / v)), 0)
+        - b.reduce((n, v, i) => n + Math.abs(Math.log(candidate[i] / v)), 0))[0];
+      return candidate.every((v, i) => v > nearest[i] * 0.5 && v < nearest[i] * 1.3);
+    }
+
+    function buildCuratedFreeMixModelOrder(modelIds = []) {
+      const freeIds = uniqueModelIds(modelIds).filter(id => String(id).toLowerCase().endsWith(":free"))
+        .filter(id => (freeModelEndpointStats(id)?.availability24h ?? -1) >= 10);
       const order = [];
       const add = id => { if (id && !order.includes(id) && order.length < 3) order.push(id); };
-      const activeAndTotalMatchingModel = (predicate, activePredicate = () => true) => freeIds
-        .filter(id => predicate(String(id).toLowerCase()))
-        .filter(id => largestActiveParameterB(id) > 0 && largestNonActiveParameterB(id) > 0)
-        .filter(id => activePredicate(largestActiveParameterB(id)))
-        .sort(compareModelsByActiveThenTotalBDesc)[0];
-      const largestMatchingModel = predicate => freeIds
-        .filter(id => predicate(String(id).toLowerCase()) && largestParameterB(id) > 0)
-        .sort(compareModelsByLargestBDesc)[0];
-
-      const gemma = activeAndTotalMatchingModel(id => id.includes("gemma"));
-      const nemotronIds = freeIds.filter(id => id.toLowerCase().includes("nemotron"))
-        .filter(id => !/content[-_]safety/.test(id.toLowerCase()));
-      const namedNemotrons = nemotronIds.filter(id => largestActiveParameterB(id) > 0
+      const gemmas = freeIds.filter(id => /gemma/i.test(id)).sort(compareModelsByLargestBDesc);
+      const nemotrons = freeIds.filter(id => /nemotron/i.test(id) && !/content[-_]safety/i.test(id));
+      const named = nemotrons.filter(id => largestActiveParameterB(id) > 0
         && largestActiveParameterB(id) < 20 && largestNonActiveParameterB(id) > 0);
-      const namedNemotronBenchmarks = parameterizedFreePriceBenchmarks(namedNemotrons);
-      const gemmaBenchmarks = parameterizedFreePriceBenchmarks(freeIds.filter(id => id.toLowerCase().includes("gemma")));
-      const nemotronPriceBenchmarks = namedNemotronBenchmarks.length ? namedNemotronBenchmarks : gemmaBenchmarks;
-      const priceMatchedNemotrons = nemotronIds.filter(id => {
-        if (largestActiveParameterB(id) !== 0) return false;
-        const score = priceMatchScore(id, nemotronPriceBenchmarks);
-        return !!score && !score.above;
-      });
-      const nemotronModels = [...namedNemotrons, ...priceMatchedNemotrons];
-      const rankedNemotrons = nemotronModels.slice().sort((a, b) => compareNemotronCandidates(a, b, nemotronPriceBenchmarks));
-      const primaryNemotron = rankedNemotrons[0] || "";
+      // Keep the biggest active/total parameter reference for each generation.
+      const referenceIds = named.slice().sort(compareModelsByActiveThenTotalBDesc).filter((id, index, all) =>
+        all.findIndex(other => nemotronVersionParts(other).join(".") === nemotronVersionParts(id).join(".")) === index);
+      const namedPrices = referenceIds.map(paidCounterpartTokenPricing).filter(Boolean);
+      const gemmaPrice = paidCounterpartTokenPricing(gemmas[0]);
+      const references = namedPrices.length ? namedPrices : gemmaPrice ? [gemmaPrice] : [];
+      const rankNemotrons = (a, b) => compareVersionPartsDesc(nemotronVersionParts(a), nemotronVersionParts(b))
+        || (paidModelCost(b) ?? -1) - (paidModelCost(a) ?? -1)
+        || compareModelsByActiveThenTotalBDesc(a, b);
+      const pricedNemotrons = nemotrons.filter(id =>
+        (largestActiveParameterB(id) === 0 || named.includes(id)) && withinCuratedPriceBand(id, references))
+        .sort(rankNemotrons);
+      const gemmaCounts = gemmas.map(id => freeModelEndpointStats(id)?.requests30m);
+      // Incomplete Gemma data cannot establish the highest request count.
+      const highestGemmaRequests = gemmaCounts.length && gemmaCounts.every(n => n != null)
+        ? Math.max(...gemmaCounts) : null;
+      const highUsage = id => {
+        const count = freeModelEndpointStats(id)?.requests30m;
+        return highestGemmaRequests !== null && count != null && count > 0 && count >= 10 * highestGemmaRequests;
+      };
+      const ultras = nemotrons.filter(id => /ultra/i.test(id) && highUsage(id)).sort(rankNemotrons);
+      const gemmaCosts = gemmas.map(paidModelCost).filter(n => n !== null);
+      const cheapestGemmaCost = gemmaCosts.length ? Math.min(...gemmaCosts) : null;
+      const popular = freeIds.filter(id => !/gemma/i.test(id) && highUsage(id) && cheapestGemmaCost !== null
+        && paidModelCost(id) !== null && paidModelCost(id) > cheapestGemmaCost)
+        .sort((a, b) => paidModelCost(a) - paidModelCost(b) || rankNemotrons(a, b));
 
-      add(gemma);
-      add(primaryNemotron);
-      add(largestMatchingModel(id => /gpt[-_]?oss/.test(id)));
-      // GPT-OSS may no longer have a free listing. If a family slot is still
-      // empty, use the next distinct Nemotron that satisfies the same eligibility.
-      while (order.length < 3) {
-        const nextNemotron = rankedNemotrons.find(id => id !== primaryNemotron && !order.includes(id));
-        if (!nextNemotron) break;
-        add(nextNemotron);
-      }
-
+      add(ultras[0] || gemmas[0]);
+      add(pricedNemotrons.find(id => !order.includes(id)));
+      add(popular.find(id => !order.includes(id)));
+      // Older generations remain eligible under exactly the same constraints.
+      // Never pad the mix with unavailable models or relax the price/usage gates.
+      for (const id of [...pricedNemotrons, ...gemmas, ...popular]) add(id);
       return order;
     }
 
@@ -6363,7 +6458,11 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         && state.modelLists.llms.length
         && cachedAt
         && Date.now() - cachedAt < CURATED_FREE_MIX_MODEL_LIST_CACHE_MS;
-      if (!force && hasFreshCache) return state.modelLists.llms;
+      if (!force && hasFreshCache) {
+        await refreshFreeModelEndpoints(state.modelLists.llms, apiKey);
+        populateModelSelects();
+        return state.modelLists.llms;
+      }
       if (curatedFreeMixModelListPromise) return curatedFreeMixModelListPromise;
 
       curatedFreeMixModelListPromise = (async () => {
@@ -6382,6 +6481,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
           llmTokenPricing: normalizeModelTokenPricing(state.modelLists?.llmTokenPricing),
           llmsLoadedAt: Date.now()
         };
+        await refreshFreeModelEndpoints(llms, apiKey, { force });
         populateModelSelects();
         return llms;
       })();
@@ -6400,9 +6500,11 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       } catch (err) {
         console.warn("Could not refresh OpenRouter model list for Curated Free Mix; using cached model list.", err);
       }
+      await refreshFreeModelEndpoints(ids, apiKey);
+      populateModelSelects();
       const models = buildCuratedFreeMixModelOrder(ids);
       if (!models.length) {
-        throw new Error("Curated Free Mix could not find any matching free Gemma, Nemotron, or GPT-OSS models from the current OpenRouter model list. Load models again or choose a specific free model.");
+        throw new Error("Curated Free Mix could not find eligible free models with verified 24-hour availability of at least 10%. Load models again or choose a specific free model.");
       }
       return models;
     }
@@ -7080,7 +7182,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       coerceFreeModelSettings();
 
       const filterFreeOptions = !!state.settings.filterFreeOptions;
-      const allLlms = uniqueModelIds(state.modelLists.llms, DEFAULT_LLM_MODELS);
+      const allLlms = uniqueModelIds(state.modelLists.llms, DEFAULT_LLM_MODELS).filter(passesFreeAvailabilityFilter);
       const allImages = uniqueModelIds(state.modelLists.images, DEFAULT_IMAGE_MODELS).map(normalizeImageModelId);
 
       let llms = allLlms;
@@ -7109,12 +7211,30 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         }
       }
 
+      if (!passesFreeAvailabilityFilter(selectedLlm)) {
+        state.settings.llmModel = selectedLlm = firstAllowedLlmModel(llms, { preferFree: filterFreeOptions });
+        if ($("llmModelCustom")) $("llmModelCustom").value = "";
+      }
+      for (const key of ["fallbackLlmModel1", "fallbackLlmModel2"]) {
+        if (!passesFreeAvailabilityFilter(state.settings[key])) state.settings[key] = "";
+      }
       ensureFallbackModelDefaults(llms);
       selectedLlm = state.settings.llmModel || selectedLlm;
       populateSelect("llmModel", llms, selectedLlm);
       populateFallbackSelect("fallbackLlmModel1", llms, state.settings.fallbackLlmModel1, "Choose fallback 1");
       populateFallbackSelect("fallbackLlmModel2", llms, state.settings.fallbackLlmModel2, "Choose fallback 2");
       populateSelect("imageModel", images, selectedImage);
+      const statsStatus = $("curatedFreeStatsStatus");
+      if (statsStatus) {
+        const candidates = allLlms.filter(id => String(id).toLowerCase().endsWith(":free"));
+        const verified = candidates.filter(id => (freeModelEndpointStats(id)?.availability24h ?? -1) >= 10);
+        const missingUsage = verified.some(id => freeModelEndpointStats(id)?.requests30m == null);
+        statsStatus.textContent = isCuratedFreeMixModelId(selectedLlm)
+          ? !verified.length ? "Curated mix is waiting for models with verified 24-hour availability of at least 10%."
+            : missingUsage ? "Some 30-minute request counts are unavailable. Usage-based choices require reported counts; eligible fallback models will be used."
+            : "Curated mix uses 24-hour availability, 30-minute request counts, and paid-model prices."
+          : "";
+      }
     }
 
     function populateSelect(id, items, selectedValue) {
@@ -7133,6 +7253,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       if (isStoryModelSelect && state.settings?.addFallbackModels) {
         allItems = allItems.filter(item => !isCuratedFreeMixModelId(item));
       }
+      if (isStoryModelSelect) allItems = allItems.filter(passesFreeAvailabilityFilter);
       el.innerHTML = "";
       allItems.forEach(item => {
         const opt = document.createElement("option");
@@ -7151,6 +7272,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       if (state.settings?.addFallbackModels) {
         allItems = allItems.filter(item => !isCuratedFreeMixModelId(item));
       }
+      allItems = allItems.filter(passesFreeAvailabilityFilter);
       el.innerHTML = "";
       const emptyOpt = document.createElement("option");
       emptyOpt.value = "";
@@ -7171,6 +7293,9 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       const isStoryModelSelect = id === "llmModel" || id === "fallbackLlmModel1" || id === "fallbackLlmModel2";
       if (isStoryModelSelect && state.settings?.addFallbackModels && isCuratedFreeMixModelId(value)) {
         value = id === "llmModel" ? firstAllowedLlmModel(state.modelLists?.llms || DEFAULT_LLM_MODELS, { preferFree: !!state.settings.filterFreeOptions }) : "";
+      }
+      if (isStoryModelSelect && !passesFreeAvailabilityFilter(value)) {
+        value = id === "llmModel" ? firstAllowedLlmModel(state.modelLists?.llms || [], { preferFree: !!state.settings.filterFreeOptions }) : "";
       }
       if (value && !Array.from(el.options).some(opt => opt.value === value)) {
         const opt = document.createElement("option");
@@ -12945,6 +13070,7 @@ ${missingList}`,
           aiHordeModels: state.modelLists?.aiHordeModels || [],
           aiHordeModelsLoadedAt: state.modelLists?.aiHordeModelsLoadedAt || 0
         };
+        await refreshFreeModelEndpoints(state.modelLists.llms, state.settings.apiKey, { force: true });
         coerceFreeModelSettings();
         populateModelSelects();
         selectModelValue("llmModel", state.settings.llmModel || DEFAULT_LLM_MODEL);

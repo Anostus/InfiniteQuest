@@ -7284,8 +7284,9 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         statsStatus.textContent = isCuratedFreeMixModelId(selectedLlm)
           ? !verified.length ? "Curated mix is waiting for models with verified 24-hour availability of at least 10%."
             : missingUsage ? "Curated mix uses 30-minute usage and Intelligence Index, with paid-counterpart price fallbacks and a final usage fill. Models without usage counts are skipped; 24-hour availability must be at least 10%."
-            : "Curated mix: highest usage; highest intelligence in the top 50% of usage (or highest paid price in that group); highest usage with intelligence above 15 (or highest usage in the top 25% by paid price). Remaining slots fill by usage. Minimum 24-hour availability: 10%."
+            : ""
           : "";
+        statsStatus.hidden = !statsStatus.textContent;
       }
     }
 

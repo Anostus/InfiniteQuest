@@ -3280,7 +3280,7 @@
         memoryInstructions: "",
         suppressTriggers: false
       },
-      modelLists: { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS, llmContextLengths: {}, llmMaxCompletionTokens: {}, llmTokenPricing: {}, aiHordeModels: [], aiHordeModelsLoadedAt: 0 },
+      modelLists: { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS, llmContextLengths: {}, llmMaxCompletionTokens: {}, llmTokenPricing: {}, llmIntelligenceIndices: {}, llmIntelligenceLoadedAt: 0, aiHordeModels: [], aiHordeModelsLoadedAt: 0 },
       rpgStats: deepClone(DEFAULT_RPG_STATS),
       defaultTriggers: [],
       eventTriggers: [],
@@ -5001,6 +5001,8 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
           llmContextLengths: normalizeModelContextLengths(source.modelLists?.llmContextLengths),
           llmMaxCompletionTokens: normalizeModelCompletionTokenCaps(source.modelLists?.llmMaxCompletionTokens),
           llmTokenPricing: normalizeModelTokenPricing(source.modelLists?.llmTokenPricing),
+          llmIntelligenceIndices: normalizeModelIntelligenceIndices(source.modelLists?.llmIntelligenceIndices),
+          llmIntelligenceLoadedAt: Number(source.modelLists?.llmIntelligenceLoadedAt || 0),
           llmsLoadedAt: source.modelLists?.llmsLoadedAt || 0,
           aiHordeModels: (source.modelLists?.aiHordeModels || []).slice(0, 800).map(model => ({
             name: truncateText(model?.name || "", 240),
@@ -5204,6 +5206,8 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       target.modelLists.llmContextLengths = normalizeModelContextLengths(target.modelLists.llmContextLengths);
       target.modelLists.llmMaxCompletionTokens = normalizeModelCompletionTokenCaps(target.modelLists.llmMaxCompletionTokens);
       target.modelLists.llmTokenPricing = normalizeModelTokenPricing(target.modelLists.llmTokenPricing);
+      target.modelLists.llmIntelligenceIndices = normalizeModelIntelligenceIndices(target.modelLists.llmIntelligenceIndices);
+      target.modelLists.llmIntelligenceLoadedAt = Number(target.modelLists.llmIntelligenceLoadedAt || 0);
       if (target.settings && typeof target.settings === "object") {
         delete target.settings.freeModelsOnly;
         delete target.settings.freeModelsWithPollinations;
@@ -5268,6 +5272,18 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       return normalized;
     }
 
+
+    function normalizeModelIntelligenceIndices(value = {}) {
+      const normalized = {};
+      if (!value || typeof value !== "object" || Array.isArray(value)) return normalized;
+      Object.entries(value).forEach(([modelId, rawScore]) => {
+        if (rawScore == null || rawScore === "") return;
+        const id = String(modelId || "").trim().toLowerCase();
+        const score = Number(rawScore);
+        if (id && Number.isFinite(score) && score >= 0) normalized[id] = score;
+      });
+      return normalized;
+    }
 
     // ---------- AI Horde configuration, catalog, presets, and settings UI ----------
     function normalizeAiHordeAddonList(items = [], kind = "lora") {
@@ -5971,6 +5987,18 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       return pricing;
     }
 
+    function extractOpenRouterModelIntelligenceIndices(models = []) {
+      const scores = {};
+      (models || []).forEach(model => {
+        const id = String(model?.id || "").trim().toLowerCase();
+        const rawScore = model?.benchmarks?.artificial_analysis?.intelligence_index;
+        if (!id || rawScore == null || rawScore === "") return;
+        const score = Number(rawScore);
+        if (Number.isFinite(score) && score >= 0) scores[id] = score;
+      });
+      return scores;
+    }
+
     function cacheOpenRouterModelCatalog(models = []) {
       state.modelLists ||= { llms: DEFAULT_LLM_MODELS, images: DEFAULT_IMAGE_MODELS, llmContextLengths: {}, llmMaxCompletionTokens: {}, llmTokenPricing: {}, aiHordeModels: [], aiHordeModelsLoadedAt: 0 };
       state.modelLists.llmContextLengths = {
@@ -5985,6 +6013,9 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         ...normalizeModelTokenPricing(state.modelLists.llmTokenPricing),
         ...extractOpenRouterModelTokenPricing(models)
       };
+      // Missing benchmark values remain missing (not zero). Update when the catalog refreshes.
+      state.modelLists.llmIntelligenceIndices = extractOpenRouterModelIntelligenceIndices(models);
+      state.modelLists.llmIntelligenceLoadedAt = Date.now();
     }
 
     function isCuratedFreeMixModelId(modelId = "") {
@@ -6405,47 +6436,65 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     }
 
     function buildCuratedFreeMixModelOrder(modelIds = []) {
-      const freeIds = uniqueModelIds(modelIds).filter(id => String(id).toLowerCase().endsWith(":free"))
-        .filter(id => (freeModelEndpointStats(id)?.availability24h ?? -1) >= 10);
+      // Only verified :free models with >=10% 24-hour availability and reported
+      // 30-minute text-generation requests can enter the curated mix.
+      const ranked = uniqueModelIds(modelIds)
+        .filter(id => String(id).toLowerCase().endsWith(":free"))
+        .filter(id => !/content[-_]safety/i.test(id))
+        .filter(id => (freeModelEndpointStats(id)?.availability24h ?? -1) >= 10)
+        .filter(id => freeModelEndpointStats(id)?.requests30m != null)
+        .sort((a, b) => freeModelEndpointStats(b).requests30m - freeModelEndpointStats(a).requests30m
+          || String(a).localeCompare(String(b)));
+      const usage = id => freeModelEndpointStats(id).requests30m;
+      const intelligence = id => {
+        const score = state.modelLists?.llmIntelligenceIndices?.[String(id).trim().toLowerCase()];
+        return typeof score === "number" && Number.isFinite(score) ? score : null;
+      };
       const order = [];
       const add = id => { if (id && !order.includes(id) && order.length < 3) order.push(id); };
-      const gemmas = freeIds.filter(id => /gemma/i.test(id)).sort(compareModelsByLargestBDesc);
-      const nemotrons = freeIds.filter(id => /nemotron/i.test(id) && !/content[-_]safety/i.test(id));
-      const named = nemotrons.filter(id => largestActiveParameterB(id) > 0
-        && largestActiveParameterB(id) < 20 && largestNonActiveParameterB(id) > 0);
-      // Keep the biggest active/total parameter reference for each generation.
-      const referenceIds = named.slice().sort(compareModelsByActiveThenTotalBDesc).filter((id, index, all) =>
-        all.findIndex(other => nemotronVersionParts(other).join(".") === nemotronVersionParts(id).join(".")) === index);
-      const namedPrices = referenceIds.map(paidCounterpartTokenPricing).filter(Boolean);
-      const gemmaPrice = paidCounterpartTokenPricing(gemmas[0]);
-      const references = namedPrices.length ? namedPrices : gemmaPrice ? [gemmaPrice] : [];
-      const rankNemotrons = (a, b) => compareVersionPartsDesc(nemotronVersionParts(a), nemotronVersionParts(b))
-        || (paidModelCost(b) ?? -1) - (paidModelCost(a) ?? -1)
-        || compareModelsByActiveThenTotalBDesc(a, b);
-      const pricedNemotrons = nemotrons.filter(id =>
-        (largestActiveParameterB(id) === 0 || named.includes(id)) && withinCuratedPriceBand(id, references))
-        .sort(rankNemotrons);
-      const gemmaCounts = gemmas.map(id => freeModelEndpointStats(id)?.requests30m);
-      // Incomplete Gemma data cannot establish the highest request count.
-      const highestGemmaRequests = gemmaCounts.length && gemmaCounts.every(n => n != null)
-        ? Math.max(...gemmaCounts) : null;
-      const highUsage = id => {
-        const count = freeModelEndpointStats(id)?.requests30m;
-        return highestGemmaRequests !== null && count != null && count > 0 && count >= 10 * highestGemmaRequests;
-      };
-      const ultras = nemotrons.filter(id => /ultra/i.test(id) && highUsage(id)).sort(rankNemotrons);
-      const gemmaCosts = gemmas.map(paidModelCost).filter(n => n !== null);
-      const cheapestGemmaCost = gemmaCosts.length ? Math.min(...gemmaCosts) : null;
-      const popular = freeIds.filter(id => !/gemma/i.test(id) && highUsage(id) && cheapestGemmaCost !== null
-        && paidModelCost(id) !== null && paidModelCost(id) > cheapestGemmaCost)
-        .sort((a, b) => paidModelCost(a) - paidModelCost(b) || rankNemotrons(a, b));
 
-      add(ultras[0] || gemmas[0]);
-      add(pricedNemotrons.find(id => !order.includes(id)));
-      add(popular.find(id => !order.includes(id)));
-      // Older generations remain eligible under exactly the same constraints.
-      // Never pad the mix with unavailable models or relax the price/usage gates.
-      for (const id of [...pricedNemotrons, ...gemmas, ...popular]) add(id);
+      // 1. Highest reported 30-minute usage.
+      add(ranked[0]);
+
+      // 2. Highest Intelligence Index in the top 50% by usage, excluding #1.
+      // If there is no such model, use the most expensive paid counterpart
+      // within that SAME top 50%. Form the percentile before excluding picks.
+      const topHalf = ranked.slice(0, Math.ceil(ranked.length / 2));
+      const secondByIntelligence = topHalf.filter(id => !order.includes(id) && intelligence(id) != null)
+        .sort((a, b) => intelligence(b) - intelligence(a)
+          || usage(b) - usage(a) || String(a).localeCompare(String(b)))[0];
+      if (secondByIntelligence) {
+        add(secondByIntelligence);
+      } else {
+        const secondByPrice = topHalf.filter(id => !order.includes(id) && paidModelCost(id) !== null)
+          .sort((a, b) => paidModelCost(b) - paidModelCost(a)
+            || usage(b) - usage(a) || String(a).localeCompare(String(b)))[0];
+        add(secondByPrice);
+      }
+
+      // 3. Highest remaining 30-minute usage with Intelligence Index >15.
+      // If none qualify, choose the highest-usage remaining model among the
+      // top 25% of eligible models that have paid-counterpart prices.
+      const thirdByIntelligence = ranked.find(id => !order.includes(id) && intelligence(id) !== null && intelligence(id) > 15);
+      if (thirdByIntelligence) {
+        add(thirdByIntelligence);
+      } else {
+        const priced = ranked.filter(id => paidModelCost(id) !== null)
+          .sort((a, b) => paidModelCost(b) - paidModelCost(a)
+            || usage(b) - usage(a) || String(a).localeCompare(String(b)));
+        const topPriceQuarter = priced.slice(0, Math.ceil(priced.length / 4));
+        const thirdByPrice = topPriceQuarter.filter(id => !order.includes(id))
+          .sort((a, b) => usage(b) - usage(a) || String(a).localeCompare(String(b)))[0];
+        add(thirdByPrice);
+      }
+
+      // If the preferred/price rules do not yield three different models,
+      // fill remaining positions by 30-minute usage without relaxing the
+      // 10% availability requirement or duplicating models.
+      for (const id of ranked) {
+        if (order.length >= 3) break;
+        add(id);
+      }
       return order;
     }
 
@@ -6458,7 +6507,9 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         && state.modelLists.llms.length
         && cachedAt
         && Date.now() - cachedAt < CURATED_FREE_MIX_MODEL_LIST_CACHE_MS;
-      if (!force && hasFreshCache) {
+      // Older saved model lists predate Intelligence Index caching and need one catalog refresh.
+      const hasIntelligenceCatalog = Number(state.modelLists.llmIntelligenceLoadedAt || 0) > 0;
+      if (!force && hasFreshCache && hasIntelligenceCatalog) {
         await refreshFreeModelEndpoints(state.modelLists.llms, apiKey);
         populateModelSelects();
         return state.modelLists.llms;
@@ -6479,6 +6530,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
           llmContextLengths: normalizeModelContextLengths(state.modelLists?.llmContextLengths),
           llmMaxCompletionTokens: normalizeModelCompletionTokenCaps(state.modelLists?.llmMaxCompletionTokens),
           llmTokenPricing: normalizeModelTokenPricing(state.modelLists?.llmTokenPricing),
+          llmIntelligenceIndices: normalizeModelIntelligenceIndices(state.modelLists?.llmIntelligenceIndices),
           llmsLoadedAt: Date.now()
         };
         await refreshFreeModelEndpoints(llms, apiKey, { force });
@@ -7231,8 +7283,8 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         const missingUsage = verified.some(id => freeModelEndpointStats(id)?.requests30m == null);
         statsStatus.textContent = isCuratedFreeMixModelId(selectedLlm)
           ? !verified.length ? "Curated mix is waiting for models with verified 24-hour availability of at least 10%."
-            : missingUsage ? "Some 30-minute request counts are unavailable. Usage-based choices require reported counts; eligible fallback models will be used."
-            : "Curated mix uses 24-hour availability, 30-minute request counts, and paid-model prices."
+            : missingUsage ? "Curated mix uses 30-minute usage and Intelligence Index, with paid-counterpart price fallbacks and a final usage fill. Models without usage counts are skipped; 24-hour availability must be at least 10%."
+            : "Curated mix: highest usage; highest intelligence in the top 50% of usage (or highest paid price in that group); highest usage with intelligence above 15 (or highest usage in the top 25% by paid price). Remaining slots fill by usage. Minimum 24-hour availability: 10%."
           : "";
       }
     }
@@ -13066,6 +13118,7 @@ ${missingList}`,
           llmContextLengths: normalizeModelContextLengths(state.modelLists?.llmContextLengths),
           llmMaxCompletionTokens: normalizeModelCompletionTokenCaps(state.modelLists?.llmMaxCompletionTokens),
           llmTokenPricing: normalizeModelTokenPricing(state.modelLists?.llmTokenPricing),
+          llmIntelligenceIndices: normalizeModelIntelligenceIndices(state.modelLists?.llmIntelligenceIndices),
           llmsLoadedAt: Date.now(),
           aiHordeModels: state.modelLists?.aiHordeModels || [],
           aiHordeModelsLoadedAt: state.modelLists?.aiHordeModelsLoadedAt || 0

@@ -5213,6 +5213,11 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         delete target.settings.freeModelsWithPollinations;
         delete target.settings.showCuratedFreeMixUsage;
         if (target.settings.llmModel === LEGACY_DEFAULT_FREE_LLM_MODEL) target.settings.llmModel = DEFAULT_FREE_LLM_MODEL;
+        // Upgrade old saved dropdown values (primary + fallbacks) on load,
+        // import, and refresh without touching the catalog's real model IDs.
+        target.settings.llmModel = storyModelDropdownValue(target.settings.llmModel);
+        target.settings.fallbackLlmModel1 = storyModelDropdownValue(target.settings.fallbackLlmModel1);
+        target.settings.fallbackLlmModel2 = storyModelDropdownValue(target.settings.fallbackLlmModel2);
         target.settings.imageModel = normalizeImageModelId(target.settings.imageModel || "") || target.settings.imageModel;
         target.settings.lastFreeImageModel = normalizeImageModelId(target.settings.lastFreeImageModel || "") || target.settings.lastFreeImageModel;
         target.settings.addContinueNarrationButton = !!target.settings.addContinueNarrationButton;
@@ -6018,8 +6023,32 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       state.modelLists.llmIntelligenceLoadedAt = Date.now();
     }
 
+    // Reasoning variants are dropdown-only identifiers. Strip their suffixes
+    // before accessing model metadata or passing a real model ID to OpenRouter.
+    const MODEL_REASONING_VARIANT_RE = / \(Reasoning (ON|OFF)\)$/i;
+
+    function underlyingStoryModelId(modelId = "") {
+      return String(modelId || "").trim().replace(MODEL_REASONING_VARIANT_RE, "");
+    }
+
+    function storyModelReasoningVariant(modelId = "") {
+      const match = String(modelId || "").trim().match(MODEL_REASONING_VARIANT_RE);
+      return match ? match[1].toLowerCase() : "";
+    }
+
+    function storyModelDropdownValue(modelId = "") {
+      const id = String(modelId || "").trim();
+      if (!id) return "";
+      // Explicit ON/OFF choices are never changed. Legacy unsuffixed Nemotron
+      // selections used normal reasoning, so migrate them to Reasoning ON.
+      // Curated Free Mix is intentionally left unsuffixed (Reasoning OFF for
+      // Nemotron-containing mixes, just as before this migration).
+      if (storyModelReasoningVariant(id) || isCuratedFreeMixModelId(id)) return id;
+      return isNemotronModelId(id) ? `${id} (Reasoning ON)` : id;
+    }
+
     function isCuratedFreeMixModelId(modelId = "") {
-      return String(modelId || "").trim().toLowerCase() === CURATED_FREE_MIX_MODEL.toLowerCase();
+      return underlyingStoryModelId(modelId).toLowerCase() === CURATED_FREE_MIX_MODEL.toLowerCase();
     }
 
     function isCuratedFreeMixDeveloperSentinel(value = "") {
@@ -6027,7 +6056,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     }
 
     function isNemotronModelId(modelId = "") {
-      const id = String(modelId || "").trim().toLowerCase();
+      const id = underlyingStoryModelId(modelId).toLowerCase();
       // Treat openrouter/free as an honorary Nemotron route because OpenRouter may
       // resolve it to a Nemotron model after the client has already chosen a budget.
       return id === "openrouter/free" || id.includes("nemotron");
@@ -6088,6 +6117,285 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         return 0;
       }
       return savedBudget;
+    }
+
+    function prependNemotronNoThinkDirective(messages = []) {
+      if (!Array.isArray(messages)) return messages;
+      let inserted = false;
+      const updated = messages.map(message => {
+        if (inserted || !message || typeof message !== "object") return message;
+        const role = String(message.role || "").toLowerCase();
+        const content = message.content;
+        if ((role === "system" || role === "developer") && typeof content === "string") {
+          inserted = true;
+          return /^\s*\/no_think\b/i.test(content)
+            ? message : { ...message, content: `/no_think\n${content}` };
+        }
+        if (role === "user" && typeof content === "string") {
+          try {
+            const parsed = JSON.parse(content);
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+              const current = String(parsed.developer_instructions || "").trim();
+              parsed.developer_instructions = /^\s*\/no_think\b/i.test(current)
+                ? current : (current ? `/no_think\n${current}` : "/no_think");
+              inserted = true;
+              return { ...message, content: JSON.stringify(parsed, null, 2) };
+            }
+          } catch (_) {}
+        }
+        return message;
+      });
+      return inserted ? updated : [{ role: "system", content: "/no_think" }, ...updated];
+    }
+
+    // For Nemotron Reasoning OFF main-story requests, use exactly the normal
+    // story instructions except for one additional first entry in the JSON schema.
+    // The output-only planning field is removed before the response is consumed.
+    const NEMOTRON_STORY_PLANNING_SCHEMA_FIELD =
+      '  "planning": "500-1000 words of concrete story planning prose covering the immediate outcome, continuity, character motives, cause and effect, pacing, the next four choices, and relevant tracker changes.",\n';
+
+    function addNemotronPlanningSchemaField(instructions = "") {
+      const content = String(instructions || "");
+      // Anchor to the story schema rather than injecting another instruction
+      // block or changing the rest of the prompt.
+      return content.replace(
+        /(Required JSON shape:\r?\n\{\r?\n)(?=  "narration":)/,
+        (prefix) => `${prefix}${NEMOTRON_STORY_PLANNING_SCHEMA_FIELD}`
+      );
+    }
+
+    // Substantial JSON-generation helpers use the same quiet planning-first
+    // treatment as story turns. The field is part of the existing schema list,
+    // never a separate request or an explanatory instruction block.
+    const NEMOTRON_LONG_PLANNING_SCHEMA_FIELD =
+      '  "planning": "500-1000 words of concrete preparation covering the requested output, important source details, continuity, consistency, and how the required fields fit together.",\n';
+
+    function addNemotronLongPlanningSchemaField(instructions = "") {
+      const content = String(instructions || "");
+      return content.replace(
+        /(Required JSON shape:\r?\n\{\r?\n)(?!\s*"planning"\s*:)/,
+        prefix => `${prefix}${NEMOTRON_LONG_PLANNING_SCHEMA_FIELD}`
+      );
+    }
+
+    function includeNemotronPlanningInSchema(messages = [], longResponseType = "") {
+      if (!Array.isArray(messages)) return messages;
+      const updateInstructions = longResponseType
+        ? addNemotronLongPlanningSchemaField : addNemotronPlanningSchemaField;
+      return messages.map(message => {
+        if (!message || typeof message !== "object" || typeof message.content !== "string") return message;
+        const role = String(message.role || "").toLowerCase();
+        if (role === "system" || role === "developer") {
+          const content = updateInstructions(message.content);
+          return content === message.content ? message : { ...message, content };
+        }
+        if (role === "user") {
+          try {
+            const parsed = JSON.parse(message.content);
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)
+                && typeof parsed.developer_instructions === "string") {
+              const instructions = updateInstructions(parsed.developer_instructions);
+              if (instructions !== parsed.developer_instructions) {
+                parsed.developer_instructions = instructions;
+                return { ...message, content: JSON.stringify(parsed, null, 2) };
+              }
+            }
+          } catch (_) {}
+        }
+        return message;
+      });
+    }
+
+    // Unlike json_object (which only guarantees valid JSON), the explicit
+    // schema asks supporting OpenRouter endpoints to generate ALL story fields.
+    // The property order matches the story prompt, with planning first.
+    const NEMOTRON_STORY_REQUIRED_RESPONSE_FORMAT = {
+      type: "json_schema",
+      json_schema: {
+        name: "infinite_quest_story",
+        strict: true,
+        schema: {
+          type: "object",
+          properties: {
+            planning: { type: "string", description: "500-1000 words of concrete story planning." },
+            narration: { type: "string", description: "Second-person story prose, generally 450-900 words." },
+            image_prompt: { type: "string", description: "Vivid prompt for a single scene illustration." },
+            choices: { type: "array", items: { type: "string" }, minItems: 4, maxItems: 4 },
+            scratchpad: { type: "string", description: "Private continuity notes." },
+            tracker_updates: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  value: { type: "string" },
+                  rationale: { type: "string" }
+                },
+                required: ["id", "value", "rationale"],
+                additionalProperties: false
+              }
+            }
+          },
+          required: ["planning", "narration", "image_prompt", "choices", "scratchpad", "tracker_updates"],
+          additionalProperties: false
+        }
+      }
+    };
+
+    // Reasoning ON should also request the complete expected JSON shape, but
+    // WITHOUT adding a planning field or changing the text instructions.
+    // Reuse the exact OFF schema minus planning to keep the two routes aligned.
+    function withoutNemotronPlanningProperty(schema) {
+      const { planning, ...properties } = schema.properties;
+      return {
+        ...schema,
+        properties,
+        required: schema.required.filter(key => key !== "planning")
+      };
+    }
+
+    const NEMOTRON_STORY_REASONING_ON_RESPONSE_FORMAT = {
+      type: "json_schema",
+      json_schema: {
+        ...NEMOTRON_STORY_REQUIRED_RESPONSE_FORMAT.json_schema,
+        name: "infinite_quest_story_reasoning_on",
+        schema: withoutNemotronPlanningProperty(NEMOTRON_STORY_REQUIRED_RESPONSE_FORMAT.json_schema.schema)
+      }
+    };
+
+    // Strict, first-property planning schemas for longer creative/continuity
+    // tasks. Short classifiers, trigger checks and media-prompt helpers are
+    // deliberately NOT listed here.
+    function nemotronSchemaObject(properties, required = Object.keys(properties)) {
+      return { type: "object", properties, required, additionalProperties: false };
+    }
+    function nemotronSchemaString(description = "") {
+      return description ? { type: "string", description } : { type: "string" };
+    }
+    function nemotronSchemaArray(item, extra = {}) {
+      return { type: "array", items: item, ...extra };
+    }
+
+    const NEMOTRON_LONG_RESPONSE_SCHEMAS = (() => {
+      const t = (description = "") => nemotronSchemaString(description);
+      const a = (item, extra = {}) => nemotronSchemaArray(item, extra);
+      const o = nemotronSchemaObject;
+      const tracker = o({ name: t(), rules: t(), value: t() });
+      const stat = o({ name: t(), value: { type: "number" }, covers: t() });
+      const planning = t("500-1000 words of concrete preparation for the requested output.");
+      return {
+        character_select: o({
+          planning,
+          characters: a(o({
+            name: t(), gender: t(), role: t(), personality: t(),
+            background: t(), fit: t(), player_character_text: t()
+          }), { minItems: 4, maxItems: 4 })
+        }),
+        world_setup: o({
+          planning,
+          title: t(), genre: t(), tone: t(), background_story: t(),
+          player_character: t(), premise: t(), first_action: t(), story_rules: t(),
+          default_triggers: a(tracker), rpg_statistics: a(stat)
+        }),
+        full_history: o({
+          planning,
+          "Characters": t(), "Setting Details": t(),
+          "Plot Details": t(), "Other Important Notes": t()
+        }),
+        world_import: o({
+          planning,
+          title: t(), genre: t(), tone: t(), player_character: t(),
+          premise: t(), story_rules: t(), default_triggers: a(tracker),
+          rpg_statistics: a(stat), settings: o({ useRpgStats: { type: "boolean" } })
+        }),
+        imported_turn: o({
+          planning,
+          image_prompt: t(), choices: a(t(), { minItems: 4, maxItems: 4 }),
+          scratchpad: t(), tracker_updates: a(o({
+            id: t(), name: t(), value: t(), rationale: t()
+          }))
+        })
+      };
+    })();
+
+    const NEMOTRON_LONG_REQUIRED_RESPONSE_FORMATS = Object.fromEntries(
+      Object.entries(NEMOTRON_LONG_RESPONSE_SCHEMAS).map(([kind, schema]) => [kind, {
+        type: "json_schema", json_schema: {
+          name: `infinite_quest_${kind}`, strict: true, schema
+        }
+      }])
+    );
+
+    const NEMOTRON_LONG_REASONING_ON_RESPONSE_FORMATS = Object.fromEntries(
+      Object.entries(NEMOTRON_LONG_REQUIRED_RESPONSE_FORMATS).map(([kind, format]) => [kind, {
+        type: "json_schema",
+        json_schema: {
+          ...format.json_schema,
+          name: `infinite_quest_${kind}_reasoning_on`,
+          schema: withoutNemotronPlanningProperty(format.json_schema.schema)
+        }
+      }])
+    );
+
+    function isValidNemotronSchemaResponse(data, shape) {
+      if (shape.type === "string") return typeof data === "string";
+      if (shape.type === "number") return typeof data === "number" && Number.isFinite(data);
+      if (shape.type === "boolean") return typeof data === "boolean";
+      if (shape.type === "array") return Array.isArray(data)
+        && (shape.minItems === undefined || data.length >= shape.minItems)
+        && (shape.maxItems === undefined || data.length <= shape.maxItems)
+        && data.every(item => isValidNemotronSchemaResponse(item, shape.items));
+      if (shape.type === "object") return !!data && typeof data === "object"
+        && !Array.isArray(data) && shape.required.every(key => isValidNemotronSchemaResponse(data[key], shape.properties[key]));
+      return false;
+    }
+
+    function isCompleteNemotronStructuredResponse(value, options = {}, requiresPlanning = false) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+      if (requiresPlanning && typeof value.planning !== "string") return false;
+      if (options.story_request) {
+        // Keep the existing story completeness contract, plus validate every
+        // required field against the applicable API schema.
+        const shape = requiresPlanning
+          ? NEMOTRON_STORY_REQUIRED_RESPONSE_FORMAT.json_schema.schema
+          : NEMOTRON_STORY_REASONING_ON_RESPONSE_FORMAT.json_schema.schema;
+        return isCompleteStoryJsonResponse(value) && isValidNemotronSchemaResponse(value, shape);
+      }
+      const format = requiresPlanning
+        ? NEMOTRON_LONG_REQUIRED_RESPONSE_FORMATS[options.nemotron_long_response]
+        : NEMOTRON_LONG_REASONING_ON_RESPONSE_FORMATS[options.nemotron_long_response];
+      return !!format && isValidNemotronSchemaResponse(value, format.json_schema.schema);
+    }
+
+    function isCompleteNemotronPlannedResponse(value, options = {}) {
+      return isCompleteNemotronStructuredResponse(value, options, true);
+    }
+
+    function discardNemotronPlanningField(response, planningEnabled = false) {
+      if (planningEnabled && response && typeof response === "object" && !Array.isArray(response)) {
+        delete response.planning;
+      }
+      return response;
+    }
+
+    function discardStoryPlanningField(response, storyRequest = false) {
+      return discardNemotronPlanningField(response, storyRequest);
+    }
+
+    function shouldDisableNemotronStoryReasoning(modelRequest = {}) {
+      if (!modelRequestIncludesNemotron(modelRequest)) return false;
+      // A single request-wide reasoning setting is shared by every OpenRouter
+      // fallback. Use the LEAST reasoning allowed by ANY selected model:
+      // one OFF overrides all ON entries, even when OFF is a fallback.
+      const selected = uniqueModelIds(modelRequest.selections || modelRequest.requested || [modelRequest.model || ""]);
+      const curatedContainsNemotron = (modelRequest.expanded || []).some(isNemotronModelId);
+      return selected.some(modelId => {
+        if (storyModelReasoningVariant(modelId) === "off" && isNemotronModelId(modelId)) return true;
+        if (isCuratedFreeMixModelId(modelId)) {
+          return storyModelReasoningVariant(modelId) !== "on" && curatedContainsNemotron;
+        }
+        return isNemotronModelId(modelId) && storyModelReasoningVariant(modelId) !== "on";
+      });
     }
 
     function modelRequestIncludesNemotron(modelRequest = {}) {
@@ -6172,7 +6480,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     }
 
     function isFreeModelId(modelId = "") {
-      const id = String(modelId || "").trim().toLowerCase();
+      const id = underlyingStoryModelId(modelId).toLowerCase();
       return isCuratedFreeMixModelId(id) || id === "openrouter/free" || id.endsWith(":free");
     }
 
@@ -6378,12 +6686,12 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     }
 
     function freeModelEndpointStats(id) {
-      const record = freeEndpointCache.get(String(id).trim().toLowerCase());
+      const record = freeEndpointCache.get(underlyingStoryModelId(id).toLowerCase());
       return record && Date.now() - record.loadedAt < FREE_ENDPOINT_CACHE_MS ? record : null;
     }
 
     function passesFreeAvailabilityFilter(id) {
-      if (!isFreeModelId(id) || isCuratedFreeMixModelId(id) || String(id).toLowerCase() === "openrouter/free") return true; // Synthetic router, not a provider-backed model.
+      if (!isFreeModelId(id) || isCuratedFreeMixModelId(id) || underlyingStoryModelId(id).toLowerCase() === "openrouter/free") return true; // Synthetic router, not a provider-backed model.
       const availability = freeModelEndpointStats(id)?.availability24h;
       return availability == null || availability >= 10;
     }
@@ -6564,7 +6872,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     function fallbackCandidateModels(modelOptions = null, primaryModel = state.settings?.llmModel || DEFAULT_LLM_MODEL) {
       const baseOptions = modelOptions || state.modelLists?.llms || DEFAULT_LLM_MODELS;
       let candidates = uniqueModelIds([DEFAULT_FREE_LLM_MODEL, "openrouter/free", ...baseOptions])
-        .filter(id => id && id !== primaryModel);
+        .filter(id => id && underlyingStoryModelId(id) !== underlyingStoryModelId(primaryModel));
       if (state.settings?.addFallbackModels) {
         candidates = candidates.filter(id => !isCuratedFreeMixModelId(id));
       }
@@ -6574,14 +6882,14 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     function ensureFallbackModelDefaults(modelOptions = null) {
       state.settings ||= {};
       const availableModels = modelOptions || state.modelLists?.llms || DEFAULT_LLM_MODELS;
-      let primaryModel = state.settings.llmModel || DEFAULT_LLM_MODEL;
+      let primaryModel = storyModelDropdownValue(state.settings.llmModel || DEFAULT_LLM_MODEL);
       if (state.settings.addFallbackModels && isCuratedFreeMixModelId(primaryModel)) {
         primaryModel = firstAllowedLlmModel(availableModels, { preferFree: !!state.settings.filterFreeOptions });
         state.settings.llmModel = primaryModel;
       }
 
-      let fallback1 = String(state.settings.fallbackLlmModel1 || "").trim();
-      let fallback2 = String(state.settings.fallbackLlmModel2 || "").trim();
+      let fallback1 = storyModelDropdownValue(state.settings.fallbackLlmModel1);
+      let fallback2 = storyModelDropdownValue(state.settings.fallbackLlmModel2);
       if (state.settings.filterFreeOptions) {
         if (!isFreeModelId(fallback1)) fallback1 = "";
         if (!isFreeModelId(fallback2)) fallback2 = "";
@@ -6590,13 +6898,15 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         if (isCuratedFreeMixModelId(fallback1)) fallback1 = "";
         if (isCuratedFreeMixModelId(fallback2)) fallback2 = "";
       }
-      if (fallback1 === primaryModel) fallback1 = "";
-      if (fallback2 === primaryModel || fallback2 === fallback1) fallback2 = "";
+      if (fallback1 && underlyingStoryModelId(fallback1) === underlyingStoryModelId(primaryModel)) fallback1 = "";
+      if (fallback2 && (underlyingStoryModelId(fallback2) === underlyingStoryModelId(primaryModel)
+          || underlyingStoryModelId(fallback2) === underlyingStoryModelId(fallback1))) fallback2 = "";
 
       if (state.settings.addFallbackModels) {
         const candidates = fallbackCandidateModels(availableModels, primaryModel);
-        if (!fallback1) fallback1 = candidates[0] || "";
-        if (!fallback2 || fallback2 === fallback1) fallback2 = candidates.find(id => id !== fallback1) || "";
+        if (!fallback1) fallback1 = storyModelDropdownValue(candidates[0]);
+        if (!fallback2) fallback2 = storyModelDropdownValue(
+          candidates.find(id => underlyingStoryModelId(id) !== underlyingStoryModelId(fallback1)) || "");
       }
 
       state.settings.fallbackLlmModel1 = fallback1;
@@ -6607,7 +6917,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       if (!state.settings?.addFallbackModels) return [];
       ensureFallbackModelDefaults();
       return uniqueModelIds([state.settings.fallbackLlmModel1, state.settings.fallbackLlmModel2])
-        .filter(id => id && id !== primaryModel && !isCuratedFreeMixModelId(id));
+        .filter(id => id && underlyingStoryModelId(id) !== underlyingStoryModelId(primaryModel) && !isCuratedFreeMixModelId(id));
     }
 
     async function expandCuratedModelSelections(modelIds = [], apiKey = "") {
@@ -6616,7 +6926,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         if (isCuratedFreeMixModelId(modelId)) {
           expanded.push(...await getCuratedFreeMixModels(apiKey));
         } else if (modelId) {
-          expanded.push(modelId);
+          expanded.push(underlyingStoryModelId(modelId));
         }
       }
       return uniqueModelIds(expanded);
@@ -6624,12 +6934,13 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
 
     async function buildOpenRouterModelRequest(modelId, apiKey = "", options = {}) {
       const fallbackEnabled = options.use_model_fallbacks ?? !!state.settings?.addFallbackModels;
-      let primaryModel = String(modelId || DEFAULT_LLM_MODEL).trim();
+      let primaryModel = storyModelDropdownValue(modelId || DEFAULT_LLM_MODEL);
       if (isCuratedFreeMixDeveloperSentinel(primaryModel)) primaryModel = DEFAULT_LLM_MODEL;
       if (fallbackEnabled && isCuratedFreeMixModelId(primaryModel)) {
         primaryModel = firstAllowedLlmModel(state.modelLists?.llms || DEFAULT_LLM_MODELS, { preferFree: !!state.settings?.filterFreeOptions });
       }
-      const requested = uniqueModelIds(Array.isArray(options.models) && options.models.length ? options.models : [primaryModel]);
+      const requested = uniqueModelIds(Array.isArray(options.models) && options.models.length
+        ? options.models.map(storyModelDropdownValue) : [primaryModel]);
       if (fallbackEnabled) requested.push(...configuredFallbackLlmModels(primaryModel));
       let requestedUnique = uniqueModelIds(requested);
       if (fallbackEnabled) requestedUnique = requestedUnique.filter(id => !isCuratedFreeMixModelId(id));
@@ -6637,9 +6948,10 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       const expanded = await expandCuratedModelSelections(requestedUnique, apiKey);
       const useModelsPayload = isCuratedFreeMixModelId(primaryModel) || fallbackEnabled || (Array.isArray(options.models) && options.models.length > 0);
       return {
-        model: primaryModel,
+        model: underlyingStoryModelId(primaryModel),
         requested: requestedUnique,
-        expanded: expanded.length ? expanded : [primaryModel],
+        selections: requestedUnique,
+        expanded: expanded.length ? expanded : [underlyingStoryModelId(primaryModel)],
         useModelsPayload
       };
     }
@@ -7090,7 +7402,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     }
 
     function isGemmaFreeModelId(modelId = "") {
-      const id = String(modelId || "").trim().toLowerCase();
+      const id = underlyingStoryModelId(modelId).toLowerCase();
       return id.endsWith(":free") && id.includes("gemma");
     }
 
@@ -7225,7 +7537,8 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     function modelInList(kind, value) {
       if (!value) return true;
       const list = kind === "images" ? state.modelLists?.images : state.modelLists?.llms;
-      return uniqueModelIds(list, kind === "images" ? DEFAULT_IMAGE_MODELS : DEFAULT_LLM_MODELS).includes(normalizeImageModelId(value) || value);
+      const modelId = kind === "images" ? (normalizeImageModelId(value) || value) : underlyingStoryModelId(value);
+      return uniqueModelIds(list, kind === "images" ? DEFAULT_IMAGE_MODELS : DEFAULT_LLM_MODELS).includes(modelId);
     }
 
     function populateModelSelects() {
@@ -7235,11 +7548,15 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
 
       const filterFreeOptions = !!state.settings.filterFreeOptions;
       const allLlms = uniqueModelIds(state.modelLists.llms, DEFAULT_LLM_MODELS).filter(passesFreeAvailabilityFilter);
+      // Match the exact three-model mix that request construction will expand.
+      // Offer its ON variant only after verified availability/usage identifies
+      // at least one Nemotron member of the curated mix.
+      const curatedMixHasNemotron = buildCuratedFreeMixModelOrder(allLlms).some(isNemotronModelId);
       const allImages = uniqueModelIds(state.modelLists.images, DEFAULT_IMAGE_MODELS).map(normalizeImageModelId);
 
       let llms = allLlms;
       let images = allImages;
-      let selectedLlm = state.settings.llmModel || DEFAULT_LLM_MODEL;
+      let selectedLlm = storyModelDropdownValue(state.settings.llmModel || DEFAULT_LLM_MODEL);
       let selectedImage = normalizeImageModelId(state.settings.imageModel || DEFAULT_IMAGE_MODEL);
 
       if (filterFreeOptions) {
@@ -7271,8 +7588,9 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         if (!passesFreeAvailabilityFilter(state.settings[key])) state.settings[key] = "";
       }
       ensureFallbackModelDefaults(llms);
-      selectedLlm = state.settings.llmModel || selectedLlm;
-      populateSelect("llmModel", llms, selectedLlm);
+      selectedLlm = storyModelDropdownValue(state.settings.llmModel || selectedLlm);
+      state.settings.llmModel = selectedLlm;
+      populateSelect("llmModel", llms, selectedLlm, { curatedMixHasNemotron });
       populateFallbackSelect("fallbackLlmModel1", llms, state.settings.fallbackLlmModel1, "Choose fallback 1");
       populateFallbackSelect("fallbackLlmModel2", llms, state.settings.fallbackLlmModel2, "Choose fallback 2");
       populateSelect("imageModel", images, selectedImage);
@@ -7290,7 +7608,23 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       }
     }
 
-    function populateSelect(id, items, selectedValue) {
+    function storyModelDropdownOptions(items = [], { curatedMixHasNemotron = false } = {}) {
+      const result = [];
+      for (const item of uniqueModelIds(items)) {
+        const id = underlyingStoryModelId(item);
+        if (isCuratedFreeMixModelId(id)) {
+          result.push(CURATED_FREE_MIX_MODEL);
+          if (curatedMixHasNemotron) result.push(`${CURATED_FREE_MIX_MODEL} (Reasoning ON)`);
+        } else if (isNemotronModelId(id)) {
+          result.push(`${id} (Reasoning ON)`, `${id} (Reasoning OFF)`);
+        } else {
+          result.push(item);
+        }
+      }
+      return uniqueModelIds(result);
+    }
+
+    function populateSelect(id, items, selectedValue, { curatedMixHasNemotron = false } = {}) {
       const el = $(id);
       if (!el) return;
       const previous = el.value;
@@ -7299,10 +7633,12 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       if (isStoryModelSelect && state.settings?.addFallbackModels && isCuratedFreeMixModelId(value)) {
         value = firstAllowedLlmModel(items, { preferFree: !!state.settings.filterFreeOptions });
       }
+      if (isStoryModelSelect) value = storyModelDropdownValue(value);
       let allItems = uniqueModelIds(items, [
         ...(id === "imageModel" ? FREE_IMAGE_MODEL_OPTIONS : []),
         ...(value ? [value] : [])
       ]);
+      if (isStoryModelSelect) allItems = storyModelDropdownOptions(allItems, { curatedMixHasNemotron });
       if (isStoryModelSelect && state.settings?.addFallbackModels) {
         allItems = allItems.filter(item => !isCuratedFreeMixModelId(item));
       }
@@ -7320,8 +7656,9 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
     function populateFallbackSelect(id, items, selectedValue, emptyLabel = "Choose fallback") {
       const el = $(id);
       if (!el) return;
-      const value = (state.settings?.addFallbackModels && isCuratedFreeMixModelId(selectedValue)) ? "" : (selectedValue || "");
-      let allItems = uniqueModelIds(items, value ? [value] : []);
+      const value = (state.settings?.addFallbackModels && isCuratedFreeMixModelId(selectedValue))
+        ? "" : storyModelDropdownValue(selectedValue);
+      let allItems = storyModelDropdownOptions(uniqueModelIds(items, value ? [value] : []));
       if (state.settings?.addFallbackModels) {
         allItems = allItems.filter(item => !isCuratedFreeMixModelId(item));
       }
@@ -7344,6 +7681,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       const el = $(id);
       if (!el) return;
       const isStoryModelSelect = id === "llmModel" || id === "fallbackLlmModel1" || id === "fallbackLlmModel2";
+      if (isStoryModelSelect) value = storyModelDropdownValue(value);
       if (isStoryModelSelect && state.settings?.addFallbackModels && isCuratedFreeMixModelId(value)) {
         value = id === "llmModel" ? firstAllowedLlmModel(state.modelLists?.llms || DEFAULT_LLM_MODELS, { preferFree: !!state.settings.filterFreeOptions }) : "";
       }
@@ -8233,16 +8571,17 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         if (isCuratedFreeMixModelId(fallback1)) fallback1 = "";
         if (isCuratedFreeMixModelId(fallback2)) fallback2 = "";
       }
-      if (fallback1 === selectedLlm) fallback1 = "";
-      if (fallback2 === selectedLlm || fallback2 === fallback1) fallback2 = "";
+      if (fallback1 && underlyingStoryModelId(fallback1) === underlyingStoryModelId(selectedLlm)) fallback1 = "";
+      if (fallback2 && (underlyingStoryModelId(fallback2) === underlyingStoryModelId(selectedLlm)
+          || underlyingStoryModelId(fallback2) === underlyingStoryModelId(fallback1))) fallback2 = "";
 
-      state.settings.llmModel = selectedLlm;
+      state.settings.llmModel = storyModelDropdownValue(selectedLlm);
       state.settings.curatedFreeMixDeveloperMode = developerSentinelEntered
         && isCuratedFreeMixModelId(selectedLlm)
         && !fallbackModelsEnabled;
       state.settings.addFallbackModels = fallbackModelsEnabled;
-      state.settings.fallbackLlmModel1 = fallback1;
-      state.settings.fallbackLlmModel2 = fallback2;
+      state.settings.fallbackLlmModel1 = storyModelDropdownValue(fallback1);
+      state.settings.fallbackLlmModel2 = storyModelDropdownValue(fallback2);
       ensureFallbackModelDefaults();
       state.settings.imageModel = selectedImage;
       if (isFreeImageModel(selectedImage)) state.settings.lastFreeImageModel = selectedImage;
@@ -9890,6 +10229,16 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       const modelId = options.model || state.settings.llmModel || DEFAULT_LLM_MODEL;
       const modelRequest = options.__resolvedModelRequest || await buildOpenRouterModelRequest(modelId, key, options);
       const disableJsonResponseFormat = options.disable_json_response_format ?? shouldDisableJsonResponseFormatForModelList(modelRequest.expanded);
+      const longResponseType = NEMOTRON_LONG_RESPONSE_SCHEMAS[options.nemotron_long_response]
+        ? options.nemotron_long_response : "";
+      const enforceNemotronSchema = (!!options.story_request || !!longResponseType)
+        && modelRequestIncludesNemotron(modelRequest);
+      const disableNemotronReasoning = enforceNemotronSchema
+        && shouldDisableNemotronStoryReasoning(modelRequest);
+      if (disableNemotronReasoning) {
+        messages = includeNemotronPlanningInSchema(messages, options.story_request ? "" : longResponseType);
+        messages = prependNemotronNoThinkDirective(messages);
+      }
       const payload = {
         messages,
         temperature: options.temperature ?? Number(state.settings.temperature ?? 0.85),
@@ -9901,10 +10250,17 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         payload.model = modelRequest.model;
       }
       const reasoningEffort = openRouterReasoningEffortForRequest(modelRequest, options);
-      if (reasoningEffort) {
+      if (disableNemotronReasoning) {
+        payload.reasoning = { enabled: false };
+      } else if (reasoningEffort) {
         payload.reasoning = { effort: reasoningEffort };
       }
-      if (!disableJsonResponseFormat) {
+      if (enforceNemotronSchema && options.disable_json_response_format !== true) {
+        payload.response_format = options.story_request
+          ? (disableNemotronReasoning ? NEMOTRON_STORY_REQUIRED_RESPONSE_FORMAT : NEMOTRON_STORY_REASONING_ON_RESPONSE_FORMAT)
+          : (disableNemotronReasoning ? NEMOTRON_LONG_REQUIRED_RESPONSE_FORMATS[longResponseType]
+            : NEMOTRON_LONG_REASONING_ON_RESPONSE_FORMATS[longResponseType]);
+      } else if (!disableJsonResponseFormat && options.disable_json_response_format !== true) {
         payload.response_format = { type: "json_object" };
       }
       addCommunityPlayerToOpenRouterPayload(payload, key);
@@ -9964,13 +10320,23 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         // A story response that actually ended because of the token limit is never
         // safe to commit, even if provider-side response healing made the partial
         // JSON syntactically valid. Force it through the length-recovery path.
-        if (finishReason === "length" && options.story_request) {
+        if (finishReason === "length" && enforceNemotronSchema) {
           const incompleteError = modelJsonError(new Error(`The story response reached its ${responseMaxTokens}-token output limit.`), content);
           incompleteError.openRouterFinishReason = "length";
           incompleteError.openRouterRequestedMaxTokens = responseMaxTokens;
           throw incompleteError;
         }
-        return attachOpenRouterModelMetadata(parsed, data, modelRequest);
+        // JSON mode alone can return a syntactically valid object with only
+        // "planning". Never accept that as a full story. This also checks
+        // providers that treat json_schema as guidance rather than a guarantee.
+        if (enforceNemotronSchema && !isCompleteNemotronStructuredResponse(parsed, options, disableNemotronReasoning)) {
+          throw modelJsonError(new Error("The Nemotron response omitted required JSON fields."), content);
+        }
+        // Planning must not leak into story state, generated worlds, character
+        // options, memory, imported turns, or persisted application data.
+        return attachOpenRouterModelMetadata(
+          discardNemotronPlanningField(parsed, disableNemotronReasoning), data, modelRequest
+        );
       } catch (err) {
         if (err?.isModelJsonError && finishReason === "length") {
           err.openRouterFinishReason = "length";
@@ -9983,7 +10349,9 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
 
     function isProviderJsonModeNotEnabledError(err) {
       const message = err?.message || String(err || "");
-      return /JSON mode is not enabled/i.test(message);
+      return /JSON mode is not enabled/i.test(message)
+        || (/(?:json_schema|structured.outputs|response_format)/i.test(message)
+          && /(?:not supported|unsupported|not available|not enabled|unrecognized|unknown parameter|invalid schema)/i.test(message));
     }
 
     async function callOpenRouterJson(label, messages, options = {}) {
@@ -10006,6 +10374,30 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
           console.debug(`[Infinite Quest] Setting story output budget from ${requestedBudget} to ${effectiveBudget} tokens because ${reason}.`);
         }
         budgetedOptions = { ...options, __resolvedModelRequest: modelRequest, max_tokens: effectiveBudget };
+      } else if (NEMOTRON_LONG_RESPONSE_SCHEMAS[options.nemotron_long_response]) {
+        const key = String(options.api_key ?? state.settings.apiKey ?? "").trim();
+        if (!key) throw new Error("Enter your OpenRouter API key first.");
+        const modelId = options.model || state.settings.llmModel || DEFAULT_LLM_MODEL;
+        const modelRequest = options.__resolvedModelRequest || await buildOpenRouterModelRequest(modelId, key, options);
+        if (shouldDisableNemotronStoryReasoning(modelRequest)) {
+          // The additional 500-1000 words need their own output-token room.
+          // Honor the minimum known model cap across all fallbacks.
+          const base = Math.max(1, Number(options.max_tokens ?? 1200) || 1200);
+          const routeCap = modelRequestMaxCompletionTokenCap(modelRequest);
+          const expanded = routeCap > 0 ? Math.min(base + 1600, routeCap) : base + 1600;
+          budgetedOptions = { ...options, __resolvedModelRequest: modelRequest, max_tokens: expanded };
+        } else {
+          // Preserve the original short-helper budgeting and reasoning effort
+          // for Reasoning ON and non-Nemotron routes.
+          const requestedBudget = Math.max(1, Number(options.max_tokens ?? 1200) || 1200);
+          const effectiveBudget = effectiveNemotronShortHelperOutputTokenBudget(requestedBudget, modelRequest, options);
+          budgetedOptions = {
+            ...options,
+            __resolvedModelRequest: modelRequest,
+            max_tokens: effectiveBudget,
+            __nemotronShortHelperRaisedFromTokens: effectiveBudget > requestedBudget ? requestedBudget : 0
+          };
+        }
       } else {
         const requestedBudget = Math.max(1, Number(options.max_tokens ?? 1200) || 1200);
         if (requestedBudget > NEMOTRON_SHORT_HELPER_REASONING_CUTOFF_TOKENS
@@ -10037,7 +10429,12 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       if (Number.isFinite(Number(prepared.contextAdjustedMaxTokens)) && Number(prepared.contextAdjustedMaxTokens) > 0) {
         preparedOptions = { ...preparedOptions, __contextAdjustedMaxTokens: Math.floor(Number(prepared.contextAdjustedMaxTokens)) };
       }
-      const jsonRetries = Number.isInteger(preparedOptions.json_retries) ? Math.max(0, preparedOptions.json_retries) : 0;
+      // Retry incomplete structured outputs once for both ON and OFF routes;
+      // endpoints may ignore json_schema while returning syntactically valid JSON.
+      const jsonRetries = Number.isInteger(preparedOptions.json_retries)
+        ? Math.max(0, preparedOptions.json_retries)
+        : ((preparedOptions.story_request || NEMOTRON_LONG_RESPONSE_SCHEMAS[preparedOptions.nemotron_long_response])
+          && modelRequestIncludesNemotron(preparedOptions.__resolvedModelRequest || {}) ? 1 : 0);
       const noContentRetries = Number.isInteger(preparedOptions.no_content_retries) ? Math.max(0, preparedOptions.no_content_retries) : 0;
       const maxRetries = Math.max(jsonRetries, noContentRetries);
       let lastRetryableError = null;
@@ -10517,6 +10914,7 @@ Character option requirements:
         const characterSelectOptions = {
           temperature: Math.max(0.55, Number(state.settings.temperature ?? 0.85)),
           max_tokens: 3000,
+          nemotron_long_response: "character_select",
           json_retries: 3,
           no_content_retries: 3
         };
@@ -10677,7 +11075,7 @@ Make the setup immediately playable and specific enough for a first turn.`;
         const raw = await callOpenRouterJson("world setup", buildOpenRouterInstructionMessages(
           worldSetupSystemPrompt(),
           () => buildWorldSetupPrompt(seedPrompt, useRpgPercentileStats, autoGenerateTrackers)
-        ), { temperature: Math.max(0.45, Number(state.settings.temperature ?? 0.85)), max_tokens: 3200, json_retries: 3, no_content_retries: 3 });
+        ), { nemotron_long_response: "world_setup", temperature: Math.max(0.45, Number(state.settings.temperature ?? 0.85)), max_tokens: 3200, json_retries: 3, no_content_retries: 3 });
 
         const title = raw.title || raw.world_title || raw.name;
         const genre = raw.genre || raw.genres;
@@ -11360,7 +11758,7 @@ ${addition}`.trim();
       const raw = await callOpenRouterJson("full history memory compression", buildOpenRouterInstructionMessages(
         memorySummarySystemPrompt(),
         () => buildFullHistoryUpdatePrompt()
-      ), { temperature: 0.2, max_tokens: 2600, json_retries: 2, no_content_retries: 2 });
+      ), { nemotron_long_response: "full_history", temperature: 0.2, max_tokens: 2600, json_retries: 2, no_content_retries: 2 });
       const normalized = normalizeFullHistory(raw);
       if (!normalized) throw new Error("The model did not return a usable full-history memory summary.");
       state.fullHistory = normalized;
@@ -11876,6 +12274,91 @@ SVG requirements:
       return url;
     }
 
+    // Pollinations may return a fully loadable PNG/JPEG *error card* instead of an
+    // illustration when the free service is at capacity. Detect the familiar
+    // mostly-flat, light background with dark text/logo bands without relying
+    // on exact dimensions, compression, pixel equality, or embedded OCR.
+    function isPollinationsLimitGraphic(image) {
+      if (!image || !image.naturalWidth || !image.naturalHeight) return false;
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 96;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return false;
+      try {
+        ctx.drawImage(image, 0, 0, 96, 96);
+        const pixels = ctx.getImageData(0, 0, 96, 96).data;
+        const colorAt = (x, y) => {
+          const i = (y * 96 + x) * 4;
+          return [pixels[i], pixels[i + 1], pixels[i + 2]];
+        };
+        const corners = [colorAt(2, 2), colorAt(93, 2), colorAt(2, 93), colorAt(93, 93)];
+        const bg = [0, 1, 2].map(c => corners.reduce((sum, p) => sum + p[c], 0) / corners.length);
+        // Pollinations' capacity/limit screens have a uniform pale background.
+        if (bg[0] < 205 || bg[1] < 195 || bg[2] < 135) return false;
+        if (corners.some(p => p.some((v, i) => Math.abs(v - bg[i]) > 27))) return false;
+        const nearBackground = (i) =>
+          Math.max(Math.abs(pixels[i] - bg[0]), Math.abs(pixels[i + 1] - bg[1]), Math.abs(pixels[i + 2] - bg[2])) < 36;
+        const isInk = i =>
+          (0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2]) <
+          (0.299 * bg[0] + 0.587 * bg[1] + 0.114 * bg[2]) - 95;
+        let backgroundCount = 0, inkCount = 0, middleInk = 0, middlePixels = 0, quietTopBg = 0, quietTopPixels = 0;
+        for (let y = 0; y < 96; y += 1) {
+          for (let x = 0; x < 96; x += 1) {
+            const i = (y * 96 + x) * 4;
+            const background = nearBackground(i);
+            const ink = isInk(i);
+            if (background) backgroundCount += 1;
+            if (ink) inkCount += 1;
+            if (y >= 27 && y < 69) {
+              middlePixels += 1;
+              if (ink) middleInk += 1;
+            }
+            if (y >= 16 && y < 27) {
+              quietTopPixels += 1;
+              if (background) quietTopBg += 1;
+            }
+          }
+        }
+        const total = 96 * 96;
+        return backgroundCount / total > 0.69
+          && inkCount / total > 0.016 && inkCount / total < 0.22
+          && middleInk / middlePixels > 0.050
+          && quietTopBg / quietTopPixels > 0.88;
+      } catch (_) {
+        // A non-CORS image may be displayed, but cannot be read from canvas.
+        // Do not falsely label it as a rate-limit screen based on size alone.
+        return false;
+      }
+    }
+
+    // Inspect the actual returned image before marking the generation a success.
+    // Only Pollinations images use this extra validation; other providers are
+    // unaffected. Its legacy endpoint permits anonymous cross-origin images.
+    function preloadPollinationsImageInfo(url) {
+      const errorLabel = "Pollinations.ai image generation failed. The server might be busy.";
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          if (isPollinationsLimitGraphic(img)) {
+            reject(new Error("Pollinations.ai is at its free-service limit and returned an error graphic instead of a scene image. Regenerate the turn image to try again."));
+            return;
+          }
+          resolve({
+            url,
+            width: Math.max(0, Number(img.naturalWidth) || 0),
+            height: Math.max(0, Number(img.naturalHeight) || 0)
+          });
+        };
+        img.onerror = () => {
+          // Do not break a legitimate image if this endpoint omits CORS headers.
+          // Standard image loading still handles genuine network/image failures.
+          preloadImageInfo(url, errorLabel).then(resolve, reject);
+        };
+        img.src = url;
+      });
+    }
+
     function pollinationsSeedFromUrl(url = "") {
       try {
         return new URL(String(url || "")).searchParams.get("seed") || "";
@@ -11902,7 +12385,7 @@ SVG requirements:
       const seed = randomPollinationsSeed(previousSeed);
       const { width, height } = pollinationsImageDimensions();
       const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?seed=${seed}&width=${width}&height=${height}&nologo=true`;
-      const imageInfo = await withLlmResponseWait(() => preloadImageInfo(url, "Pollinations.ai image generation failed. The server might be busy."));
+      const imageInfo = await withLlmResponseWait(() => preloadPollinationsImageInfo(url));
       const turn = options.turn || null;
       if (turn) {
         turn.imageWidth = imageInfo.width || width;
@@ -15586,7 +16069,7 @@ Final cleanup mode:
         const partial = await callOpenRouterJson("Infinite Worlds world incremental import", buildOpenRouterInstructionMessages(
           infiniteWorldsWorldIncrementalSystemPrompt(),
           () => buildInfiniteWorldsIncrementalWorldPrompt({ draft, chunk, index: i, total: plan.chunks.length, sourceName, strategy: plan.strategy })
-        ), { temperature: 0.12, max_tokens: 5200, json_retries: 3, no_content_retries: 2 });
+        ), { nemotron_long_response: "world_import", temperature: 0.12, max_tokens: 5200, json_retries: 3, no_content_retries: 2 });
         draft = mergeWorldImportDrafts(draft, partial);
         const donePercent = ((i + 1) / progressDenominator) * 100;
         setInfiniteWorldsImportProgress("world", donePercent, `${Math.round(donePercent)}% — imported ${i + 1}/${plan.chunks.length}`);
@@ -15600,7 +16083,7 @@ Final cleanup mode:
         const polished = await callOpenRouterJson("Infinite Worlds world final import cleanup", buildOpenRouterInstructionMessages(
           infiniteWorldsWorldFinalPolishSystemPrompt(),
           () => buildInfiniteWorldsWorldFinalPolishPrompt(draft, sourceName, plan)
-        ), { temperature: 0.08, max_tokens: 5200, json_retries: 2, no_content_retries: 1 });
+        ), { nemotron_long_response: "world_import", temperature: 0.08, max_tokens: 5200, json_retries: 2, no_content_retries: 1 });
         const result = mergeWorldImportDrafts(draft, polished);
         setInfiniteWorldsImportProgress("world", 100, "100% — world import complete");
         return result;
@@ -15787,7 +16270,7 @@ Rules:
       return callOpenRouterJson("Infinite Worlds story turn import", buildOpenRouterInstructionMessages(
         importedStoryTurnSystemPrompt(),
         () => buildImportedStoryTurnPrompt(parsedStory, sourceTurn, importIndex)
-      ), { temperature: Math.max(0.25, Number(state.settings.temperature ?? 0.85)), max_tokens: 2600, json_retries: 2, no_content_retries: 2 });
+      ), { nemotron_long_response: "imported_turn", temperature: Math.max(0.25, Number(state.settings.temperature ?? 0.85)), max_tokens: 2600, json_retries: 2, no_content_retries: 2 });
     }
 
     function quickImportedStoryFinalTurnSystemPrompt() {

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Infinite Quest - OpenRouter CYOA Engine v2.76</title>
+  <title>Infinite Quest - OpenRouter CYOA Engine v2.8</title>
   <style>
     :root {
       --bg: #07131d;
@@ -2350,6 +2350,7 @@
           <button class="tab active" data-tab="scratch">Scratchpad</button>
           <button class="tab" data-tab="trackers">Trackers</button>
           <button class="tab" data-tab="history">History</button>
+          <button class="tab" data-tab="pawscript">PawScript / YAML</button>
         </div>
         <div class="panel-body">
           <section id="tab-scratch" class="stack">
@@ -2371,6 +2372,28 @@
             </label>
             <button id="btnAddTracker" class="accent">＋ Add tracker</button>
             <div id="trackerList" class="stack"></div>
+          </section>
+
+          <section id="tab-pawscript" class="stack hidden">
+            <p class="mini">Use PawScript expressions and scripts on the selected turn’s tracker snapshot. Lists and records may be stored as YAML; scripts execute locally and commit only if they finish successfully. Use only trusted scripts.</p>
+            <label>Expression or template
+              <textarea id="pawExpression" rows="2" spellcheck="false"><<$player.name>> • <<$game.turn_number>></textarea>
+            </label>
+            <div class="row wrap"><button id="btnPawEvaluate" class="small accent" type="button">Evaluate expression</button><button id="btnPawYaml" class="small" type="button">Inspect YAML / JSON state</button></div>
+            <label>Script (2-space indentation; no colons)
+              <textarea id="pawScriptSource" rows="9" spellcheck="false" placeholder="set $heal = 3&#10;for each $person in $party&#10;  $person.hp += $heal"></textarea>
+            </label>
+            <div class="row wrap"><button id="btnPawRun" class="accent" type="button">Run script on this turn</button><button id="btnPawTests" class="small" type="button">Run runtime self-tests</button></div>
+            <details class="stack" style="padding:10px;border:1px solid var(--border);border-radius:12px">
+              <summary>YAML List Update effect</summary>
+              <p class="mini">Apply an Infinite Worlds-style <code>current()</code> field update to a YAML list tracker; each item is evaluated against its own current value.</p>
+              <label>List tracker variable (without $)<input id="pawListTracker" placeholder="party" /></label>
+              <label>Target field (PawScript)<input id="pawListTarget" value="current().hp" /></label>
+              <label>Value expression (PawScript)<input id="pawListValue" value="current().hp + 5" /></label>
+              <label>Optional condition (blank = all entries)<input id="pawListFilter" placeholder="current().hp &lt; current().max_hp" /></label>
+              <button id="btnPawListUpdate" class="small accent" type="button">Apply YAML List Update</button>
+            </details>
+            <pre id="pawOutput" style="max-height:340px;white-space:pre-wrap;overflow:auto;color:var(--muted);background:rgba(0,0,0,.2);border:1px solid var(--border);border-radius:10px;padding:12px;">Ready.</pre>
           </section>
 
           <section id="tab-history" class="stack hidden">
@@ -2771,6 +2794,815 @@
 
 
   <script>
+/* PawYAML: self-contained safe YAML reader/writer for Infinite Worlds tracked items.
+   Supports YAML 1.1 core scalars, nested mappings/lists, flow collections, quotes,
+   comments, block scalar chomping/folding, anchors/aliases and merge keys.
+   No custom constructors, arbitrary tags or prototype-polluting keys. */
+const PawYAML = (() => {
+  'use strict';
+  const own=(o,k)=>Object.prototype.hasOwnProperty.call(o,k);
+  const BAD=new Set(['__proto__','constructor','prototype']);
+  const safe=k=>{k=String(k);if(BAD.has(k))throw Error('Unsafe YAML key: '+k);return k;};
+  const clone=x=>x==null?x:JSON.parse(JSON.stringify(x));
+  function tokens(s,delimiter=','){
+    let depth=0,q='',esc=false,from=0,out=[];
+    for(let i=0;i<s.length;i++){const c=s[i];
+      if(q){if(esc)esc=false;else if(q==='"'&&c==='\\')esc=true;else if(c===q){if(q==="'"&&s[i+1]==="'")i++;else q='';}continue;}
+      if(c==='"'||c==="'")q=c;
+      else if(c==='['||c==='{')depth++;
+      else if(c===']'||c==='}')depth--;
+      else if(c===delimiter&&depth===0){out.push(s.slice(from,i).trim());from=i+1;}
+      if(depth<0)throw Error('Unexpected closing bracket in YAML');
+    }
+    if(q||depth)throw Error('Unclosed YAML quotation or brackets');out.push(s.slice(from).trim());return out;
+  }
+  function colon(s,flow=false){let q='',depth=0;
+    for(let i=0;i<s.length;i++){let c=s[i];if(q){if(q==='"'&&c==='\\')i++;else if(c===q){if(q==="'"&&s[i+1]==="'")i++;else q='';}continue;}
+      if(c==='"'||c==="'"){q=c;continue;}
+      if(c==='['||c==='{'){depth++;continue;}if(c===']'||c==='}'){depth--;continue;}
+      if(c===':'&&depth===0&&(flow||i===s.length-1||/\s/.test(s[i+1])))return i;
+    }return -1;
+  }
+  function uncomment(s){let q='',depth=0;for(let i=0;i<s.length;i++){const c=s[i];
+    if(q){if(q==='"'&&c==='\\')i++;else if(c===q){if(q==="'"&&s[i+1]==="'")i++;else q='';}continue;}
+    if(c==='"'||c==="'")q=c;
+    else if(c==='['||c==='{')depth++;
+    else if(c===']'||c==='}')depth--;
+    else if(c==='#'&&(i===0||/\s/.test(s[i-1]))&&depth>=0)return s.slice(0,i).trimEnd();
+  }return s.trimEnd();}
+  const patternNumber=/^[-+]?(?:0x[0-9a-fA-F_]+|0o[0-7_]+|0b[01_]+|(?:\d[\d_]*(?:\.\d[\d_]*)?|\.\d[\d_]+)(?:[eE][-+]?\d+)?|\.inf|\.nan)$/i;
+  function scalar(raw,anchors,aliasCount){let s=String(raw).trim();if(!s)return '';
+    if(s.startsWith('*')){const ref=s.slice(1).trim();if(!/^[\w-]+$/.test(ref)||!own(anchors,ref))throw Error('Unknown YAML alias '+ref);if(++aliasCount.count>2000)throw Error('Too many YAML aliases');return clone(anchors[ref]);}
+    if(s[0]==='!')throw Error('Custom YAML tags are not supported');
+    if(s[0]==='"'){try{return JSON.parse(s);}catch{throw Error('Invalid quoted YAML string '+s.slice(0,40));}}
+    if(s[0]==="'"){if(s.at(-1)!=="'")throw Error('Unterminated YAML string');return s.slice(1,-1).replace(/''/g,"'");}
+    if(s[0]==='['&&s.at(-1)===']'){let inner=s.slice(1,-1).trim();return !inner?[]:tokens(inner).map(x=>scalar(x,anchors,aliasCount));}
+    if(s[0]==='{'&&s.at(-1)==='}'){let inner=s.slice(1,-1).trim(),out={};if(!inner)return out;
+      for(const item of tokens(inner)){let i=colon(item,true);if(i<0)throw Error('Invalid flow mapping: '+item);let key=safe(scalar(item.slice(0,i),anchors,aliasCount));out[key]=scalar(item.slice(i+1),anchors,aliasCount);}return out;}
+    if(s==='~'||/^null$/i.test(s))return null;
+    if(/^(?:true|yes|on)$/i.test(s))return true;
+    if(/^(?:false|no|off)$/i.test(s))return false;
+    if(patternNumber.test(s)){
+      let n=s.replace(/_/g,'');if(/\.nan/i.test(n))throw Error('NaN not supported in tracked items');
+      if(/\.inf/i.test(n))throw Error('Infinity not supported in tracked items');
+      if(/^[-+]?0x/i.test(n))return parseInt(n,16);
+      if(/^[-+]?0o/i.test(n))return parseInt(n,8);
+      if(/^[-+]?0b/i.test(n))return parseInt(n,2);
+      const v=Number(n);if(Number.isFinite(v))return v;
+    }
+    return uncomment(s).trim();
+  }
+  function parse(input){if(typeof input!=='string')return input;
+    const lines=input.replace(/^\uFEFF/,'').replace(/\r\n?/g,'\n').split('\n');
+    const anchors=Object.create(null),aliasCount={count:0};let pos=0;
+    const indent=s=>s.match(/^ */)[0].length;
+    const empty=s=>/^\s*(?:#.*)?$/.test(s);
+    function next(){while(pos<lines.length&&(empty(lines[pos])||/^\s*---\s*(?:#.*)?$/.test(lines[pos])))pos++;return pos<lines.length?indent(lines[pos]):-1;}
+    function parseValue(t,parent){
+      t=uncomment(t).trim();let anchor=null;const m=t.match(/^&([\w-]+)(?:\s+|$)/);
+      if(m){anchor=m[1];t=t.slice(m[0].length).trim();}
+      const val=t?scalar(t,anchors,aliasCount):(next()>parent?block(next()):null);
+      if(anchor)anchors[anchor]=clone(val);return val;
+    }
+    function blockScalar(spec,parent){
+      const fold=spec[0]==='>',mark=spec.match(/[+-]/)?.[0]||'',ind=spec.match(/[1-9]/)?.[0];
+      const saved=pos,segments=[];let target=ind?parent+Number(ind):null;
+      if(target==null){for(let i=pos;i<lines.length;i++){if(!empty(lines[i])){const n=indent(lines[i]);if(n<=parent)break;target=n;break;}}}
+      if(target==null)target=parent+1;
+      while(pos<lines.length){const line=lines[pos],n=indent(line);
+        if(!empty(line)&&n<target)break;
+        if(empty(line)&&n<=parent){let j=pos+1;while(j<lines.length&&empty(lines[j]))j++;if(j<lines.length&&indent(lines[j])<=parent)break;}
+        segments.push(line.slice(Math.min(target,n)));pos++;
+      }
+      let out='';if(fold){for(let i=0;i<segments.length;i++){
+        if(i)out+=(segments[i-1]===''||segments[i]===''||segments[i-1].startsWith(' ')||segments[i].startsWith(' '))?'\n':' ';
+        out+=segments[i];
+      }}else out=segments.join('\n');
+      if(mark==='-')return out.replace(/\n+$/,'');
+      if(mark==='+')return out+'\n';
+      return out.replace(/\n*$/,'')+'\n';
+    }
+    function put(map,key,val){key=safe(key);
+      if(key==='<<'){
+        const merges=Array.isArray(val)?val:[val];for(const obj of merges){if(!obj||typeof obj!=='object'||Array.isArray(obj))throw Error('YAML merge requires maps');for(const [k,v] of Object.entries(obj))if(!own(map,k))map[safe(k)]=clone(v);}return;
+      }map[key]=val;
+    }
+    function block(level){const result=(uncomment(lines[pos].slice(level)).trim()==='-'||/^\-\s/.test(lines[pos].slice(level)))?[]:{};
+      const explicitKeys=new Set();
+      while(next()===level){const row=lines[pos++].slice(level),t=uncomment(row).trimEnd();
+        if(Array.isArray(result)){
+          if(!(t==='-'||t.startsWith('- ')))throw Error('Cannot mix YAML list and map on line '+pos);
+          let rest=t.slice(1).trim();if(!rest){result.push(next()>level?block(next()):null);continue;}
+          if(/^[>|][+\-1-9]*$/.test(rest)){result.push(blockScalar(rest,level));continue;}
+          let sep=colon(rest);
+          if(sep>=0){const child={},key=safe(scalar(rest.slice(0,sep),anchors,aliasCount)),tail=rest.slice(sep+1).trim();
+            put(child,key,/^[>|][+\-1-9]*$/.test(tail)?blockScalar(tail,level+2):parseValue(tail,level+1));
+            if(next()>level){const more=block(next());if(!more||typeof more!=='object'||Array.isArray(more))throw Error('Invalid list of mapping entries on line '+pos);for(const [k,v] of Object.entries(more))put(child,k,v);}
+            result.push(child);
+          }else result.push(parseValue(rest,level));
+        }else{
+          const sep=colon(t);if(sep<0)throw Error('Expected key: value on line '+pos);
+          const key=safe(scalar(t.slice(0,sep),anchors,aliasCount)),tail=t.slice(sep+1).trim();
+          if(explicitKeys.has(key))throw Error('Duplicate YAML key '+key+' on line '+pos);if(key!=='<<')explicitKeys.add(key);
+          put(result,key,/^[>|][+\-1-9]*$/.test(tail)?blockScalar(tail,level):parseValue(tail,level));
+        }
+        if(next()>level)throw Error('Unexpected YAML indentation on line '+(pos+1));
+      }return result;
+    }
+    if(next()<0)return null;
+    const start=pos,t=uncomment(lines[pos].trim());let result;
+    if(!(t==='-'||t.startsWith('- '))&&colon(t)<0){pos++;result=parseValue(t,-1);}
+    else result=block(indent(lines[pos]));
+    if(next()>=0 && !/^\s*\.\.\.\s*$/.test(lines[pos]))throw Error('Multiple YAML documents or malformed indentation on line '+(pos+1));
+    return result;
+  }
+  function q(s){if(s===null)return 'null';if(typeof s==='boolean'||typeof s==='number')return String(s);
+    s=String(s??'');if(!s||s.trim()!==s||/\n/.test(s)||/^(?:yes|no|on|off|true|false|null|~|[-+]?\d|\.\w|[\[\]{},&*!#|>'"%@`?:]|-\s)/i.test(s)||/\s#|:\s/.test(s))return JSON.stringify(s);return s;
+  }
+  function write(v,depth=0){const pad=' '.repeat(depth);
+    if(Array.isArray(v))return !v.length?'[]':v.map(x=> x && typeof x==='object'&&Object.keys(x).length?pad+'-\n'+write(x,depth+2):pad+'- '+qValue(x)).join('\n');
+    if(v&&typeof v==='object')return !Object.keys(v).length?'{}':Object.entries(v).map(([k,x])=>{
+      safe(k);const key=q(k),multiline=typeof x==='string'&&x.includes('\n');
+      if(multiline){const strip=x.endsWith('\n')?x.endsWith('\n\n')?'+':'':'-';return pad+key+': |'+strip+'\n'+x.replace(/\n$/,'').split('\n').map(l=>pad+'  '+l).join('\n');}
+      return x&&typeof x==='object'&&Object.keys(x).length?pad+key+':\n'+write(x,depth+2):pad+key+': '+qValue(x);
+    }).join('\n');
+    return pad+qValue(v);
+  }
+  function qValue(x){if(x&&typeof x==='object'&&!Object.keys(x).length)return Array.isArray(x)?'[]':'{}';return q(x);}
+  return {parse,stringify:write,looksLikeYaml:s=>/^\s*(?:-\s+|[^\n#]+:\s)/m.test(String(s))};
+})();
+
+
+/* PawScript's small, deliberately non-JavaScript interpreter.
+ * There is NO eval(), Function(), dynamic import, or arbitrary property method call.
+ * Syntax errors reject the whole script. Script state updates commit only on success.
+ */
+(() => {
+  'use strict';
+  const BAD_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+  const LIMIT = 20000;
+  const plain = x => x !== null && typeof x === 'object' && !Array.isArray(x);
+  const own = (o,k) => o != null && Object.prototype.hasOwnProperty.call(o,k);
+  const safeKey = k => { k=String(k); if (BAD_KEYS.has(k)) throw Error('Forbidden field: '+k); return k; };
+  const clone = x => JSON.parse(JSON.stringify(x)); // tracked items must be JSON values
+  const text = x => x == null ? '' : typeof x==='string' ? x : typeof x==='object' ? Array.isArray(x) ? x.map(text).join(', ') : JSON.stringify(x) : String(x);
+  const number = x => { const n=Number(x); if(!Number.isFinite(n)) throw Error('Expected a finite number, got '+text(x)); return n; };
+  const truth = x => !(x == null || x===false || x===0 || x==='');
+  const equal = (a,b) => plain(a)||plain(b)||Array.isArray(a)||Array.isArray(b) ? JSON.stringify(a)===JSON.stringify(b) : a===b;
+  const isEntry = x => x && x.__pawEntry === true;
+  const unbox = x => isEntry(x) ? x.value : x;
+  const toArray = x => Array.isArray(x) ? x : plain(x) ? Object.entries(x).map(([key,value])=>({__pawEntry:true,key,value,parent:x})) : [];
+  const requireList = x => { if (!Array.isArray(x)) throw Error('Expected list'); return x; };
+  const format = (n, decimals) => Number(n).toLocaleString('en-US',{minimumFractionDigits:decimals??0,maximumFractionDigits:decimals??0});
+
+  function lex(s) {
+    const out=[]; let i=0;
+    const push=(type,value,start)=>out.push({type,value,start,end:i});
+    while(i<s.length){
+      if(/\s/.test(s[i])) {i++;continue;}
+      const start=i, rest=s.slice(i);
+      if(s[i]==='"' || s[i]==="'") {
+        const q=s[i++]; let v='',closed=false;
+        while(i<s.length){let c=s[i++];if(c===q){closed=true;break;}
+          if(c==='\\'){const e=s[i++];v+=({n:'\n',r:'\r',t:'\t', '\\':'\\','"':'"',"'":"'"})[e]??e;} else v+=c;
+        }
+        if(!closed)throw Error('Unterminated string at '+start);
+        push('string',v,start);continue;
+      }
+      const dice=rest.match(/^(\d*)d(\d+)(?![\w])/i);
+      if(dice){i+=dice[0].length;push('dice',{count:Number(dice[1]||1),sides:Number(dice[2])},start);continue;}
+      const num=rest.match(/^(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?/);
+      if(num){i+=num[0].length;push('number',Number(num[0]),start);continue;}
+      const variable=rest.match(/^\$[A-Za-z_][\w]*/);
+      if(variable){i+=variable[0].length;push('variable',variable[0].slice(1),start);continue;}
+      const word=rest.match(/^[A-Za-z_][\w]*/);
+      if(word){i+=word[0].length;push('word',word[0],start);continue;}
+      const op=['<=','>=','!=','==','+=','-=','*=','/=','%=','&=','&&','||','**','//','++','--'].find(t=>rest.startsWith(t));
+      if(op){i+=op.length;push('op',op,start);continue;}
+      if('+-*/%^&=<>.,()!'.includes(s[i])){i++;push('op',s[start],start);continue;}
+      throw Error(`Unexpected character ${JSON.stringify(s[i])} at offset ${i}`);
+    }
+    out.push({type:'eof',value:'(end)',start:i,end:i});return out;
+  }
+
+  const PROPERTY_METHODS=new Set('count first last all keys values key value exists sort reverse shuffle unique sum average min max numbered_list bulleted_list plain_list upper lower title_case trim characters words lines bold italic strikethrough code round round_down round_up format_number format_percent ordinal abs sin cos tan exp not flatten random descendants'.split(' '));
+  const binaryPrecedence={or:1,and:2,'=':3,'==':3,'!=':3,'<':3,'>':3,'<=':3,'>=':3,
+    in:3,contains:3,starts_with:3,ends_with:3,matches:3,'&':4,'+':5,'-':5,'*':6,'/':6,'%':6,'^':7};
+  class Parser {
+    constructor(source){this.t=lex(source);this.i=0;}
+    peek(n=0){return this.t[this.i+n]??this.t.at(-1);}
+    take(){return this.t[this.i++];}
+    accept(v){if(this.peek().value===v){this.i++;return true;}return false;}
+    expect(v){if(!this.accept(v))throw Error(`Expected ${v}, found ${this.peek().value}`);}
+    parse(){const e=this.expr();if(this.peek().type!=='eof')throw Error('Unexpected token '+this.peek().value);return e;}
+    expr(min=0){
+      let t=this.take(), left;
+      if((t.type==='op' && (t.value==='-'||t.value==='+')) || (t.type==='word' && t.value==='not'))left={type:'unary',op:t.value,arg:this.expr(8)};
+      else if(t.value==='('){left=this.expr();this.expect(')');}
+      else if(t.type==='number'||t.type==='string')left={type:'literal',value:t.value};
+      else if(t.type==='dice')left={type:'dice',...t.value};
+      else if(t.type==='variable')left={type:'variable',name:t.value};
+      else if(t.type==='word'){
+        if(t.value==='true'||t.value==='false'||t.value==='null')left={type:'literal',value:t.value==='null'?null:t.value==='true'};
+        else left={type:'name',name:t.value};
+      } else throw Error('Expected expression, got '+t.value);
+      while(true){
+        if(this.peek().value==='.' && 10>=min){
+          this.take();const k=this.take();if(k.type!=='word'&&k.type!=='string')throw Error('Expected field name after .');
+          left={type:'member',object:left,key:safeKey(k.value)};continue;
+        }
+        if(this.peek().value==='(' && 10>=min){
+          this.take();const args=[];
+          if(!this.accept(')')){do{args.push(this.expr());}while(this.accept(','));this.expect(')');}
+          left={type:'call',callee:left,args};continue;
+        }
+        let op=this.peek().value;
+        if(['any','all','none'].includes(op) && this.peek(1).value==='in')op+=' in';
+        const prec=binaryPrecedence[op]??(op.endsWith(' in')?3:-1);
+        if(prec<min)break;
+        this.take();if(op.endsWith(' in'))this.take();
+        const right=this.expr(prec+(op==='^'?0:1));
+        left={type:'binary',op,left,right};
+      }
+      return left;
+    }
+  }
+  const parseExpr=source=>{if(/(?:==|&&|\|\||\*\*|\/\/|\+\+|--)/.test(source.replace(/(?:"[^"]*"|'[^']*')/g,'')))throw Error('Use PawScript operators: =, and, or, ^, / and + 1');return new Parser(source).parse();};
+
+  function rng(ctx){
+    // xorshift32 with an integer seed; use crypto for first seed when available
+    let x=ctx.randomState;
+    if(x==null){
+      const a=new Uint32Array(1);
+      if(typeof crypto!=='undefined'&&crypto.getRandomValues)crypto.getRandomValues(a);
+      x=a[0]||0x12345678;
+    }
+    x^=x<<13;x^=x>>>17;x^=x<<5;ctx.randomState=x>>>0;
+    return (x>>>0)/4294967296;
+  }
+  const randint=(ctx,a,b)=>{a=Math.ceil(number(a));b=Math.floor(number(b));if(b<a)throw Error('Invalid random range');return a+Math.floor(rng(ctx)*(b-a+1));};
+  function ensureBudget(ctx){if(--ctx.budget<0)throw Error('Execution limit reached');}
+  function scoped(ctx,val,index,length,key){return {...ctx,current:unbox(val),itemKey:key,index,length};}
+  function getProp(obj,key){
+    key=safeKey(key);obj=unbox(obj);
+    if(obj==null)return undefined;
+    if(Array.isArray(obj))return key==='length' ? obj.length : obj.map(item=>getProp(item,key));
+    if(typeof obj==='string' && key==='length')return obj.length;
+    return own(Object(obj),key)?obj[key]:undefined;
+  }
+  function interpolate(template,ctx){
+    return text(template).replace(/\{([^{}]+)\}/g,(_,src)=>text(evalAst(parseExpr(src.trim()),ctx)));
+  }
+  function evalAst(ast,ctx){
+    ensureBudget(ctx);
+    switch(ast.type){
+      case 'literal':return ast.value;
+      case 'dice':{
+        if(ast.count>1000||ast.count<0||ast.sides<1)throw Error('Invalid dice specification');
+        let sum=0;for(let k=0;k<ast.count;k++)sum+=randint(ctx,1,ast.sides);return sum;
+      }
+      case 'variable':{
+        if(own(ctx.locals,ast.name))return ctx.locals[ast.name];
+        if(ast.name==='player')return ctx.player;
+        if(ast.name==='game')return ctx.game;
+        if(ast.name==='player_name')return ctx.player.name;
+        if(ast.name==='turn_number')return ctx.game.turn_number;
+        if(ast.name==='skills_and_levels')return ctx.player.skills_and_levels??Object.entries(ctx.player.skills||{}).map(([k,v])=>k+' (level '+v+')').join(', ');
+        if(['skill_list','difficulty_list','skill_example','difficulty_example'].includes(ast.name))return ctx.game[ast.name]??'';
+        if(own(ctx.state,ast.name))return ctx.state[ast.name];
+        throw Error('Unknown tracked item $'+ast.name);
+      }
+      case 'name':{
+        if(ast.name==='desc'||ast.name==='asc')return ast.name;
+        if(ast.name==='value')return ctx.current;
+        if(ctx.current!=null && own(Object(ctx.current),ast.name))return getProp(ctx.current,ast.name);
+        throw Error('Unknown identifier '+ast.name+' (tracked items need $)');
+      }
+      case 'member':{const source=evalAst(ast.object,ctx),raw=unbox(source);
+        if(PROPERTY_METHODS.has(ast.key)&&!((plain(raw)||Array.isArray(raw))&&own(raw,ast.key)))return callMethod(source,ast.key,[],ctx);
+        return getProp(source,ast.key);}
+      case 'unary':{
+        const x=evalAst(ast.arg,ctx);
+        return ast.op==='not'?!truth(x):ast.op==='-'?-number(x):number(x);
+      }
+      case 'binary':{
+        let a=evalAst(ast.left,ctx);
+        if(ast.op==='and')return truth(a)?truth(evalAst(ast.right,ctx)):false;
+        if(ast.op==='or')return truth(a)?true:truth(evalAst(ast.right,ctx));
+        const b=evalAst(ast.right,ctx),op=ast.op;
+        if(op==='= '||op==='='||op==='==')return equal(a,b);
+        if(op==='!=')return !equal(a,b);
+        if(op==='<')return a<b;
+        if(op==='>')return a>b;
+        if(op==='<=')return a<=b;
+        if(op==='>=')return a>=b;
+        if(op==='&')return text(a)+text(b);
+        if(op==='+')return number(a)+number(b);
+        if(op==='-')return number(a)-number(b);
+        if(op==='*')return number(a)*number(b);
+        if(op==='/'){if(number(b)===0)throw Error('Division by zero');return number(a)/number(b);}
+        if(op==='%'){if(number(b)===0)throw Error('Division by zero');return number(a)%number(b);}
+        if(op==='^')return number(a)**number(b);
+        if(op==='in'||op.endsWith(' in')){
+          if(!Array.isArray(b))throw Error('Right side of in must be a list');
+          const match=x=>b.some(y=>equal(x,y));
+          if(op==='in')return match(a);
+          if(!Array.isArray(a))throw Error('Left side of '+op+' must be a list');
+          if(op==='any in')return a.some(match);
+          if(op==='all in')return a.every(match);
+          return a.every(x=>!match(x));
+        }
+        if(op==='contains')return text(a).includes(text(b));
+        if(op==='starts_with')return text(a).startsWith(text(b));
+        if(op==='ends_with')return text(a).endsWith(text(b));
+        if(op==='matches'){if(text(b).length>180)throw Error('Regex pattern too large');try{return new RegExp(text(b),'u').test(text(a));}catch(e){throw Error('Invalid matches() pattern');}}
+        throw Error('Unknown operator '+op);
+      }
+      case 'call':{
+        if(ast.callee.type==='name')return callTop(ast.callee.name,ast.args,ctx);
+        if(ast.callee.type==='member'){
+          const base=evalAst(ast.callee.object,ctx);
+          return callMethod(base,ast.callee.key,ast.args,ctx);
+        }
+        throw Error('Only PawScript functions and methods may be called');
+      }
+    }
+    throw Error('Unknown expression kind '+ast.type);
+  }
+  const argValues=(args,ctx)=>args.map(x=>evalAst(x,ctx));
+  const argAt=(args,i,ctx,otherwise)=>i<args.length?evalAst(args[i],ctx):otherwise;
+  function callTop(name,args,ctx){
+    const e=i=>argAt(args,i,ctx,undefined);
+    switch(name){
+      case 'if':return truth(e(0))?e(1):e(2);
+      case 'try':try{return e(0);}catch{return e(1);}
+      case 'first_available':for(let i=0;i<args.length;i++){try{const x=e(i);if(x!==null&&x!==undefined&&x!=='')return x;}catch{/* a missing path can be skipped */}}return null;
+      case 'choose':{
+        const v=e(0);for(let i=1;i+1<args.length;i+=2)if(equal(v,e(i)))return e(i+1);
+        return args.length%2===0?e(args.length-1):null;
+      }
+      case 'format_text':return interpolate(e(0),ctx);
+      case 'list':return argValues(args,ctx);
+      case 'record':return {};
+      case 'range':{
+        const a=number(e(0)),b=args.length>=2?number(e(1)):a,start=args.length>=2?a:1;
+        if(!Number.isInteger(start)||!Number.isInteger(b)||Math.abs(b-start)>10000)throw Error('Invalid range');
+        return Array.from({length:Math.max(0,b-start+1)},(_,i)=>start+i);
+      }
+      case 'random':return rng(ctx);
+      case 'random_between':return randint(ctx,e(0),e(1));
+      case 'dice_roll':{
+        const sides=number(e(0)),count=number(args.length>1?e(1):1);
+        return evalAst({type:'dice',sides,count},ctx);
+      }
+      case 'seed':ctx.randomState=(number(e(0))>>>0)||0x9e3779b9;return '';
+      case 'now_utc':return new Date().toISOString();
+      case 'now_local':return new Date().toString();
+      case 'abs':return Math.abs(number(e(0)));
+      case 'sin':return Math.sin(number(e(0)));
+      case 'cos':return Math.cos(number(e(0)));
+      case 'tan':return Math.tan(number(e(0)));
+      case 'exp':return Math.exp(number(e(0)));
+      case 'power':return number(e(0))**number(e(1));
+      case 'trunc':case 'round_up':case 'round_down':{
+        const f=10**(args.length>1?number(e(1)):0),x=number(e(0))*f;
+        return (name==='round_up'?Math.ceil(x):Math.floor(x))/f;
+      }
+      case 'index':return ctx.index??0;
+      case 'is_first':return ctx.index===1;
+      case 'is_last':return ctx.index===ctx.length;
+      case 'value':return ctx.current;
+      case 'key':return ctx.itemKey;
+      case 'current':if(!ctx.hasListUpdate)throw Error('current() requires the Infinite Worlds List Update context');return ctx.listUpdate;
+      default:throw Error('Unknown PawScript function '+name);
+    }
+  }
+  function callMethod(source,method,args,ctx){
+    const a=i=>argAt(args,i,ctx,undefined), x=unbox(source);
+    const rows=()=>toArray(x);
+    const test=(ast,row,i,total)=>truth(evalAst(ast,scoped(ctx,row,i+1,total,isEntry(row)?row.key:i+1)));
+    const field=(ast,row,i,total)=>evalAst(ast,scoped(ctx,row,i+1,total,isEntry(row)?row.key:i+1));
+    const numericVals=()=>rows().map((row,i)=>args.length?number(field(args[0],row,i,rows().length)):number(unbox(row)));
+    if(method==='exists')return x!==undefined&&x!==null;
+    if(method==='not')return !truth(x);
+    if(method==='key')return isEntry(source)?source.key:ctx.itemKey;
+    if(method==='value')return isEntry(source)?source.value:x===undefined?ctx.current:x;
+    if(method==='item'){
+      const key=a(0);
+      if(Array.isArray(x)){const n=number(key);return Number.isInteger(n)&&n>=1?x[n-1]??a(1):a(1);}
+      if(plain(x))return own(x,String(key))?x[safeKey(key)]:a(1);
+      return a(1);
+    }
+    if(method==='count')return Array.isArray(x)?x.length:plain(x)?Object.keys(x).length:text(x).length;
+    if(method==='keys')return plain(x)?Object.keys(x):[];
+    if(method==='values')return plain(x)?Object.values(x):[];
+    if(method==='contains')return Array.isArray(x)?x.some(y=>equal(y,a(0))):plain(x)?own(x,safeKey(a(0))):text(x).includes(text(a(0)));
+    if(method==='in'){const y=a(0);return Array.isArray(y)?y.some(v=>equal(v,x)):plain(y)?own(y,safeKey(x)):text(y).includes(text(x));}
+    if(method==='where'||method==='any'||method==='every'||method==='none'){
+      if(!args[0])throw Error(method+' requires a condition');
+      const list=rows(),yes=list.map((r,i)=>test(args[0],r,i,list.length));
+      if(method==='any')return yes.some(Boolean);
+      if(method==='every')return yes.every(Boolean);
+      if(method==='none')return !yes.some(Boolean);
+      if(plain(x))return Object.fromEntries(list.filter((_,i)=>yes[i]).map(r=>[r.key,r.value]));
+      return list.filter((_,i)=>yes[i]);
+    }
+    if(method==='all')return rows();
+    if(method==='first'||method==='last'){
+      const list=rows(),n=args.length?Math.max(0,number(a(0))):null;
+      if(n!==null)return method==='first'?list.slice(0,n):list.slice(-n);
+      return method==='first'?list[0]:list.at(-1);
+    }
+    if(method==='random'){
+      const list=rows(),copy=list.slice();
+      for(let i=copy.length-1;i>0;i--){const j=randint(ctx,0,i);[copy[i],copy[j]]=[copy[j],copy[i]];}
+      return args.length?copy.slice(0,Math.max(0,number(a(0)))):copy[0];
+    }
+    if(method==='shuffle'){
+      const list=rows().slice();for(let i=list.length-1;i>0;i--){const j=randint(ctx,0,i);[list[i],list[j]]=[list[j],list[i]];}return list;
+    }
+    if(method==='sum'||method==='average'||method==='max'||method==='min'){
+      const vals=numericVals();if(!vals.length)return method==='sum'?0:null;
+      const s=vals.reduce((p,q)=>p+q,0);
+      return method==='sum'?s:method==='average'?s/vals.length:method==='max'?Math.max(...vals):Math.min(...vals);
+    }
+    if(method==='min_by'||method==='max_by'){
+      const list=rows();if(!list.length)return null;
+      let chosen=list[0],best=field(args[0],chosen,0,list.length);
+      for(let i=1;i<list.length;i++){const v=field(args[0],list[i],i,list.length);
+        if(method==='min_by'?v<best:v>best){chosen=list[i];best=v;}}
+      return chosen;
+    }
+    if(method==='sort'||method==='sort_by'||method==='then_by'){
+      const list=requireList(x).slice();
+      const keys=method==='then_by'?(x.__pawSortKeys||[]):[];
+      if(method==='sort')keys.push({fn:(row)=>unbox(row),desc:false});
+      else {
+        if(!args.length)throw Error(method+' needs a field');
+        const descending=args.length>1 && text(a(1))==='desc';
+        keys.push({fn:(row,i)=>field(args[0],row,i,list.length),desc:descending});
+      }
+      const marked=list.map((row,i)=>({row,i,values:keys.map(k=>k.fn(row,i))}));
+      marked.sort((l,r)=>{for(let j=0;j<keys.length;j++){
+        const a=l.values[j],b=r.values[j];const d=a<b?-1:a>b?1:0;
+        if(d)return keys[j].desc?-d:d;
+      }return l.i-r.i;});
+      const result=marked.map(x=>x.row);
+      Object.defineProperty(result,'__pawSortKeys',{value:keys,configurable:true});
+      return result;
+    }
+    if(method==='reverse')return requireList(x).slice().reverse();
+    if(method==='flatten')return requireList(x).flat();
+    if(method==='descendants')return requireList(x).flat(Infinity);
+    if(method==='unique')return rows().filter((row,i,arr)=>arr.findIndex(y=>equal(unbox(y),unbox(row)))===i);
+    if(method==='union')return rows().concat(requireList(a(0))); 
+    if(method==='format_text')return interpolate(a(0),{...ctx,current:x});
+    if(method==='not')return !truth(x);
+    if(method==='join'){
+      const list=rows().map(row=>text(unbox(row))),sep=text(a(0)??', ');
+      if(args.length>1 && list.length>1)return list.slice(0,-1).join(sep)+text(a(1))+list.at(-1);
+      return list.join(sep);
+    }
+    if(method==='format_each'){
+      const list=rows();return list.map((r,i)=>interpolate(a(0),scoped(ctx,r,i+1,list.length,isEntry(r)?r.key:i+1)));
+    }
+    if(['plain_list','bulleted_list','numbered_list'].includes(method))
+      return rows().map((r,i)=>(method==='bulleted_list'?'- ':method==='numbered_list'?`${i+1}. `:'')+text(unbox(r))).join('\n');
+    if(method==='characters')return [...text(x)];
+    if(method==='words')return text(x).trim().split(/\s+/).filter(Boolean);
+    if(method==='lines')return text(x).split(/\r?\n/);
+    if(method==='lower')return text(x).toLowerCase();
+    if(method==='upper')return text(x).toUpperCase();
+    if(method==='trim')return text(x).trim();
+    if(method==='title_case')return text(x).replace(/\b\w/g,c=>c.toUpperCase());
+    if(method==='split')return text(x).split(text(a(0)));
+    if(method==='replace')return text(x).split(text(a(0))).join(text(a(1)));
+    if(method==='starts_with')return text(x).startsWith(text(a(0)));
+    if(method==='ends_with')return text(x).endsWith(text(a(0)));
+    if(method==='matches'){const pattern=text(a(0));if(pattern.length>180)throw Error('Regex pattern too large');try{return new RegExp(pattern,'u').test(text(x));}catch(e){throw Error('Invalid matches pattern');}}
+    if(method==='truncate'){
+      const n=Math.max(0,number(a(0))),str=text(x),tail=text(a(1)??'');
+      return str.length<=n?str:(tail.length>=n?tail.slice(0,n):str.slice(0,n-tail.length)+tail);
+    }
+    if(method==='constrain')return Math.max(number(a(0)),Math.min(number(a(1)),number(x)));
+    if(method==='abs')return Math.abs(number(x));
+    if(method==='sin')return Math.sin(number(x));
+    if(method==='cos')return Math.cos(number(x));
+    if(method==='tan')return Math.tan(number(x));
+    if(method==='exp')return Math.exp(number(x));
+    if(method==='power')return number(x)**number(a(0));
+    if(method==='round'||method==='round_up'||method==='round_down'||method==='trunc'){
+      const scale=10**number(args.length?a(0):0),v=number(x)*scale;
+      return (method==='round'?Math.round(v):method==='round_up'?Math.ceil(v):Math.floor(v))/scale;
+    }
+    if(method==='format_number')return format(number(x),args.length?number(a(0)):undefined);
+    if(method==='format_percent')return format(number(x)*100,args.length?number(a(0)):0)+'%';
+    if(method==='ordinal'){
+      const n=number(x),suffix=n%100>=11&&n%100<=13?'th':({1:'st',2:'nd',3:'rd'}[n%10]||'th');
+      return n+suffix;
+    }
+    if(method==='bold')return '**'+text(x)+'**';
+    if(method==='italic')return '*'+text(x)+'*';
+    if(method==='code')return '`'+text(x)+'`';
+    if(method==='strikethrough')return '~~'+text(x)+'~~';
+    if(method==='format_date'){
+      const date=new Date(x);if(Number.isNaN(date.valueOf()))throw Error('Invalid date');
+      const pad=n=>String(n).padStart(2,'0'),h12=date.getHours()%12||12;
+      const monthNames=['January','February','March','April','May','June','July','August','September','October','November','December'];
+      const weekdays=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+      const wd=weekdays[date.getDay()],mon=monthNames[date.getMonth()];
+      const tokens={day:date.getDate(),day2:pad(date.getDate()),month:date.getMonth()+1,month2:pad(date.getMonth()+1),
+        monthname:mon,monthname3:mon.slice(0,3),year:date.getFullYear(),year2:pad(date.getFullYear()%100),
+        weekday:wd,weekday3:wd.slice(0,3),weekday2:wd.slice(0,2),weekday1:wd.slice(0,1),
+        hour:h12,hour2:pad(h12),hour24:pad(date.getHours()),minute:date.getMinutes(),minute2:pad(date.getMinutes()),
+        second:date.getSeconds(),second2:pad(date.getSeconds()),AMPM:date.getHours()<12?'AM':'PM',ampm:date.getHours()<12?'am':'pm'};
+      return text(a(0)).replace(/monthname3|monthname|weekday3|weekday2|weekday1|weekday|hour24|minute2|second2|year2|month2|hour2|day2|year|month|hour|minute|second|AMPM|ampm|day/g,k=>tokens[k]);
+    }
+    if(method==='current')return x;
+    if(method==='append'||method==='remove')throw Error(method+' only works as a script statement');
+    throw Error('Unknown PawScript method .'+method+'()');
+  }
+
+  function getContext(state, options={}){
+    return {state,player:options.player??{name:'Adventurer',skills:{}},
+      game:options.game??{turn_number:1,ai_model:'Browser',skill_list:'',skill_map:{}},
+      locals:Object.create(null),current:null,itemKey:null,index:null,length:null,
+      randomState:options.seed==null?null:Number(options.seed)>>>0,logs:[],budget:LIMIT,hasListUpdate:own(options,'current'),listUpdate:options.current};
+  }
+  function evaluate(source,state,options){return evalAst(parseExpr(source),getContext(state,options));}
+  // Follow Infinite Worlds' quote-aware <<...>>, deferred <=...=> and <#...#> scanner.
+  function scanMarks(source){const marks=[];let i=0;
+    const close=(start,endMark)=>{let quote='',depth=0;for(let j=start;j<source.length;j++){
+      const c=source[j];if(quote){if(c===quote)quote='';continue;}
+      if(c==='"'||c==="'"){quote=c;continue;}
+      if(endMark==='=>'&&c==='(')depth++;
+      if(endMark==='=>'&&c===')'){if(!depth)return -1;depth--;}
+      if(endMark==='=>'&&c==='\n'&&!depth)return -1;
+      if(endMark==='=>'&&source.startsWith('<=',j)&&!depth)return -1;
+      if(!depth&&source.startsWith(endMark,j))return j;
+    }return -1;};
+    while(i<source.length){
+      if(source.startsWith('<#',i)){const k=source.indexOf('#>',i+2);marks.push({start:i,end:k<0?source.length:k+2,type:'comment'});i=marks.at(-1).end;continue;}
+      if(source.startsWith('<<',i)){const k=close(i+2,'>>');if(k>=0){marks.push({start:i,end:k+2,type:'expr',source:source.slice(i+2,k)});i=k+2;continue;}}
+      if(source.startsWith('<=',i)){const k=close(i+2,'=>');if(k>=0&&/[^=\s]/.test(source.slice(i+2,k))){marks.push({start:i,end:k+2,type:'deferred',source:source.slice(i+2,k)});i=k+2;continue;}}
+      i++;
+    }return marks;}
+  function render(source,state,options={}){
+    const ctx=getContext(state,options);let out='',pos=0;
+    for(const mark of scanMarks(String(source))){out+=source.slice(pos,mark.start);pos=mark.end;
+      if(mark.type==='comment')continue;
+      if(mark.type==='deferred'){out+='<<'+mark.source+'>>';continue;}
+      let expr=mark.source.trim();if(/^[A-Za-z_]\w*$/.test(expr)&&own(ctx.state,expr))expr='$'+expr;
+      const value=evalAst(parseExpr(expr),ctx);out+=typeof value==='object'&&value!==null&&typeof PawYAML!=='undefined'?PawYAML.stringify(value):text(value);
+    }return out+source.slice(pos);
+  }
+
+  // Statement parser uses indentation; expression syntax is shared with the above.
+  function stripComment(s){
+    let quoted=null,escape=false;
+    for(let i=0;i<s.length;i++){
+      const c=s[i];if(escape){escape=false;continue;}
+      if(quoted){if(c==='\\')escape=true;else if(c===quoted)quoted=null;}
+      else if(c==='"'||c==="'")quoted=c;
+      else if(c==='#')return s.slice(0,i);
+    }
+    return s;
+  }
+  function assignmentSplit(s){
+    const tokens=lex(s);let depth=0;
+    for(const t of tokens){
+      if(t.value==='(')depth++;
+      else if(t.value===')')depth--;
+      else if(depth===0 && ['=','+=','-=','*=','/=','%=','&='].includes(t.value))
+        return {target:s.slice(0,t.start).trim(),op:t.value,expr:s.slice(t.end).trim()};
+    }
+    return null;
+  }
+  function parseScript(source){
+    const lines=source.replace(/\r/g,'').split('\n').flatMap((raw,i)=>{
+      const cleaned=stripComment(raw.replace(/\t/g,'  ')).trimEnd();if(!cleaned.trim())return [];
+      const spaces=(cleaned.match(/^ */)||[''])[0].length;
+      if(spaces%2)throw Error(`Line ${i+1}: use multiples of 2 spaces for indentation`);
+
+      return [{level:spaces/2,code:cleaned.trim(),line:i+1}];
+    });
+    let pos=0;
+    function block(level){
+      const out=[];
+      while(pos<lines.length){
+        const l=lines[pos];if(l.level<level)break;
+        if(l.level>level)throw Error(`Line ${l.line}: unexpected indentation`);
+        pos++;
+        if(l.code.endsWith(':'))throw Error(`Line ${l.line}: no colon after if/for`);
+        if(l.code.startsWith('for each ')){
+          const m=l.code.match(/^for each \$([A-Za-z_]\w*) in (.+)$/);
+          if(!m)throw Error(`Line ${l.line}: expected for each $item in expression`);
+          if(pos>=lines.length||lines[pos].level!==level+1)throw Error(`Line ${l.line}: expected indented loop body`);
+          out.push({kind:'for',name:m[1],expr:parseExpr(m[2]),body:block(level+1),line:l.line});continue;
+        }
+        if(l.code.startsWith('if ')){
+          if(pos>=lines.length||lines[pos].level!==level+1)throw Error(`Line ${l.line}: expected indented if body`);
+          const branches=[{expr:parseExpr(l.code.slice(3)),body:block(level+1)}];
+          let otherwise=[];
+          while(pos<lines.length && lines[pos].level===level &&
+            (lines[pos].code.startsWith('else if ')||lines[pos].code==='else')){
+            const next=lines[pos++];
+            if(pos>=lines.length||lines[pos].level!==level+1)throw Error(`Line ${next.line}: expected indented else body`);
+            if(next.code==='else'){otherwise=block(level+1);break;}
+            branches.push({expr:parseExpr(next.code.slice(8)),body:block(level+1)});
+          }
+          out.push({kind:'if',branches,otherwise,line:l.line});continue;
+        }
+        if(l.code==='else'||l.code.startsWith('else if '))throw Error(`Line ${l.line}: else without if`);
+        if(l.code.startsWith('set ')){
+          const m=l.code.match(/^set \$([A-Za-z_]\w*)\s*=\s*(.+)$/);
+          if(!m)throw Error(`Line ${l.line}: expected set $name = expression`);
+          if(m[1]==='game'||m[1]==='player')throw Error('Native variables are read-only');
+          out.push({kind:'set',name:m[1],expr:parseExpr(m[2]),line:l.line});continue;
+        }
+        const assn=assignmentSplit(l.code);
+        if(assn){if(!assn.target||!assn.expr)throw Error(`Line ${l.line}: incomplete assignment`);
+          const target=parseExpr(assn.target);
+          out.push({kind:'assign',target,op:assn.op,expr:parseExpr(assn.expr),line:l.line});continue;
+        }
+        const e=parseExpr(l.code);
+        if(e.type==='call' && e.callee.type==='name' && ['seed','log'].includes(e.callee.name)){
+          out.push({kind:'command',expr:e,line:l.line});continue;
+        }
+        if(e.type==='call' && e.callee.type==='member' && ['append','remove'].includes(e.callee.key)){
+          out.push({kind:'mutate',expr:e,line:l.line});continue;
+        }
+        throw Error(`Line ${l.line}: expected assignment, if, for each, set, append, remove, seed or log`);
+      }
+      return out;
+    }
+    if(lines.length && lines[0].level!==0)throw Error('First statement must start at column 1');
+    return block(0);
+  }
+  function rootVariable(ast){
+    while(ast.type==='member'||ast.type==='call')ast=ast.type==='member'?ast.object:ast.callee;
+    if(ast.type!=='variable')throw Error('Mutation target must begin with a $variable');
+    return ast.name;
+  }
+  function assertWritable(ast,ctx){
+    const name=rootVariable(ast);
+    if(name==='game'||name==='player')throw Error('Native variable $'+name+' is read-only');
+    if(!own(ctx.state,name)&&!own(ctx.locals,name))throw Error('Unknown writable tracked item $'+name);
+  }
+  function references(ast,ctx){
+    assertWritable(ast,ctx);
+    if(ast.type==='variable'){
+      const host=own(ctx.locals,ast.name)?ctx.locals:ctx.state;
+      return [{host,key:ast.name}];
+    }
+    if(ast.type==='member'){
+      // Broadcast a field assignment across .where(...) or .all() selectors.
+      if(ast.object.type==='call' && ast.object.callee.type==='member' &&
+         ['where','all','first','last','random','min_by','max_by'].includes(ast.object.callee.key)) {
+        return references(ast.object,ctx).map(({host,key})=>{
+          const value=unbox(host[key]);
+          if(!plain(value))throw Error('Selected value is not a record');
+          return {host:value,key:safeKey(ast.key)};
+        });
+      }
+      const obj=evalAst(ast.object,ctx),value=unbox(obj);
+      if(value==null||typeof value!=='object')throw Error('Cannot write field of a non-record');
+      return [{host:value,key:safeKey(ast.key)}];
+    }
+    if(ast.type==='call'&&ast.callee.type==='member'){
+      const name=ast.callee.key,base=evalAst(ast.callee.object,ctx),v=unbox(base),ar=ast.args;
+      if(name==='value'&&isEntry(base))return [{host:base.parent,key:base.key}];
+      if(name==='item'){
+        const k=evalAst(ar[0],ctx);
+        if(Array.isArray(v)){
+          const n=number(k);if(!Number.isInteger(n)||n<1||n>v.length)throw Error('List item target out of range');
+          return [{host:v,key:n-1}];
+        }
+        if(plain(v))return [{host:v,key:safeKey(k)}];
+      }
+      if(Array.isArray(v)){
+        if(name==='all')return v.map((_,i)=>({host:v,key:i}));
+        if(name==='first'||name==='last'||name==='random'||name==='min_by'||name==='max_by'){
+          if(!v.length)return [];
+          if(['first','last','random'].includes(name)&&ar.length){const n=Math.max(0,Math.min(v.length,Math.floor(number(evalAst(ar[0],ctx)))));
+            const all=v.map((_,i)=>({host:v,key:i}));if(name==='first')return all.slice(0,n);
+            if(name==='last')return all.slice(-n);const rand=all.slice();for(let k=rand.length-1;k>0;k--){const j=randint(ctx,0,k);[rand[k],rand[j]]=[rand[j],rand[k]];}return rand.slice(0,n);}
+          let i=name==='first'?0:name==='last'?v.length-1:-1;
+          if(name==='random')i=randint(ctx,0,v.length-1);
+          if(name==='min_by'||name==='max_by'){
+            i=0;let best=evalAst(ar[0],scoped(ctx,v[0],1,v.length,1));
+            for(let j=1;j<v.length;j++){
+              const n=evalAst(ar[0],scoped(ctx,v[j],j+1,v.length,j+1));
+              if(name==='min_by'?n<best:n>best){i=j;best=n;}
+            }
+          }
+          return [{host:v,key:i}];
+        }
+        if(name==='where')return v.flatMap((r,i)=>truth(evalAst(ar[0],scoped(ctx,r,i+1,v.length,i+1)))?[{host:v,key:i}]:[]);
+      }
+      if(plain(v) && (name==='all'||name==='where')){
+        const entries=Object.entries(v);
+        return entries.flatMap(([key,val],i)=>name==='all'||truth(evalAst(ar[0],scoped(ctx,val,i+1,entries.length,key)))?[{host:v,key}]:[]);
+      }
+    }
+    throw Error('Unsupported assignment selector');
+  }
+  function logCommand(node,ctx){
+    if(node.callee.name==='seed'){callTop('seed',node.args,ctx);return;}
+    const value=evalAst(node.args[0],ctx),level=node.args.length>1?text(evalAst(node.args[1],ctx)):'info';
+    if(!['info','error'].includes(level))throw Error('log level must be info or error');
+    ctx.logs.push({level,message:typeof value==='string'?interpolate(value,ctx):text(value)});
+  }
+  function execute(nodes,ctx){
+    for(const node of nodes){
+      try{
+        ensureBudget(ctx);
+        if(node.kind==='set'){
+          if(own(ctx.state,node.name))throw Error('set cannot shadow tracked item $'+node.name);
+          ctx.locals[node.name]=evalAst(node.expr,ctx);
+        } else if(node.kind==='assign'){
+          const refs=references(node.target,ctx),val=evalAst(node.expr,ctx);
+          for(const {host,key} of refs){
+            const old=host[key];let next;
+            switch(node.op){
+              case '=':next=val;break;
+              case '+=':next=number(old)+number(val);break;
+              case '-=':next=number(old)-number(val);break;
+              case '*=':next=number(old)*number(val);break;
+              case '/=':if(number(val)===0)throw Error('Division by zero');next=number(old)/number(val);break;
+              case '%=':if(number(val)===0)throw Error('Division by zero');next=number(old)%number(val);break;
+              case '&=':next=text(old)+text(val);break;
+            }
+            host[key]=next;
+          }
+        } else if(node.kind==='command')logCommand(node.expr,ctx);
+        else if(node.kind==='mutate'){
+          const call=node.expr,method=call.callee.key;
+          const baseAst=call.callee.object;
+          if(baseAst.type==='call' && baseAst.callee.type==='member' && ['where','all','first','last','random','min_by','max_by'].includes(baseAst.callee.key)&&method==='remove'&&call.args.length===0){
+            const selected=references(baseAst,ctx);
+            // Delete list entries in descending index order, to avoid shifting indices.
+            selected.sort((a,b)=>typeof a.key==='number'&&typeof b.key==='number'?b.key-a.key:0);
+            for(const {host,key} of selected){if(Array.isArray(host))host.splice(key,1);else delete host[key];}
+          } else {
+            assertWritable(baseAst,ctx);
+            const target=evalAst(baseAst,ctx),value=call.args.length?evalAst(call.args[0],ctx):undefined;
+            if(method==='append'){
+              if(!Array.isArray(target))throw Error('.append() needs a list');
+              if(!call.args.length)throw Error('.append(value) needs a value');
+              target.push(clone(value));
+            }else if(Array.isArray(target)){
+              if(!call.args.length)throw Error('Use .where(condition).remove() for selection removal');
+              for(let i=target.length-1;i>=0;i--)if(equal(target[i],value))target.splice(i,1);
+            }else if(plain(target)){
+              if(!call.args.length)throw Error('.remove() needs a record key');
+              delete target[safeKey(value)];
+            }else throw Error('.remove() needs a list or record');
+          }
+        } else if(node.kind==='if'){
+          const matched=node.branches.find(b=>truth(evalAst(b.expr,ctx)));
+          execute(matched?matched.body:node.otherwise,ctx);
+        } else if(node.kind==='for'){
+          const value=evalAst(node.expr,ctx),rows=toArray(value);
+          if(rows.length>10000)throw Error('Loop too large');
+          const had=own(ctx.locals,node.name),previous=ctx.locals[node.name];
+          try{for(let i=0;i<rows.length;i++){
+            ctx.locals[node.name]=rows[i];
+            const old={current:ctx.current,index:ctx.index,length:ctx.length,itemKey:ctx.itemKey};
+            Object.assign(ctx,{current:unbox(rows[i]),index:i+1,length:rows.length,itemKey:isEntry(rows[i])?rows[i].key:i+1});
+            try{execute(node.body,ctx);}finally{Object.assign(ctx,old);}
+          }}finally{if(had)ctx.locals[node.name]=previous;else delete ctx.locals[node.name];}
+        }
+      }catch(e){if(!e.pawLine)e.pawLine=node.line;throw e;}
+    }
+  }
+  function run(source,state,options){
+    const ast=parseScript(source),copy=clone(state),ctx=getContext(copy,options);
+    try{execute(ast,ctx);}catch(e){if(e.pawLine)e.message='Line '+e.pawLine+': '+e.message;throw e;}
+    return {state:copy,logs:ctx.logs};
+  }
+  function listUpdate(items,targetExpression,valueExpression,options={}){
+    const list=clone(items);if(!Array.isArray(list))throw Error('List Update needs a YAML list');
+    for(let i=0;i<list.length;i++){
+      const ctx=getContext(options.state??{}, {...options,current:list[i]});
+      ctx.index=i+1;ctx.length=list.length;
+      if(options.filter&&!truth(evalAst(parseExpr(options.filter),ctx)))continue;
+      // The target must begin at current() and point to a property of that item.
+      const target=parseExpr(targetExpression);
+      const fields=[];let node=target;
+      while(node.type==='member'){fields.unshift(node.key);node=node.object;}
+      if(node.type!=='call'||node.callee.type!=='name'||node.callee.name!=='current'||node.args.length)throw Error('List Update target must begin with current()');
+      if(!fields.length)throw Error('List Update target needs a field');
+      const value=evalAst(parseExpr(valueExpression),ctx);let obj=list[i];
+      for(let j=0;j<fields.length-1;j++){const key=safeKey(fields[j]);if(!plain(obj[key]))obj[key]={};obj=obj[key];}
+      obj[safeKey(fields.at(-1))]=clone(value);
+    }return list;
+  }
+  const PawScript={evaluate,render,run,parseExpr,parseScript,scanMarks,listUpdate};
+  if(typeof globalThis!=='undefined')globalThis.PawScript=PawScript;
+
+})();
+
     const STORAGE_KEY = "infiniteQuestOpenRouterState.v1";
     const COMMUNITY_PLAYER_ID_STORAGE_KEY = "infiniteQuestCommunityPlayerId.v1";
     const DEFAULT_IMAGE_MODEL = "black-forest-labs/flux.2-klein-4b";
@@ -4810,19 +5642,144 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       }
     }
 
+    // PawScript integration. The engine retains original YAML in tracker.value for the
+    // storyteller; each interpreter call uses a separately parsed JS object and commits
+    // only values that actually changed. No eval, package loader, or external service.
+    function pawTrackerName(tracker) {
+      const fromRules = String(tracker.rules || '').match(/Infinite Worlds variable alias:\s*<<\s*\$?([^<>]+?)\s*>>/i);
+      return fromRules ? fromRules[1].trim() : String(tracker.name || '').trim().toLowerCase().replace(/[^a-z0-9_]+/g,'_');
+    }
+    function pawTrackerKind(tracker) {
+      const typed = String(tracker.dataType || (tracker.rules || '').match(/Source data type:\s*(\w+)/i)?.[1] || '').toLowerCase();
+      if(typed==='yaml'||typed==='list'||typed==='record')return 'yaml';
+      if(typed==='number'||typed==='numeric'||typed==='integer')return 'number';
+      if(typed==='text'||typed==='string')return 'text';
+      const value=String(tracker.value || '').trim();
+      return PawYAML.looksLikeYaml(value) ? 'yaml' : /^[-+]?\d+(\.\d+)?$/.test(value) ? 'number' : 'text';
+    }
+    function pawTrackerParse(tracker) {
+      const source=String(tracker.value ?? '');
+      const kind=pawTrackerKind(tracker);
+      if(kind==='yaml')return source.trim()?PawYAML.parse(source):{};
+      if(kind==='number')return source.trim()!==''&&Number.isFinite(Number(source))?Number(source):0;
+      return source;
+    }
+    function pawTrackerSerialize(value,kind) {
+      if(kind==='yaml')return PawYAML.stringify(value);
+      if(value==null)return '';
+      return typeof value==='object'?PawYAML.stringify(value):String(value);
+    }
+    function pawRuntimeSnapshot(trackers=getViewedTrackers()) {
+      const values={},link=new Map();
+      for(const tracker of trackers){
+        const name=pawTrackerName(tracker),key=name.toLowerCase();
+        if(!/^[a-z_][a-z0-9_]*$/i.test(name)||['__proto__','constructor','prototype'].includes(name)||Object.hasOwn(values,name))continue;
+        const val=pawTrackerParse(tracker);
+        values[name]=val;
+        // Accept the source alias and tracker-name spelling, including camelCase.
+        link.set(key,tracker);
+        link.set(String(tracker.name||'').toLowerCase(),tracker);
+      }
+      return {values,link};
+    }
+    function pawRuntimeOptions() {
+      const names=String(state.world.character||'').split(/[\n,]/)[0].trim();
+      // Infinite Quest uses 0–99 percentage stats; imported Infinite Worlds skills
+      // are 0–5 levels. PawScript must see the original skill-level scale.
+      const rows=normalizeRpgStats(state.rpgStats||[]).map(row=>{
+        const title=String(row.name||'').trim();
+        const slug=title.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');
+        const percent=Number(row.value);
+        const level=Number.isFinite(percent)?Math.max(0,Math.min(5,Math.round(percent/20))):3;
+        return {title,slug,level};
+      }).filter(row=>row.title&&row.slug);
+      const skills=Object.fromEntries(rows.map(row=>[row.slug,row.level]));
+      const skillMap=Object.fromEntries(rows.map(row=>[row.slug,row.title]));
+      return {
+        player:{name:/^custom character\b/i.test(names)?'Player':(names||'Player'),skills,
+          skills_and_levels:rows.map(row=>row.title+' (level '+row.level+')').join(', ')},
+        game:{turn_number:state.turns.length+1,ai_model:state.settings.llmModel||'',
+          skill_list:rows.map(row=>row.title).join(', '),skill_map:skillMap,
+          skill_example:rows[0]?.title||'',difficulty_list:'Trivial, Easy, Medium, Hard, Legendary',difficulty_example:'Medium'}
+      };
+    }
+    function pawRunOnTrackers(script,trackers=getViewedTrackers()) {
+      const {values}=pawRuntimeSnapshot(trackers),before=JSON.stringify(values),out=PawScript.run(script,values,pawRuntimeOptions());
+      const updated=deepClone(trackers);
+      const names=new Map(trackers.map((t,i)=>[pawTrackerName(t),i]));
+      for(const [key,value] of Object.entries(out.state)){
+        const index=names.get(key);
+        if(index===undefined||JSON.stringify(values[key])===JSON.stringify(value))continue;
+        const tracker=updated[index];
+        tracker.value=pawTrackerSerialize(value,pawTrackerKind(tracker));
+        tracker.updatedAt=nowIso();tracker.lastRationale='Updated by PawScript';
+      }
+      return {trackers:updated,logs:out.logs,changed:before!==JSON.stringify(out.state)};
+    }
+    function pawLiveTemplate(input,trackers=state.trackers) {
+      const source=String(input??'');if(!source.includes('<'))return source;
+      let snapshot;try{snapshot=pawRuntimeSnapshot(trackers);}catch(err){console.warn('PawScript YAML parse:',err);return source;}
+      const opts=pawRuntimeOptions();let out='',last=0;
+      for(const marker of PawScript.scanMarks(source)){
+        out+=source.slice(last,marker.start);last=marker.end;
+        if(marker.type==='comment')continue;
+        if(marker.type==='deferred'){out+='<<'+marker.source+'>>';continue;}
+        const raw=marker.source.trim();let expr=raw;
+        if(!raw.startsWith('$')&&/^[a-z_]\w*$/i.test(raw)){
+          const found=Object.keys(snapshot.values).find(key=>key.toLowerCase()===raw.toLowerCase()) ||
+            (snapshot.link.get(raw.toLowerCase())?pawTrackerName(snapshot.link.get(raw.toLowerCase())):'');
+          if(found)expr='$'+found;
+          else if(raw==='player_name')expr='$player.name';
+          else if(raw==='turn_number')expr='$game.turn_number';
+          else {out+=source.slice(marker.start,marker.end);continue;}
+        }
+        try{const val=PawScript.evaluate(expr,snapshot.values,opts);out+=val==null?'':typeof val==='object'?PawYAML.stringify(val):String(val);}
+        catch(err){console.warn('PawScript expression unchanged:',expr,err.message);out+=source.slice(marker.start,marker.end);}
+      }
+      return out+source.slice(last);
+    }
+    function pawRunEditor() {
+      try{
+        const result=pawRunOnTrackers($('pawScriptSource').value,getViewedTrackers());
+        if(result.changed){setViewedTrackers(result.trackers);markUnsavedForFullExport();saveState();renderTrackers();}
+        $('pawOutput').textContent=(result.changed?'Committed tracker changes.':'Completed without changes.')+'\n'+(result.logs.map(entry=>'['+entry.level+'] '+entry.message).join('\n')||'No log messages.');
+      }catch(err){$('pawOutput').textContent='No changes committed. '+err.message;}
+    }
+    function pawRunSelfTests() {
+      const checks=[];const test=(label,fn)=>{try{fn();checks.push('✓ '+label);}catch(e){checks.push('✗ '+label+': '+e.message);}};
+      const eq=(a,b)=>{if(JSON.stringify(a)!==JSON.stringify(b))throw Error(JSON.stringify(a)+' != '+JSON.stringify(b));};
+      test('YAML map + nested list',()=>{const val=PawYAML.parse('Mind_Name:\n  First: [TBD]\nSkills:\n  - [TBD]\n  - name: Magic\n    level: 3');eq(val.Skills[1].level,3);eq(PawYAML.parse(PawYAML.stringify(val)),val);});
+      test('PawScript YAML selector',()=>{eq(PawScript.evaluate('$people.where(hp < 10).first().name',{people:[{name:'Lyn',hp:5},{name:'Bo',hp:12}]}),'Lyn');});
+      test('Script updates YAML in trackers',()=>{const r=pawRunOnTrackers('$playerinfo.Mind_Details.Age_Mind += 1',[{name:'playerInfo',rules:'Source data type: yaml.\nInfinite Worlds variable alias: <<playerinfo>>.',value:'Mind_Details:\n  Age_Mind: 20'}]);eq(PawYAML.parse(r.trackers[0].value).Mind_Details.Age_Mind,21);});
+      test('Transactional script rollback',()=>{const input=[{name:'energy',value:'5'}];try{pawRunOnTrackers('$energy = 3\n$missing = 1',input);throw Error('Should reject unknown tracker');}catch(e){eq(input[0].value,'5');}});
+      test('Template lookup',()=>{const a=pawLiveTemplate('<<$number_of_questions>> total',[{name:'Number of questions',rules:'Infinite Worlds variable alias: <<number_of_questions>>.\nSource data type: number.',value:'10'}]);eq(a,'10 total');});
+      test('Nested YAML record and list round-trip',()=>{const source='party:\n  - name: Ari\n    stats: {hp: 8, mp: 2}\n  - name: Bea\n    tags: [loyal, clever]';const obj=PawYAML.parse(source);eq(PawYAML.parse(PawYAML.stringify(obj)),obj);});
+      test('Multiline YAML literal',()=>{eq(PawYAML.parse('note: |-\n  line one\n  line two').note,'line one\nline two');});
+      test('YAML anchors and merge keys',()=>{eq(PawYAML.parse('base: &base\n  hp: 4\nhero:\n  <<: *base\n  hp: 7').hero.hp,7);});
+      test('Script loop and if/else',()=>{const r=PawScript.run('for each $hero in $party\n  if $hero.hp < 5\n    $hero.hp += 2\n  else\n    $hero.hp -= 1',{party:[{hp:3},{hp:10}]});eq(r.state.party,[{hp:5},{hp:9}]);});
+      test('Script removal and new record',()=>{const r=PawScript.run('set $hero = record()\n$hero.name = "Ada"\n$party.append($hero)\n$party.where(name = "Bob").remove()',{party:[{name:'Bob'}]});eq(r.state.party,[{name:'Ada'}]);});
+      test('Plural selector updates original list',()=>{const r=PawScript.run('$party.first(2).hp += 3',{party:[{hp:1},{hp:2},{hp:3}]});eq(r.state.party.map(p=>p.hp),[4,5,3]);});
+      test('Quoted expression closing marker',()=>{eq(PawScript.render('<<format_text("a >> b")>>',{}),'a >> b');});
+      test('Deferred expression and comments',()=>{eq(PawScript.render('a <# ignore <<$a>> #> <= $a + 1 =>',{a:2}),'a  << $a + 1 >>');});
+      test('YAML List Update effect',()=>{eq(PawScript.listUpdate([{hp:2},{hp:9}],'current().hp','current().hp+3',{filter:'current().hp < 5'}),[{hp:5},{hp:9}]);});
+      test('Native variable and skill-level access',()=>{eq(PawScript.evaluate('$player.skills.magic',{},{player:{name:'Ada',skills:{magic:4}}}),4);});
+      test('Literal nested list appended as one value',()=>{const r=PawScript.run('$bag.append(list(1,2))',{bag:[]});eq(r.state.bag,[[1,2]]);});
+      return checks.join('\n');
+    }
+
     function compactWorldForPrompt() {
       const world = {
-        title: promptText(state.world.title || "", PROMPT_LIMITS.worldField),
-        genre: promptText(state.world.genre || "", PROMPT_LIMITS.worldField),
-        tone: promptText(state.world.tone || "", PROMPT_LIMITS.worldField),
-        character: promptText(state.world.character || "", PROMPT_LIMITS.worldField),
-        premise: promptText(state.world.premise || "", PROMPT_LIMITS.worldField),
-        rules: promptText(state.world.rules || "", PROMPT_LIMITS.worldField)
+        title: promptText(pawLiveTemplate(state.world.title || ""), PROMPT_LIMITS.worldField),
+        genre: promptText(pawLiveTemplate(state.world.genre || ""), PROMPT_LIMITS.worldField),
+        tone: promptText(pawLiveTemplate(state.world.tone || ""), PROMPT_LIMITS.worldField),
+        character: promptText(pawLiveTemplate(state.world.character || ""), PROMPT_LIMITS.worldField),
+        premise: promptText(pawLiveTemplate(state.world.premise || ""), PROMPT_LIMITS.worldField),
+        rules: promptText(pawLiveTemplate(state.world.rules || ""), PROMPT_LIMITS.worldField)
       };
       const backgroundStory = String(state.world.backgroundStory || "").trim();
-      if (backgroundStory) world.background_story = promptText(backgroundStory, PROMPT_LIMITS.worldField);
+      if (backgroundStory) world.background_story = promptText(pawLiveTemplate(backgroundStory), PROMPT_LIMITS.worldField);
       const firstAction = String(state.world.firstAction || "").trim();
-      if (firstAction) world.first_action = promptText(firstAction, PROMPT_LIMITS.action);
+      if (firstAction) world.first_action = promptText(pawLiveTemplate(firstAction), PROMPT_LIMITS.action);
       return world;
     }
 
@@ -4861,7 +5818,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         id: tracker.id,
         name: promptText(tracker.name || "", 180),
         update_rules: promptText(tracker.rules || "", PROMPT_LIMITS.trackerRules),
-        current_value: promptText(tracker.value || "", PROMPT_LIMITS.trackerValue)
+        current_value: promptText(pawLiveTemplate(tracker.value || ""), PROMPT_LIMITS.trackerValue)
       };
     }
 
@@ -7598,11 +8555,8 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
       if (statsStatus) {
         const candidates = allLlms.filter(id => String(id).toLowerCase().endsWith(":free"));
         const verified = candidates.filter(id => (freeModelEndpointStats(id)?.availability24h ?? -1) >= 10);
-        const missingUsage = verified.some(id => freeModelEndpointStats(id)?.requests30m == null);
-        statsStatus.textContent = isCuratedFreeMixModelId(selectedLlm)
-          ? !verified.length ? "Curated mix is waiting for models with verified 24-hour availability of at least 10%."
-            : missingUsage ? "Curated mix uses 30-minute usage and Intelligence Index, with paid-counterpart price fallbacks and a final usage fill. Models without usage counts are skipped; 24-hour availability must be at least 10%."
-            : ""
+        statsStatus.textContent = isCuratedFreeMixModelId(selectedLlm) && !verified.length
+          ? "Curated mix is waiting for models with verified 24-hour availability of at least 10%."
           : "";
         statsStatus.hidden = !statsStatus.textContent;
       }
@@ -7802,6 +8756,8 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         id: tracker.id || uid("tracker"),
         name: String(tracker.name || `Tracker ${idx + 1}`).trim(),
         rules: String(tracker.rules || tracker.update_rules || tracker.updateRules || "").trim(),
+        dataType: String(tracker.dataType || tracker.data_type || ""),
+        variableName: String(tracker.variableName || tracker.variable_name || ""),
         value: String(tracker.value || tracker.current_value || tracker.currentValue || tracker.starting_value || tracker.startingValue || "").trim(),
         createdAt: tracker.createdAt || tracker.created_at || nowIso(),
         updatedAt: tracker.updatedAt || tracker.updated_at || null,
@@ -7927,6 +8883,7 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
           evaluationMode,
           condition,
           effect,
+          pawScript: String(trigger.pawScript || trigger.paw_script || ''),
           addTextAfter,
           repeat: trigger.repeat === true || trigger.canTriggerMoreThanOnce === true || trigger.can_trigger_more_than_once === true,
           createdAt: trigger.createdAt || trigger.created_at || nowIso(),
@@ -9734,6 +10691,17 @@ Infinite Quest is not affiliated with OpenRouter, and its creator does not make 
         return iwMilestoneStateFor(text, ctx);
       }
       if (type === "triggerOnCharacter") return "true"; // Character-restricted events are filtered at import time.
+      if (type === "triggerOnPawScript") {
+        const expr=typeof data==='string'?data:String(data?.expression||data?.condition||data?.pawScript||'');
+        if(!expr.trim())return "unknown";
+        try{return PawScript.evaluate(expr,pawRuntimeSnapshot(state.trackers).values,pawRuntimeOptions())?"true":"false";}
+        catch(err){console.warn('PawScript trigger condition:',err);return "unknown";}
+      }
+      if (type === "triggerBlockers") {
+        const blocked=Array.isArray(data?.blockers)?data.blockers:[];
+        const fired=blocked.some(id=>state.eventTriggers?.some(trigger=>trigger.id===String(id)&&Number(trigger.lastTriggeredTurn)===ctx.currentTurn));
+        return fired?"false":"true";
+      }
       if (type === "triggerOnTrackedItem") {
         const details = (data && typeof data === "object") ? data : node;
         const trackerId = String(details.trackedItemID || details.trackedItemId || details.trackerId || node.trackedItemID || "").trim();
@@ -11606,6 +12574,11 @@ ${beforeOnlyRule}
         countedSourceIds.add(sourceId);
         const trigger = state.eventTriggers.find(t => t.id === sourceId);
         if (trigger) {
+          if(trigger.pawScript){
+            const changed=pawRunOnTrackers(trigger.pawScript,state.trackers);
+            if(changed.changed)state.trackers=changed.trackers;
+            for(const entry of changed.logs)console.info('[PawScript trigger '+trigger.label+']',entry.level,entry.message);
+          }
           trigger.triggeredCount = (Number(trigger.triggeredCount) || 0) + 1;
           trigger.lastTriggeredTurn = item.sourceTurn;
           trigger.lastTriggeredAt = now;
@@ -13724,6 +14697,7 @@ ${missingList}`,
         evaluationMode: eventTriggerEvaluationMode(trigger),
         condition: trigger.condition || "",
         effect: trigger.effect || "",
+        ...(trigger.pawScript ? {pawScript:trigger.pawScript} : {}),
         addTextAfter: !!trigger.addTextAfter,
         ...(trigger.repeat === true ? { repeat: true } : {}),
         createdAt: trigger.createdAt || null,
@@ -14254,6 +15228,8 @@ ${missingList}`,
       const defaultRule = `Track this Infinite Worlds item${ownerName ? ` for ${ownerName}` : ""} whenever it changes.`;
       return {
         id: textFromAny(item.id) || undefined,
+        dataType: textFromAny(item.dataType) || undefined,
+        variableName: textFromAny(item.variableName) || undefined,
         name,
         rules: joinImportSections([
           description,
@@ -14386,6 +15362,14 @@ ${missingList}`,
       }
       const type = textFromAny(node.type);
       if (type === "triggerOnTrackedItem") return { known: true, value: infiniteWorldsCompareTrackerCondition(isPlainObject(node.data) ? node.data : node, lookup) };
+      if (type === "triggerOnPawScript") {
+        const expr=typeof node.data==='string'?node.data:String(node.data?.expression||node.data?.condition||'');
+        if(!expr.trim())return {known:false,value:false};
+        try{
+          const items=Array.from(lookup?.trackerById?.values()||[]),trackers=items.map((item,i)=>trackedItemToTracker(item,i)).filter(Boolean);
+          return {known:true,value:!!PawScript.evaluate(expr,pawRuntimeSnapshot(trackers).values,pawRuntimeOptions())};
+        }catch(e){console.warn('Start PawScript condition:',e);return {known:false,value:false};}
+      }
       if (type === "triggerOnCharacter") {
         const ids = Array.isArray(node.data) ? node.data.map(textFromAny) : [textFromAny(node.data)];
         const selectedId = textFromAny(lookup?.selectedCharacter?.characterId || lookup?.selectedCharacter?.id);
@@ -14446,6 +15430,15 @@ ${missingList}`,
       const lookup = buildInfiniteWorldsLookup(working, working.trackedItems, options.selectedCharacter);
       const type = textFromAny(effect.type);
       const data = effect.data;
+      if (type === "effectRunScript") {
+        if(typeof data !== 'string')return {applied:false};
+        const sources=Array.isArray(working.trackedItems)?working.trackedItems:[];
+        const native=sources.map((item,i)=>trackedItemToTracker(item,i)).filter(Boolean);
+        const result=pawRunOnTrackers(data,native);
+        const byId=new Map(result.trackers.map(item=>[item.id,item]));
+        sources.forEach(item=>{const updated=byId.get(item.id);if(updated)item.initialValue=updated.value;});
+        return {applied:true};
+      }
       if (type === "effectTellAIWhatToDo") {
         const directive = renderInfiniteWorldsTemplateText(textFromAny(data), lookup);
         if (directive) working.initialDirectives.push(directive);
@@ -14546,9 +15539,9 @@ ${missingList}`,
         }
       }
       working.triggerEvents = events.filter((event, idx) => !consumed.has(textFromAny(event?.id) || `index-${idx}`));
-      working.descriptionRequest = renderInfiniteWorldsTemplateText(working.descriptionRequest, buildInfiniteWorldsLookup(working, working.trackedItems, selectedCharacter));
-      working.evaluationRequest = renderInfiniteWorldsTemplateText(working.evaluationRequest, buildInfiniteWorldsLookup(working, working.trackedItems, selectedCharacter));
-      working.summaryRequest = renderInfiniteWorldsTemplateText(working.summaryRequest, buildInfiniteWorldsLookup(working, working.trackedItems, selectedCharacter));
+      // PawScript interpolation stays live; never bake starting values into imported descriptionRequest.
+      // PawScript interpolation stays live; never bake starting values into imported evaluationRequest.
+      // PawScript interpolation stays live; never bake starting values into imported summaryRequest.
       return { working, consumedCount: consumed.size };
     }
 
@@ -14683,6 +15676,7 @@ ${missingList}`,
       const type = textFromAny(effect.type);
       const data = effect.data;
       const lookup = context.lookup;
+      if (type === "effectRunScript") return ""; // Executed natively when the trigger fires.
       if (type === "effectTellAIWhatToDo") return `Direct source instruction:\n${renderInfiniteWorldsTemplateText(textFromAny(data), lookup, { useCurrentValues: false })}`;
       if (type === "effectSetTrackedItemValue") {
         const sourceId = textFromAny(data?.trackedItemID || data?.trackedItemId || effect.trackedItemID);
@@ -14771,6 +15765,10 @@ ${missingList}`,
         if (translatedConditions.length) conditionParts.push(translatedConditions.join(" AND "));
         if (event.canTriggerMoreThanOnce !== true) conditionParts.push("This is a one-shot imported trigger: activate it only when triggered_count is 0.");
         else conditionParts.push("This imported trigger may activate more than once whenever its condition becomes true again.");
+        // The script is source code, not storyteller guidance. Keep it separate from effect text.
+        const pawScript = (Array.isArray(event.triggerEffects) ? event.triggerEffects : [])
+          .filter(item => item?.type === 'effectRunScript' && typeof item.data === 'string')
+          .map(item => item.data).join('\n');
         const effects = (Array.isArray(event.triggerEffects) ? event.triggerEffects : []).map(effect => convertInfiniteWorldsEffect(effect, context)).filter(Boolean);
         const fallbackEffect = textFromAny(event.effect || event.instructions || event.data);
         const effect = joinImportSections([effects.join("\n\n"), fallbackEffect]);
@@ -14788,6 +15786,7 @@ ${missingList}`,
           condition: machineConditions ? formatBrowserTriggerCondition(machineConditions) : condition,
           effect: effect || `Apply the imported Infinite Worlds event “${name}”.`,
           addTextAfter: false,
+          pawScript,
           repeat: event.canTriggerMoreThanOnce === true
         };
       }).filter(Boolean);
@@ -15249,7 +16248,7 @@ ${missingList}`,
         .filter(type => type && !new Set([
           "effectTellAIWhatToDo", "effectSetTrackedItemValue", "effectModifyTrackedItemDetails",
           "effectModifyInstructionBlock", "effectModifyKeywordBlock", "effectPresentChoice",
-          "effectRequestInput", "effectChangeFirstAction", "effectChangeObjective",
+          "effectRequestInput", "effectRunScript", "effectChangeFirstAction", "effectChangeObjective",
           "effectChangeBackground", "effectChangeDescriptionInstructions", "effectChangeDefeatCondition"
         ]).has(type)))];
 
@@ -19086,10 +20085,33 @@ Previous Part ${partNumber - 1} prompt: ${parts[targetIndex - 1]?.prompt || ""}`
       });
       $("btnRegenerateImageConfirm").addEventListener("click", () => regenerateImageForTurn(transientUi.editingImageTurnId, $("imagePromptEditor").value));
       addCtrlEnter("imagePromptEditor", () => $("btnRegenerateImageConfirm")?.click());
+      addClick('btnPawRun', pawRunEditor);
+      addClick('btnPawEvaluate',()=>{try{
+        const trackers=getViewedTrackers(),snapshot=pawRuntimeSnapshot(trackers);
+        const raw=$('pawExpression').value;
+        $('pawOutput').textContent=raw.includes('<<')?pawLiveTemplate(raw,trackers):String(PawScript.evaluate(raw,snapshot.values,pawRuntimeOptions()));
+      }catch(err){$('pawOutput').textContent='Expression error: '+err.message;}});
+      addClick('btnPawYaml',()=>{try{$('pawOutput').textContent=JSON.stringify(pawRuntimeSnapshot(getViewedTrackers()).values,null,2);}catch(err){$('pawOutput').textContent='YAML parse error: '+err.message;}});
+      addClick('btnPawTests',()=>{$('pawOutput').textContent=pawRunSelfTests();});
+      addClick('btnPawListUpdate',()=>{try{
+        const name=String($('pawListTracker').value||'').trim().replace(/^\$/,'');
+        const tracks=deepClone(getViewedTrackers());
+        const index=tracks.findIndex(t=>pawTrackerName(t).toLowerCase()===name.toLowerCase()||String(t.name).toLowerCase()===name.toLowerCase());
+        if(index<0)throw Error('Unknown YAML list tracker: '+name);
+        const before=pawTrackerParse(tracks[index]);
+        if(!Array.isArray(before))throw Error('Tracked item '+name+' does not contain a YAML list');
+        const snapshot=pawRuntimeSnapshot(tracks);
+        const options={...pawRuntimeOptions(),state:snapshot.values,filter:$('pawListFilter').value.trim()};
+        const updated=PawScript.listUpdate(before,$('pawListTarget').value.trim(),$('pawListValue').value.trim(),options);
+        tracks[index].value=pawTrackerSerialize(updated,pawTrackerKind(tracks[index]));
+        tracks[index].updatedAt=nowIso();tracks[index].lastRationale='YAML List Update (PawScript)';
+        setViewedTrackers(tracks);markUnsavedForFullExport();saveState();renderTrackers();
+        $('pawOutput').textContent='Updated '+updated.length+' YAML list entries in $'+pawTrackerName(tracks[index])+'.\n'+PawYAML.stringify(updated);
+      }catch(err){$('pawOutput').textContent='No changes committed. '+err.message;}});
       $$(".tab").forEach(btn => btn.addEventListener("click", () => {
         $$(".tab").forEach(b => b.classList.remove("active"));
         btn.classList.add("active");
-        ["scratch", "trackers", "history"].forEach(name => $("tab-" + name).classList.toggle("hidden", name !== btn.dataset.tab));
+        ["scratch", "trackers", "history", "pawscript"].forEach(name => $("tab-" + name).classList.toggle("hidden", name !== btn.dataset.tab));
       }));
       window.addEventListener("beforeunload", handleBeforeUnload);
       window.addEventListener("hashchange", () => { maybeImportWorldFromLocationHash(); });
@@ -19108,14 +20130,37 @@ Previous Part ${partNumber - 1} prompt: ${parts[targetIndex - 1]?.prompt || ""}`
       loadModels({ showSuccessToast: false });
     }
 
+    if(new URLSearchParams(location.search).get('pawtest')==='1') {
+      window.__pawTest={
+        loadWorld(source,characterIndex=0){
+          const character=(source.possibleCharacters||[])[characterIndex]||{};
+          const converted=convertInfiniteWorldsJsonToWorldImport(source,character,{resolveStartSetup:false});
+          applyWorldImport({world:converted.world,defaultTriggers:converted.defaultTriggers,eventTriggers:converted.eventTriggers,rpgStats:converted.rpgStats},{skipConfirm:true});
+          return {trackers:deepClone(state.trackers),eventTriggers:deepClone(state.eventTriggers)};
+        },
+        trackerValues(){return pawRuntimeSnapshot(state.trackers).values;},
+        render(text){return pawLiveTemplate(text);},
+        script(code){const result=pawRunOnTrackers(code,state.trackers);state.trackers=result.trackers;return result;},
+        tests(){return pawRunSelfTests();},
+        prompt(){return JSON.parse(buildUserPrompt('Explore the room'));},
+        simulateTurn(trackerUpdates=[]){
+          const raw={narration:'Test scene',choices:['Continue'],image_prompt:'',tracker_updates:trackerUpdates,scratchpad:state.scratchpad};
+          applyTurnState(raw);
+          const turn=normalizeTurnResult(raw,'Test action',null);
+          setTurnStateSnapshot(turn,state.scratchpad,state.trackers);
+          state.turns.push(turn);state.viewIndex=state.turns.length-1;
+          return {turn:turn.turnNumber,trackers:deepClone(state.trackers),prompt:JSON.parse(buildUserPrompt('Explore the room'))};
+        },
+        resetTurns(){state.turns=[];state.viewIndex=-1;},
+        checkTrigger(phase='before') {return runDeterministicEventTriggerChecks('Test action',state.turns.length+1,phase);}
+
+      };
+    }
     bootApp().catch(err => {
       console.error(err);
       showMessagePopup("Startup failed", err?.message || String(err || "Something went wrong."));
     });
   </script>
 
-  <!-- Cloudflare Web Analytics -->
-  <script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "b6a46388c9784e0281690c0c4f076b5c"}'></script>
-  <!-- End Cloudflare Web Analytics -->
 </body>
 </html>
